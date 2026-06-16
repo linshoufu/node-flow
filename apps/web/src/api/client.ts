@@ -4,7 +4,7 @@ export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(baseUrl = "http://127.0.0.1:8000", fetchImpl: typeof fetch = fetch) {
+  constructor(baseUrl = "http://127.0.0.1:8000", fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.fetchImpl = fetchImpl;
   }

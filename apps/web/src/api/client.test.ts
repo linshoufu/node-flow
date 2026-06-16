@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./client";
 
 describe("ApiClient", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   it("lists node types from the configured API base URL", async () => {
     const nodeTypes = [
       {
@@ -19,6 +25,34 @@ describe("ApiClient", () => {
       json: vi.fn().mockResolvedValue(nodeTypes),
     });
     const client = new ApiClient("http://api.test", fetchMock);
+
+    await expect(client.listNodeTypes()).resolves.toEqual(nodeTypes);
+    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/node-types", undefined);
+  });
+
+  it("does not invoke the default global fetch as an ApiClient method", async () => {
+    const nodeTypes = [
+      {
+        id: "manual.trigger",
+        name: "Manual Trigger",
+        category: "Triggers",
+        description: "Starts a workflow manually.",
+        inputs: {},
+        outputs: { success: { description: "Initial payload" } },
+        configSchema: { type: "object", properties: {} },
+      },
+    ];
+    const fetchMock = vi.fn(function (this: unknown) {
+      if (this instanceof ApiClient) {
+        throw new TypeError("Illegal invocation");
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue(nodeTypes),
+      } as Response);
+    });
+    globalThis.fetch = fetchMock;
+    const client = new ApiClient("http://api.test");
 
     await expect(client.listNodeTypes()).resolves.toEqual(nodeTypes);
     expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/node-types", undefined);
