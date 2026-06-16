@@ -50,12 +50,13 @@ export function FlowCanvas({
         id: node.id,
         type: "workflowNode",
         position: node.position,
+        selected: node.id === selectedNodeId,
         data: {
           workflowNode: node,
           nodeType: nodeTypeById.get(node.type),
         },
       })),
-    [nodeTypeById, workflow.nodes]
+    [nodeTypeById, selectedNodeId, workflow.nodes]
   );
 
   const edges = useMemo<Edge[]>(
@@ -79,8 +80,12 @@ export function FlowCanvas({
           .map((change) => [change.id, change.position])
       );
       const removedNodeIds = new Set(changes.filter(isNodeRemoveChange).map((change) => change.id));
+      const nextSelectedNodeId = selectedNodeIdFromChanges(changes, selectedNodeId);
 
       if (positionChanges.size === 0 && removedNodeIds.size === 0) {
+        if (nextSelectedNodeId !== selectedNodeId) {
+          onSelectNode(nextSelectedNodeId);
+        }
         return;
       }
 
@@ -102,6 +107,8 @@ export function FlowCanvas({
 
       if (selectedNodeId && removedNodeIds.has(selectedNodeId)) {
         onSelectNode(null);
+      } else if (nextSelectedNodeId !== selectedNodeId) {
+        onSelectNode(nextSelectedNodeId);
       }
     },
     [onSelectNode, onWorkflowChange, selectedNodeId, workflow]
@@ -147,13 +154,13 @@ export function FlowCanvas({
   return (
     <section className="canvas-shell" aria-label="Canvas workspace">
       <ReactFlow
+        deleteKeyCode={["Delete", "Backspace"]}
         edges={edges}
         fitView
         nodes={nodes}
         nodeTypes={flowNodeTypes}
         onConnect={handleConnect}
         onEdgesChange={handleEdgesChange}
-        onNodeClick={(_, node) => onSelectNode(node.id)}
         onNodesChange={handleNodesChange}
         onPaneClick={() => onSelectNode(null)}
       >
@@ -174,6 +181,22 @@ function isNodeRemoveChange(
   change: NodeChange<EditorNode>
 ): change is Extract<NodeChange<EditorNode>, { type: "remove" }> {
   return change.type === "remove";
+}
+
+function isNodeSelectChange(
+  change: NodeChange<EditorNode>
+): change is Extract<NodeChange<EditorNode>, { type: "select" }> {
+  return change.type === "select";
+}
+
+function selectedNodeIdFromChanges(changes: NodeChange<EditorNode>[], currentSelectedNodeId: string | null) {
+  return changes.filter(isNodeSelectChange).reduce<string | null>((nextSelectedNodeId, change) => {
+    if (change.selected) {
+      return change.id;
+    }
+
+    return nextSelectedNodeId === change.id ? null : nextSelectedNodeId;
+  }, currentSelectedNodeId);
 }
 
 function isEdgeRemoveChange(change: EdgeChange<Edge>): change is Extract<EdgeChange<Edge>, { type: "remove" }> {
