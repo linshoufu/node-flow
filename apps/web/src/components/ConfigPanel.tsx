@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { JsonSchema, NodeType, WorkflowNode } from "../types";
 
 type ConfigPanelProps = {
@@ -95,6 +96,8 @@ function SchemaField({ name, schema, value, onChange }: SchemaFieldProps) {
       <label className="field">
         <span>{label}</span>
         <input
+          max={schema.maximum}
+          min={schema.minimum}
           step={schemaType === "integer" ? 1 : "any"}
           type="number"
           value={typeof value === "number" ? value : 0}
@@ -107,10 +110,58 @@ function SchemaField({ name, schema, value, onChange }: SchemaFieldProps) {
     );
   }
 
+  if (schemaType === "object" || schemaType === "array") {
+    return <JsonField expectedType={schemaType} label={label} value={value} onChange={onChange} />;
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
       <input value={String(value ?? "")} type="text" onChange={(event) => onChange(event.currentTarget.value)} />
     </label>
   );
+}
+
+type JsonFieldProps = {
+  expectedType: "object" | "array";
+  label: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+};
+
+function JsonField({ expectedType, label, value, onChange }: JsonFieldProps) {
+  const [text, setText] = useState(() => formatJson(value, expectedType));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setText(formatJson(value, expectedType));
+    setError(null);
+  }, [expectedType, value]);
+
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <textarea
+        aria-invalid={error ? "true" : "false"}
+        className={error ? "json-editor has-error" : "json-editor"}
+        value={text}
+        onChange={(event) => {
+          const nextText = event.currentTarget.value;
+          setText(nextText);
+          try {
+            const nextValue = JSON.parse(nextText) as unknown;
+            setError(null);
+            onChange(nextValue);
+          } catch {
+            setError("Invalid JSON");
+          }
+        }}
+      />
+      {error ? <small className="field-error">{error}</small> : null}
+    </label>
+  );
+}
+
+function formatJson(value: unknown, expectedType: "object" | "array"): string {
+  return JSON.stringify(value ?? (expectedType === "array" ? [] : {}), null, 2);
 }

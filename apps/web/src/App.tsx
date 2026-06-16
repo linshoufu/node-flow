@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { FlowCanvas } from "./components/FlowCanvas";
@@ -8,6 +8,8 @@ import { createEmptyWorkflow, createWorkflowNode } from "./lib/workflow";
 import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from "./types";
 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
+const RUN_POLL_INTERVAL_MS = 1000;
+const MAX_RUN_POLL_ATTEMPTS = 120;
 
 export default function App() {
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>([]);
@@ -17,6 +19,16 @@ export default function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [run, setRun] = useState<RunRecord | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
+  const mountedRef = useRef(true);
+  const runInFlightRef = useRef(false);
+  const runTokenRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      runTokenRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,34 +114,78 @@ export default function App() {
     }
   }
 
+  function isActiveRun(runToken: number) {
+    return mountedRef.current && runTokenRef.current === runToken;
+  }
+
   async function runWorkflow() {
+    if (runInFlightRef.current) {
+      return;
+    }
+
+    const runToken = runTokenRef.current + 1;
+    runTokenRef.current = runToken;
+    runInFlightRef.current = true;
     setIsBusy(true);
     setRunEvents([]);
     try {
       const saved = await apiClient.saveWorkflow(workflow);
+      if (!isActiveRun(runToken)) {
+        return;
+      }
       setWorkflow(saved);
       setMessage(`Saved version ${saved.version}. Starting run...`);
 
       let currentRun = await apiClient.createRun(saved.id);
+      if (!isActiveRun(runToken)) {
+        return;
+      }
       setRun(currentRun);
-      setRunEvents(await apiClient.getRunEvents(currentRun.id));
+      const initialEvents = await apiClient.getRunEvents(currentRun.id);
+      if (!isActiveRun(runToken)) {
+        return;
+      }
+      setRunEvents(initialEvents);
 
-      while (!TERMINAL_RUN_STATUSES.has(currentRun.status)) {
-        await delay(1000);
+      let attempts = 0;
+      while (!TERMINAL_RUN_STATUSES.has(currentRun.status) && attempts < MAX_RUN_POLL_ATTEMPTS) {
+        attempts += 1;
+        await delay(RUN_POLL_INTERVAL_MS);
+        if (!isActiveRun(runToken)) {
+          return;
+        }
         const [nextRun, nextEvents] = await Promise.all([
           apiClient.getRun(currentRun.id),
           apiClient.getRunEvents(currentRun.id),
         ]);
+        if (!isActiveRun(runToken)) {
+          return;
+        }
         currentRun = nextRun;
         setRun(nextRun);
         setRunEvents(nextEvents);
       }
 
-      setMessage(`Run ${currentRun.id} ${currentRun.status}.`);
+      if (!isActiveRun(runToken)) {
+        return;
+      }
+
+      setMessage(
+        TERMINAL_RUN_STATUSES.has(currentRun.status)
+          ? `Run ${currentRun.id} ${currentRun.status}.`
+          : `Run ${currentRun.id} polling timed out after ${MAX_RUN_POLL_ATTEMPTS} attempts.`
+      );
     } catch (error) {
-      setMessage(`Run failed: ${formatError(error)}`);
+      if (isActiveRun(runToken)) {
+        setMessage(`Run failed: ${formatError(error)}`);
+      }
     } finally {
-      setIsBusy(false);
+      if (runTokenRef.current === runToken) {
+        runInFlightRef.current = false;
+        if (mountedRef.current) {
+          setIsBusy(false);
+        }
+      }
     }
   }
 

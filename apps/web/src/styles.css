@@ -304,6 +304,31 @@ button:disabled {
   font-weight: 500;
 }
 
+.field textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: 1px solid #cbd3dc;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #1c2633;
+  padding: 8px 9px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.field textarea.has-error {
+  border-color: #bd5b5b;
+  box-shadow: 0 0 0 2px rgb(189 91 91 / 12%);
+}
+
+.field-error {
+  color: #8b3030;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .field-checkbox {
   display: flex;
   align-items: center;

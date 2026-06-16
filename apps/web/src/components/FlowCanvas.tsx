@@ -7,11 +7,13 @@ import {
   ReactFlow,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
 import { useCallback, useMemo } from "react";
+import { createWorkflowEdge } from "../lib/workflow";
 import type { NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
 
 type FlowCanvasProps = {
@@ -77,17 +79,46 @@ export function FlowCanvas({
           .filter(isPositionChange)
           .map((change) => [change.id, change.position])
       );
+      const removedNodeIds = new Set(changes.filter(isNodeRemoveChange).map((change) => change.id));
 
-      if (positionChanges.size === 0) {
+      if (positionChanges.size === 0 && removedNodeIds.size === 0) {
         return;
       }
 
       onWorkflowChange({
         ...workflow,
-        nodes: workflow.nodes.map((node) => {
-          const position = positionChanges.get(node.id);
-          return position ? { ...node, position } : node;
-        }),
+        nodes: workflow.nodes
+          .filter((node) => !removedNodeIds.has(node.id))
+          .map((node) => {
+            const position = positionChanges.get(node.id);
+            return position ? { ...node, position } : node;
+          }),
+        edges:
+          removedNodeIds.size === 0
+            ? workflow.edges
+            : workflow.edges.filter(
+                (edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target)
+              ),
+      });
+
+      if (selectedNodeId && removedNodeIds.has(selectedNodeId)) {
+        onSelectNode(null);
+      }
+    },
+    [onSelectNode, onWorkflowChange, selectedNodeId, workflow]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange<Edge>[]) => {
+      const removedEdgeIds = new Set(changes.filter(isEdgeRemoveChange).map((change) => change.id));
+
+      if (removedEdgeIds.size === 0) {
+        return;
+      }
+
+      onWorkflowChange({
+        ...workflow,
+        edges: workflow.edges.filter((edge) => !removedEdgeIds.has(edge.id)),
       });
     },
     [onWorkflowChange, workflow]
@@ -99,13 +130,12 @@ export function FlowCanvas({
         return;
       }
 
-      const nextEdge: WorkflowEdge = {
-        id: `edge_${connection.source}_${connection.sourceHandle}_${connection.target}_${connection.targetHandle}_${Date.now()}`,
-        source: connection.source,
-        sourceHandle: connection.sourceHandle,
-        target: connection.target,
-        targetHandle: connection.targetHandle,
-      };
+      const nextEdge: WorkflowEdge = createWorkflowEdge(
+        connection.source,
+        connection.sourceHandle,
+        connection.target,
+        connection.targetHandle
+      );
 
       onWorkflowChange({
         ...workflow,
@@ -123,6 +153,7 @@ export function FlowCanvas({
         nodes={nodes}
         nodeTypes={flowNodeTypes}
         onConnect={handleConnect}
+        onEdgesChange={handleEdgesChange}
         onNodeClick={(_, node) => onSelectNode(node.id)}
         onNodesChange={handleNodesChange}
         onPaneClick={() => onSelectNode(null)}
@@ -139,6 +170,16 @@ function isPositionChange(
   change: NodeChange<EditorNode>
 ): change is Extract<NodeChange<EditorNode>, { type: "position" }> & { position: { x: number; y: number } } {
   return change.type === "position" && Boolean(change.position);
+}
+
+function isNodeRemoveChange(
+  change: NodeChange<EditorNode>
+): change is Extract<NodeChange<EditorNode>, { type: "remove" }> {
+  return change.type === "remove";
+}
+
+function isEdgeRemoveChange(change: EdgeChange<Edge>): change is Extract<EdgeChange<Edge>, { type: "remove" }> {
+  return change.type === "remove";
 }
 
 function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {

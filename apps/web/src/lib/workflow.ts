@@ -1,4 +1,4 @@
-import type { JsonSchema, NodeType, WorkflowDocument, WorkflowNode } from "../types";
+import type { JsonSchema, NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
 
 type NodePosition = WorkflowNode["position"];
 
@@ -34,6 +34,21 @@ export function createWorkflowNode(nodeType: NodeType, position: NodePosition): 
   return node;
 }
 
+export function createWorkflowEdge(
+  source: string,
+  sourceHandle: string,
+  target: string,
+  targetHandle: string
+): WorkflowEdge {
+  return {
+    id: prefixedId("edge"),
+    source,
+    sourceHandle,
+    target,
+    targetHandle,
+  };
+}
+
 export function defaultsFromSchema(schema: JsonSchema | undefined): Record<string, unknown> {
   if (!schema?.properties) {
     return {};
@@ -61,6 +76,10 @@ function defaultForSchema(schema: JsonSchema): unknown {
     case "integer":
     case "number":
       return 0;
+    case "object":
+      return {};
+    case "array":
+      return [];
     case "string":
       return "";
     default:

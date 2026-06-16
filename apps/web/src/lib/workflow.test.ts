@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NodeType } from "../types";
-import { createEmptyWorkflow, createWorkflowNode, defaultsFromSchema } from "./workflow";
+import { createEmptyWorkflow, createWorkflowEdge, createWorkflowNode, defaultsFromSchema } from "./workflow";
 
 function nodeType(overrides: Partial<NodeType> = {}): NodeType {
   return {
@@ -19,6 +19,8 @@ function nodeType(overrides: Partial<NodeType> = {}): NodeType {
         count: { type: "integer" },
         ratio: { type: "number" },
         label: { type: "string" },
+        payload: { type: "object", additionalProperties: true },
+        items: { type: "array", items: { type: "string" } },
       },
     },
     ...overrides,
@@ -44,6 +46,8 @@ describe("workflow helpers", () => {
       count: 0,
       ratio: 0,
       label: "",
+      payload: {},
+      items: [],
     });
   });
 
@@ -60,9 +64,23 @@ describe("workflow helpers", () => {
         count: 0,
         ratio: 0,
         label: "",
+        payload: {},
+        items: [],
       },
     });
     expect(node.id).toMatch(/^node_/);
+  });
+
+  it("creates workflow edges with generated IDs", () => {
+    const edge = createWorkflowEdge("source-node", "result", "target-node", "input");
+
+    expect(edge).toEqual({
+      id: expect.stringMatching(/^edge_/),
+      source: "source-node",
+      sourceHandle: "result",
+      target: "target-node",
+      targetHandle: "input",
+    });
   });
 
   it.each(["control.foreach", "control.while"])("creates a body subflow for %s", (id) => {
