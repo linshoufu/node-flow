@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeType, WorkflowDocument } from "../types";
 import { FlowCanvas } from "./FlowCanvas";
@@ -36,6 +36,21 @@ const manualTriggerType: NodeType = {
   },
 };
 
+const logType: NodeType = {
+  id: "utility.log",
+  name: "Log",
+  category: "utility",
+  description: "Write an input value to the run log.",
+  inputs: {
+    input: {},
+  },
+  outputs: {},
+  configSchema: {
+    type: "object",
+    properties: {},
+  },
+};
+
 const workflow: WorkflowDocument = {
   id: "wf_test",
   name: "Test Workflow",
@@ -49,6 +64,28 @@ const workflow: WorkflowDocument = {
     },
   ],
   edges: [],
+};
+
+const workflowWithEdge: WorkflowDocument = {
+  ...workflow,
+  nodes: [
+    ...workflow.nodes,
+    {
+      id: "node_log",
+      type: "utility.log",
+      position: { x: 320, y: 80 },
+      config: {},
+    },
+  ],
+  edges: [
+    {
+      id: "edge_manual_log",
+      source: "node_manual",
+      sourceHandle: "output",
+      target: "node_log",
+      targetHandle: "input",
+    },
+  ],
 };
 
 describe("FlowCanvas", () => {
@@ -116,9 +153,9 @@ describe("FlowCanvas", () => {
     const onWorkflowChange = vi.fn();
     render(
       <FlowCanvas
-        nodeTypes={[manualTriggerType]}
+        nodeTypes={[manualTriggerType, logType]}
         selectedNodeId="node_manual"
-        workflow={workflow}
+        workflow={workflowWithEdge}
         onSelectNode={vi.fn()}
         onWorkflowChange={onWorkflowChange}
       />
@@ -128,8 +165,59 @@ describe("FlowCanvas", () => {
     onNodesChange([{ id: "node_manual", type: "remove" }]);
 
     expect(onWorkflowChange).toHaveBeenCalledWith({
-      ...workflow,
-      nodes: [],
+      ...workflowWithEdge,
+      nodes: [workflowWithEdge.nodes[1]],
+      edges: [],
+    });
+  });
+
+  it("passes selected edge changes into controlled React Flow edges", () => {
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType, logType]}
+        selectedNodeId={null}
+        workflow={workflowWithEdge}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      />
+    );
+
+    const initialEdges = reactFlowProps.current?.edges as Array<Record<string, unknown>>;
+    expect(initialEdges[0]).toHaveProperty("selected", false);
+
+    const onEdgesChange = reactFlowProps.current?.onEdgesChange as (changes: Array<Record<string, unknown>>) => void;
+    act(() => {
+      onEdgesChange([{ id: "edge_manual_log", type: "select", selected: true }]);
+    });
+
+    const selectedEdges = reactFlowProps.current?.edges as Array<Record<string, unknown>>;
+    expect(selectedEdges[0]).toHaveProperty("selected", true);
+
+    act(() => {
+      onEdgesChange([{ id: "edge_manual_log", type: "select", selected: false }]);
+    });
+
+    const deselectedEdges = reactFlowProps.current?.edges as Array<Record<string, unknown>>;
+    expect(deselectedEdges[0]).toHaveProperty("selected", false);
+  });
+
+  it("removes edges from controlled React Flow edge changes", () => {
+    const onWorkflowChange = vi.fn();
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType, logType]}
+        selectedNodeId={null}
+        workflow={workflowWithEdge}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={onWorkflowChange}
+      />
+    );
+
+    const onEdgesChange = reactFlowProps.current?.onEdgesChange as (changes: Array<Record<string, unknown>>) => void;
+    onEdgesChange([{ id: "edge_manual_log", type: "remove" }]);
+
+    expect(onWorkflowChange).toHaveBeenCalledWith({
+      ...workflowWithEdge,
       edges: [],
     });
   });

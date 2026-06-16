@@ -12,7 +12,7 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createWorkflowEdge } from "../lib/workflow";
 import type { NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
 
@@ -42,6 +42,7 @@ export function FlowCanvas({
   onWorkflowChange,
   onSelectNode,
 }: FlowCanvasProps) {
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(() => new Set());
   const nodeTypeById = useMemo(() => new Map(nodeTypes.map((nodeType) => [nodeType.id, nodeType])), [nodeTypes]);
 
   const nodes = useMemo<EditorNode[]>(
@@ -68,8 +69,9 @@ export function FlowCanvas({
         sourceHandle: edge.sourceHandle,
         targetHandle: edge.targetHandle,
         markerEnd: { type: MarkerType.ArrowClosed },
+        selected: selectedEdgeIds.has(edge.id),
       })),
-    [workflow.edges]
+    [selectedEdgeIds, workflow.edges]
   );
 
   const handleNodesChange = useCallback(
@@ -89,20 +91,31 @@ export function FlowCanvas({
         return;
       }
 
+      const nextNodes = workflow.nodes
+        .filter((node) => !removedNodeIds.has(node.id))
+        .map((node) => {
+          const position = positionChanges.get(node.id);
+          return position ? { ...node, position } : node;
+        });
+      const nextEdges =
+        removedNodeIds.size === 0
+          ? workflow.edges
+          : workflow.edges.filter((edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target));
+
+      if (removedNodeIds.size > 0) {
+        const remainingEdgeIds = new Set(nextEdges.map((edge) => edge.id));
+        setSelectedEdgeIds((currentSelectedEdgeIds) => {
+          const nextSelectedEdgeIds = new Set(
+            [...currentSelectedEdgeIds].filter((edgeId) => remainingEdgeIds.has(edgeId))
+          );
+          return areSetsEqual(currentSelectedEdgeIds, nextSelectedEdgeIds) ? currentSelectedEdgeIds : nextSelectedEdgeIds;
+        });
+      }
+
       onWorkflowChange({
         ...workflow,
-        nodes: workflow.nodes
-          .filter((node) => !removedNodeIds.has(node.id))
-          .map((node) => {
-            const position = positionChanges.get(node.id);
-            return position ? { ...node, position } : node;
-          }),
-        edges:
-          removedNodeIds.size === 0
-            ? workflow.edges
-            : workflow.edges.filter(
-                (edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target)
-              ),
+        nodes: nextNodes,
+        edges: nextEdges,
       });
 
       if (selectedNodeId && removedNodeIds.has(selectedNodeId)) {
@@ -117,6 +130,19 @@ export function FlowCanvas({
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
       const removedEdgeIds = new Set(changes.filter(isEdgeRemoveChange).map((change) => change.id));
+      const hasEdgeSelectionChanges = changes.some(isEdgeSelectChange);
+
+      if (hasEdgeSelectionChanges || removedEdgeIds.size > 0) {
+        setSelectedEdgeIds((currentSelectedEdgeIds) => {
+          const nextSelectedEdgeIds = selectedEdgeIdsFromChanges(changes, currentSelectedEdgeIds);
+
+          for (const edgeId of removedEdgeIds) {
+            nextSelectedEdgeIds.delete(edgeId);
+          }
+
+          return areSetsEqual(currentSelectedEdgeIds, nextSelectedEdgeIds) ? currentSelectedEdgeIds : nextSelectedEdgeIds;
+        });
+      }
 
       if (removedEdgeIds.size === 0) {
         return;
@@ -162,7 +188,12 @@ export function FlowCanvas({
         onConnect={handleConnect}
         onEdgesChange={handleEdgesChange}
         onNodesChange={handleNodesChange}
-        onPaneClick={() => onSelectNode(null)}
+        onPaneClick={() => {
+          onSelectNode(null);
+          setSelectedEdgeIds((currentSelectedEdgeIds) =>
+            currentSelectedEdgeIds.size === 0 ? currentSelectedEdgeIds : new Set()
+          );
+        }}
       >
         <Background />
         <Controls />
@@ -201,6 +232,36 @@ function selectedNodeIdFromChanges(changes: NodeChange<EditorNode>[], currentSel
 
 function isEdgeRemoveChange(change: EdgeChange<Edge>): change is Extract<EdgeChange<Edge>, { type: "remove" }> {
   return change.type === "remove";
+}
+
+function isEdgeSelectChange(change: EdgeChange<Edge>): change is Extract<EdgeChange<Edge>, { type: "select" }> {
+  return change.type === "select";
+}
+
+function selectedEdgeIdsFromChanges(changes: EdgeChange<Edge>[], currentSelectedEdgeIds: Set<string>) {
+  return changes.filter(isEdgeSelectChange).reduce((nextSelectedEdgeIds, change) => {
+    if (change.selected) {
+      nextSelectedEdgeIds.add(change.id);
+    } else {
+      nextSelectedEdgeIds.delete(change.id);
+    }
+
+    return nextSelectedEdgeIds;
+  }, new Set(currentSelectedEdgeIds));
+}
+
+function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
