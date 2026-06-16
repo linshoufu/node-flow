@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import deque
+
 from pydantic import ValidationError
 
 from .node_registry import NodeRegistry
@@ -14,6 +16,9 @@ def validate_workflow(workflow: WorkflowDocument, registry: NodeRegistry) -> Val
     node_by_id = {node.id: node for node in workflow.nodes}
     if len(node_by_id) != len(workflow.nodes):
         issues.append(ValidationIssue(path="nodes", message="Node IDs must be unique"))
+    edge_by_id = {edge.id: edge for edge in workflow.edges}
+    if len(edge_by_id) != len(workflow.edges):
+        issues.append(ValidationIssue(path="edges", message="Edge IDs must be unique"))
     for node in workflow.nodes:
         _validate_node(node, registry, f"nodes.{node.id}", issues)
     for edge in workflow.edges:
@@ -51,7 +56,10 @@ def _validate_node(
     try:
         node_type.node_class.config_model().model_validate(node.config, extra="forbid")
     except ValidationError as exc:
-        issues.append(ValidationIssue(path=f"{path}.config", message=str(exc)))
+        for error in exc.errors():
+            field_path = ".".join(str(part) for part in error["loc"])
+            issue_path = f"{path}.config" if not field_path else f"{path}.config.{field_path}"
+            issues.append(ValidationIssue(path=issue_path, message=error["msg"]))
     if node.type in CONTROL_NODE_TYPES and "body" not in node.subflows:
         issues.append(
             ValidationIssue(path=f"{path}.subflows", message="Control nodes require a body subflow")
@@ -70,11 +78,11 @@ def _validate_edge(
         issues.append(
             ValidationIssue(path=f"edges.{edge.id}.source", message=f"Unknown source node: {edge.source}")
         )
-        return
     if target is None:
         issues.append(
             ValidationIssue(path=f"edges.{edge.id}.target", message=f"Unknown target node: {edge.target}")
         )
+    if source is None or target is None:
         return
     if not registry.has(source.type) or not registry.has(target.type):
         return
@@ -102,26 +110,21 @@ def _validate_no_cycles(
     issues: list[ValidationIssue],
 ) -> None:
     graph: dict[str, list[str]] = {node.id: [] for node in nodes}
+    indegree: dict[str, int] = {node.id: 0 for node in nodes}
     for edge in edges:
         if edge.source in graph and edge.target in graph:
             graph[edge.source].append(edge.target)
-    visiting: set[str] = set()
-    visited: set[str] = set()
+            indegree[edge.target] += 1
 
-    def visit(node_id: str) -> bool:
-        if node_id in visiting:
-            return True
-        if node_id in visited:
-            return False
-        visiting.add(node_id)
+    queue = deque(node_id for node_id, count in indegree.items() if count == 0)
+    visited_count = 0
+    while queue:
+        node_id = queue.popleft()
+        visited_count += 1
         for target in graph[node_id]:
-            if visit(target):
-                return True
-        visiting.remove(node_id)
-        visited.add(node_id)
-        return False
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                queue.append(target)
 
-    for node_id in graph:
-        if visit(node_id):
-            issues.append(ValidationIssue(path="edges", message="Workflow graph contains a cycle"))
-            return
+    if visited_count != len(graph):
+        issues.append(ValidationIssue(path="edges", message="Workflow graph contains a cycle"))

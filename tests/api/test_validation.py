@@ -41,6 +41,10 @@ def issue_messages(result) -> list[str]:
     return [issue.message for issue in result.issues]
 
 
+def issue_paths(result) -> list[str]:
+    return [issue.path for issue in result.issues]
+
+
 def test_validation_accepts_valid_simple_workflow():
     workflow = WorkflowDocument(
         id="wf_1",
@@ -91,7 +95,49 @@ def test_validation_rejects_invalid_config():
     )
     result = validate_workflow(workflow, registry())
     assert not result.valid
-    assert "url" in result.issues[0].message.lower()
+    assert "url" in result.issues[0].path or "url" in result.issues[0].message.lower()
+
+
+def test_validation_reports_missing_config_field_path():
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[
+            WorkflowNode(
+                id="http_1",
+                type="http.request",
+                position=position(),
+                config={},
+            )
+        ],
+        edges=[],
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert not result.valid
+    assert result.issues[0].path == "nodes.http_1.config.url"
+
+
+def test_validation_reports_extra_config_key_path():
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[
+            WorkflowNode(
+                id="log",
+                type="utility.log",
+                position=position(),
+                config={"message": "ok", "typo": True},
+            )
+        ],
+        edges=[],
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert not result.valid
+    assert result.issues[0].path == "nodes.log.config.typo"
 
 
 def test_validation_rejects_invalid_edge_handle():
@@ -129,6 +175,78 @@ def test_validation_rejects_duplicate_node_ids():
 
     assert not result.valid
     assert "Node IDs must be unique" in issue_messages(result)
+
+
+def test_validation_rejects_duplicate_edge_ids():
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[log_node("a"), log_node("b"), log_node("c")],
+        edges=[
+            WorkflowEdge(
+                id="e1",
+                source="a",
+                sourceHandle="success",
+                target="b",
+                targetHandle="input",
+            ),
+            WorkflowEdge(
+                id="e1",
+                source="b",
+                sourceHandle="success",
+                target="c",
+                targetHandle="input",
+            ),
+        ],
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert not result.valid
+    assert "Edge IDs must be unique" in issue_messages(result)
+
+
+def test_validation_rejects_duplicate_edge_ids_inside_body_subflow():
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[
+            WorkflowNode(
+                id="loop",
+                type="control.foreach",
+                position=position(),
+                config={"items_expression": "items"},
+                subflows={
+                    "body": WorkflowSubflow(
+                        nodes=[log_node("a"), log_node("b"), log_node("c")],
+                        edges=[
+                            WorkflowEdge(
+                                id="e1",
+                                source="a",
+                                sourceHandle="success",
+                                target="b",
+                                targetHandle="input",
+                            ),
+                            WorkflowEdge(
+                                id="e1",
+                                source="b",
+                                sourceHandle="success",
+                                target="c",
+                                targetHandle="input",
+                            ),
+                        ],
+                    )
+                },
+            )
+        ],
+        edges=[],
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert not result.valid
+    assert "nodes.loop.subflows.body.edges" in issue_paths(result)
+    assert "Edge IDs must be unique" in issue_messages(result)
 
 
 def test_validation_rejects_unknown_source_node():
@@ -173,6 +291,29 @@ def test_validation_rejects_unknown_target_node():
 
     assert not result.valid
     assert result.issues[0].message == "Unknown target node: missing"
+
+
+def test_validation_reports_unknown_source_and_target_nodes():
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[],
+        edges=[
+            WorkflowEdge(
+                id="e1",
+                source="missing_source",
+                sourceHandle="success",
+                target="missing_target",
+                targetHandle="input",
+            )
+        ],
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert not result.valid
+    assert "Unknown source node: missing_source" in issue_messages(result)
+    assert "Unknown target node: missing_target" in issue_messages(result)
 
 
 def test_validation_rejects_invalid_target_handle():
@@ -224,6 +365,31 @@ def test_validation_rejects_normal_graph_cycle():
 
     assert not result.valid
     assert "Workflow graph contains a cycle" in issue_messages(result)
+
+
+def test_validation_accepts_long_acyclic_chain_without_recursion_error():
+    nodes = [log_node(f"log_{index}", x=index) for index in range(1200)]
+    edges = [
+        WorkflowEdge(
+            id=f"e{index}",
+            source=f"log_{index}",
+            sourceHandle="success",
+            target=f"log_{index + 1}",
+            targetHandle="input",
+        )
+        for index in range(len(nodes) - 1)
+    ]
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=nodes,
+        edges=edges,
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert result.valid is True
+    assert result.issues == []
 
 
 def test_validation_rejects_foreach_without_body_subflow():
