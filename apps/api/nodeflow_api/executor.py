@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import traceback
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
 
 from nodeflow_sdk import NodeContext
@@ -10,6 +10,10 @@ from .expressions import resolve_expression
 from .node_registry import NodeRegistry
 from .schemas import RunEvent, WorkflowDocument, WorkflowEdge, WorkflowNode
 from .storage import Storage, utc_now
+
+
+class WorkflowExecutionError(RuntimeError):
+    pass
 
 
 class WorkflowExecutor:
@@ -43,40 +47,38 @@ class WorkflowExecutor:
         scope: list[str],
     ) -> None:
         node_by_id = {node.id: node for node in nodes}
-        incoming = defaultdict(list)
-        outgoing = defaultdict(list)
+        incoming_count = {node.id: 0 for node in nodes}
+        outgoing: dict[str, list[WorkflowEdge]] = defaultdict(list)
         for edge in edges:
-            incoming[edge.target].append(edge)
             outgoing[edge.source].append(edge)
-        start_nodes = [node for node in nodes if not incoming[node.id]]
-        for node in start_nodes:
-            await self._execute_from_node(run_id, node, node_by_id, outgoing, context, scope)
+            incoming_count[edge.target] += 1
 
-    async def _execute_from_node(
-        self,
-        run_id: str,
-        node: WorkflowNode,
-        node_by_id: dict[str, WorkflowNode],
-        outgoing: dict[str, list[WorkflowEdge]],
-        context: dict[str, Any],
-        scope: list[str],
-        inputs: dict[str, Any] | None = None,
-    ) -> None:
-        output_values = await self._execute_node(run_id, node, context, scope, inputs or {})
-        context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
-        for handle, value in output_values.items():
-            for edge in outgoing.get(node.id, []):
-                if edge.sourceHandle == handle:
-                    target = node_by_id[edge.target]
-                    await self._execute_from_node(
-                        run_id,
-                        target,
-                        node_by_id,
-                        outgoing,
-                        context,
-                        scope,
-                        {edge.targetHandle: value},
-                    )
+        ready = deque(node.id for node in nodes if incoming_count[node.id] == 0)
+        node_inputs: dict[str, dict[str, Any]] = defaultdict(dict)
+        executed: set[str] = set()
+
+        while ready:
+            node_id = ready.popleft()
+            if node_id in executed:
+                continue
+            node = node_by_id[node_id]
+            output_values = await self._execute_node(
+                run_id,
+                node,
+                context,
+                scope,
+                node_inputs.get(node_id, {}),
+            )
+            context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
+            executed.add(node_id)
+
+            for edge in outgoing.get(node_id, []):
+                if edge.sourceHandle not in output_values:
+                    continue
+                node_inputs[edge.target][edge.targetHandle] = output_values[edge.sourceHandle]
+                incoming_count[edge.target] -= 1
+                if incoming_count[edge.target] == 0:
+                    ready.append(edge.target)
 
     async def _execute_node(
         self,
@@ -87,8 +89,10 @@ class WorkflowExecutor:
         inputs: dict[str, Any],
     ) -> dict[str, Any]:
         self._event(run_id, "node_started", node_id=node.id, scope=scope, payload={"inputs": inputs})
+        context.setdefault("nodes", {}).setdefault(node.id, {})["inputs"] = inputs
         if node.type == "logic.if":
-            condition = resolve_expression(node.config["condition"], context)
+            node_context = {**context, "inputs": inputs}
+            condition = resolve_expression(node.config["condition"], node_context)
             output = {"true": inputs} if bool(condition) else {"false": inputs}
             self._event(
                 run_id,
@@ -104,15 +108,17 @@ class WorkflowExecutor:
         try:
             outputs = await instance.execute(ctx, inputs)
         except Exception as exc:
-            error_output = {"error": {"message": str(exc), "traceback": traceback.format_exc()}}
             self._event(
                 run_id,
                 "node_failed",
                 node_id=node.id,
                 scope=scope,
-                payload={"error": error_output["error"], "logs": ctx.logs},
+                payload={
+                    "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    "logs": ctx.logs,
+                },
             )
-            return error_output
+            raise WorkflowExecutionError(str(exc)) from exc
         self._event(
             run_id,
             "node_succeeded",
