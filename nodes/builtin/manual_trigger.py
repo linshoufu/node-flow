@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from pydantic import Field
 
-from nodeflow_sdk import BaseNode, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, NodeConfig, NodeContext, Output, node
 
 
-class ManualTriggerConfig(BaseModel):
-    payload: dict = {}
+class ManualTriggerConfig(NodeConfig):
+    payload: dict = Field(default_factory=dict)
 
 
 @node(

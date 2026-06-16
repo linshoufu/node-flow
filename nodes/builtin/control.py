@@ -1,9 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from nodeflow_sdk import BaseNode, Input, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
 
 
-class ForEachConfig(BaseModel):
+class ForEachConfig(NodeConfig):
     items_expression: str = Field(..., title="Items expression")
     max_items: int = Field(default=100, ge=1, le=10000)
     continue_on_error: bool = False
@@ -27,7 +27,7 @@ class ForEachNode(BaseNode[ForEachConfig]):
         return {"done": inputs}
 
 
-class WhileConfig(BaseModel):
+class WhileConfig(NodeConfig):
     condition: str = Field(..., title="Condition expression")
     max_iterations: int = Field(default=100, ge=1, le=10000)
     timeout_seconds: int = Field(default=300, ge=1, le=86400)

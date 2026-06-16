@@ -3,7 +3,7 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from nodeflow_sdk import BaseNode, Input, NodeContext, NodeMeta, Output, node
+from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, NodeMeta, Output, node
 
 
 class DemoConfig(BaseModel):
@@ -73,6 +73,10 @@ def test_base_node_rejects_missing_required_config_fields():
 def test_empty_config_node_rejects_extra_keys():
     with pytest.raises(ValidationError):
         EmptyNode(config={"typo": True})
+
+
+def test_node_config_schema_rejects_additional_properties():
+    assert NodeConfig.model_json_schema()["additionalProperties"] is False
 
 
 @pytest.mark.asyncio

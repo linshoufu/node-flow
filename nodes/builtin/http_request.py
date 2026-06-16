@@ -1,12 +1,12 @@
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from nodeflow_sdk import BaseNode, Input, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
 
 
-class HttpRequestConfig(BaseModel):
+class HttpRequestConfig(NodeConfig):
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
     url: str = Field(..., title="URL")
     timeout_seconds: int = Field(default=30, ge=1, le=300)

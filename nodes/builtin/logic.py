@@ -1,9 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from nodeflow_sdk import BaseNode, Input, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
 
 
-class IfConfig(BaseModel):
+class IfConfig(NodeConfig):
     condition: str = Field(..., title="Condition expression")
 
 
@@ -19,7 +19,7 @@ class IfNode(BaseNode[IfConfig]):
         return {"true": inputs}
 
 
-class SetVariableConfig(BaseModel):
+class SetVariableConfig(NodeConfig):
     name: str = Field(..., title="Variable name")
     value: str = Field(..., title="Value expression")
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import inspect
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,7 +64,7 @@ class NodeRegistry:
         return node_id in self._nodes
 
     def _load_file(self, file_path: Path) -> None:
-        module_name = "nodeflow_user_node_" + "_".join(file_path.with_suffix("").parts[-6:])
+        module_name = self._module_name_for(file_path)
         spec = importlib.util.spec_from_file_location(module_name, file_path)
         if spec is None or spec.loader is None:
             raise RuntimeError(f"Cannot import node file: {file_path}")
@@ -74,8 +76,20 @@ class NodeRegistry:
                 inspect.isclass(value)
                 and issubclass(value, BaseNode)
                 and hasattr(value, "__node_meta__")
+                and value.__module__ == module.__name__
             ):
                 self._register(value)
+
+    def _module_name_for(self, file_path: Path) -> str:
+        resolved_path = file_path.resolve()
+        try:
+            path_parts = resolved_path.relative_to(self.nodes_dir.resolve()).with_suffix("").parts
+        except ValueError:
+            path_parts = resolved_path.with_suffix("").parts
+        safe_parts = [re.sub(r"\W+", "_", part).strip("_") for part in path_parts]
+        safe_stem = "_".join(part for part in safe_parts if part)
+        path_hash = hashlib.sha1(str(resolved_path).encode("utf-8")).hexdigest()[:10]
+        return f"nodeflow_user_node_{safe_stem}_{path_hash}"
 
     def _register(self, node_class: type[BaseNode[Any]]) -> None:
         meta = node_class.__node_meta__

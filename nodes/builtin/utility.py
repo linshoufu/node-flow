@@ -1,11 +1,11 @@
 import asyncio
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from nodeflow_sdk import BaseNode, Input, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
 
 
-class TransformConfig(BaseModel):
+class TransformConfig(NodeConfig):
     value: str = Field(..., title="Value expression")
 
 
@@ -23,7 +23,7 @@ class TransformNode(BaseNode[TransformConfig]):
         return {"success": inputs}
 
 
-class LogConfig(BaseModel):
+class LogConfig(NodeConfig):
     message: str = Field(..., title="Message")
 
 
@@ -37,7 +37,7 @@ class LogNode(BaseNode[LogConfig]):
         return {"success": inputs}
 
 
-class DelayConfig(BaseModel):
+class DelayConfig(NodeConfig):
     seconds: float = Field(default=1.0, ge=0.0, le=300.0)
 
 

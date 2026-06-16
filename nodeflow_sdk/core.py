@@ -115,8 +115,12 @@ class BaseNode(Generic[ConfigT]):
         raise NotImplementedError
 
 
-class EmptyConfig(BaseModel):
+class NodeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class EmptyConfig(NodeConfig):
+    pass
 
 
 def node(
