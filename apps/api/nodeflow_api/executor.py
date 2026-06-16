@@ -47,19 +47,35 @@ class WorkflowExecutor:
         scope: list[str],
     ) -> None:
         node_by_id = {node.id: node for node in nodes}
-        incoming_count = {node.id: 0 for node in nodes}
+        incoming_by_target: dict[str, list[WorkflowEdge]] = defaultdict(list)
         outgoing: dict[str, list[WorkflowEdge]] = defaultdict(list)
         for edge in edges:
             outgoing[edge.source].append(edge)
-            incoming_count[edge.target] += 1
+            incoming_by_target[edge.target].append(edge)
 
-        ready = deque(node.id for node in nodes if incoming_count[node.id] == 0)
+        root_ids = [node.id for node in nodes if not incoming_by_target.get(node.id)]
+        ready = deque(root_ids)
         node_inputs: dict[str, dict[str, Any]] = defaultdict(dict)
-        executed: set[str] = set()
+        active_nodes: set[str] = set(root_ids)
+        queued_nodes: set[str] = set(root_ids)
+        completed_nodes: set[str] = set()
+
+        def is_ready(node_id: str) -> bool:
+            if (
+                node_id not in active_nodes
+                or node_id in completed_nodes
+                or node_id in queued_nodes
+            ):
+                return False
+            return all(
+                edge.source not in active_nodes or edge.source in completed_nodes
+                for edge in incoming_by_target.get(node_id, [])
+            )
 
         while ready:
             node_id = ready.popleft()
-            if node_id in executed:
+            queued_nodes.discard(node_id)
+            if node_id in completed_nodes:
                 continue
             node = node_by_id[node_id]
             output_values = await self._execute_node(
@@ -70,20 +86,25 @@ class WorkflowExecutor:
                 node_inputs.get(node_id, {}),
             )
             context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
-            executed.add(node_id)
+            completed_nodes.add(node_id)
             outgoing_edges = outgoing.get(node_id, [])
             if "error" in output_values and not any(
                 edge.sourceHandle == "error" for edge in outgoing_edges
             ):
                 raise WorkflowExecutionError("Unhandled error output")
 
+            candidates: set[str] = set()
             for edge in outgoing_edges:
+                candidates.add(edge.target)
                 if edge.sourceHandle not in output_values:
                     continue
                 node_inputs[edge.target][edge.targetHandle] = output_values[edge.sourceHandle]
-                incoming_count[edge.target] -= 1
-                if incoming_count[edge.target] == 0:
-                    ready.append(edge.target)
+                active_nodes.add(edge.target)
+
+            for target_id in candidates:
+                if is_ready(target_id):
+                    ready.append(target_id)
+                    queued_nodes.add(target_id)
 
     async def _execute_node(
         self,

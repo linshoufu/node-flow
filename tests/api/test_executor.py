@@ -326,6 +326,78 @@ async def test_executor_if_condition_can_read_current_node_inputs():
     assert any(event.node_id == "false_log" and event.type == "node_succeeded" for event in events)
 
 
+@pytest.mark.asyncio
+async def test_executor_runs_reconverged_if_true_branch_once():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_if_true_reconverge",
+        name="If True Reconverge",
+        nodes=[
+            WorkflowNode(id="start", type="manual.trigger", position=Position(x=0, y=0), config={"payload": {"enabled": True}}),
+            WorkflowNode(id="if_1", type="logic.if", position=Position(x=200, y=0), config={"condition": "{{ inputs.input.enabled }}"}),
+            WorkflowNode(id="true_log", type="utility.log", position=Position(x=400, y=-100), config={"message": "true"}),
+            WorkflowNode(id="false_log", type="utility.log", position=Position(x=400, y=100), config={"message": "false"}),
+            WorkflowNode(id="after", type="utility.log", position=Position(x=600, y=0), config={"message": "after"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="start", sourceHandle="success", target="if_1", targetHandle="input"),
+            WorkflowEdge(id="e2", source="if_1", sourceHandle="true", target="true_log", targetHandle="input"),
+            WorkflowEdge(id="e3", source="if_1", sourceHandle="false", target="false_log", targetHandle="input"),
+            WorkflowEdge(id="e4", source="true_log", sourceHandle="success", target="after", targetHandle="input"),
+            WorkflowEdge(id="e5", source="false_log", sourceHandle="success", target="after", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "succeeded"
+    assert sum(event.node_id == "after" and event.type == "node_started" for event in events) == 1
+    assert any(event.node_id == "true_log" and event.type == "node_succeeded" for event in events)
+    assert not any(event.node_id == "false_log" and event.type == "node_started" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_executor_runs_reconverged_if_false_branch_once():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_if_false_reconverge",
+        name="If False Reconverge",
+        nodes=[
+            WorkflowNode(id="start", type="manual.trigger", position=Position(x=0, y=0), config={"payload": {"enabled": False}}),
+            WorkflowNode(id="if_1", type="logic.if", position=Position(x=200, y=0), config={"condition": "{{ inputs.input.enabled }}"}),
+            WorkflowNode(id="true_log", type="utility.log", position=Position(x=400, y=-100), config={"message": "true"}),
+            WorkflowNode(id="false_log", type="utility.log", position=Position(x=400, y=100), config={"message": "false"}),
+            WorkflowNode(id="after", type="utility.log", position=Position(x=600, y=0), config={"message": "after"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="start", sourceHandle="success", target="if_1", targetHandle="input"),
+            WorkflowEdge(id="e2", source="if_1", sourceHandle="true", target="true_log", targetHandle="input"),
+            WorkflowEdge(id="e3", source="if_1", sourceHandle="false", target="false_log", targetHandle="input"),
+            WorkflowEdge(id="e4", source="true_log", sourceHandle="success", target="after", targetHandle="input"),
+            WorkflowEdge(id="e5", source="false_log", sourceHandle="success", target="after", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "succeeded"
+    assert sum(event.node_id == "after" and event.type == "node_started" for event in events) == 1
+    assert not any(event.node_id == "true_log" and event.type == "node_started" for event in events)
+    assert any(event.node_id == "false_log" and event.type == "node_succeeded" for event in events)
+
+
 def test_create_run_for_missing_workflow_returns_404():
     client = TestClient(create_app(database_path=":memory:", nodes_dir=Path("nodes")))
 
