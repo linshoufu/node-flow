@@ -60,6 +60,14 @@ def make_temp_registry(tmp_path: Path) -> NodeRegistry:
                     return {"success": inputs}
 
 
+            @node(id="test.error_output", name="Error Output", category="Test", description="Return an error output.")
+            class ErrorOutputNode(BaseNode[NodeConfig]):
+                outputs = {"error": Output(description="Intentional error output")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return {"error": {"message": "bad"}}
+
+
             @node(id="test.fail", name="Fail", category="Test", description="Always fail.")
             class FailNode(BaseNode[NodeConfig]):
                 outputs = {"success": Output(description="Unreachable")}
@@ -153,6 +161,72 @@ async def test_executor_fails_run_when_node_raises_without_error_branch(tmp_path
     assert "node_failed" in event_types
     assert "run_failed" in event_types
     assert "run_succeeded" not in event_types
+
+
+@pytest.mark.asyncio
+async def test_executor_fails_run_when_error_output_is_unhandled(tmp_path):
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_temp_registry(tmp_path)
+    workflow = WorkflowDocument(
+        id="wf_unhandled_error",
+        name="Unhandled Error",
+        nodes=[
+            WorkflowNode(id="error_node", type="test.error_output", position=Position(x=0, y=0), config={}),
+        ],
+        edges=[],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    stored_run = storage.get_run(run.id)
+    events = storage.list_events(run.id)
+    assert stored_run is not None
+    assert stored_run.status == "failed"
+    event_types = [event.type for event in events]
+    assert "run_failed" in event_types
+    assert "run_succeeded" not in event_types
+    assert any(
+        event.node_id == "error_node"
+        and event.type == "node_succeeded"
+        and "error" in event.payload["outputs"]
+        for event in events
+    )
+
+
+@pytest.mark.asyncio
+async def test_executor_routes_error_output_when_error_edge_exists(tmp_path):
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_temp_registry(tmp_path)
+    workflow = WorkflowDocument(
+        id="wf_routed_error",
+        name="Routed Error",
+        nodes=[
+            WorkflowNode(id="error_node", type="test.error_output", position=Position(x=0, y=0), config={}),
+            WorkflowNode(id="handler", type="test.pass", position=Position(x=200, y=0), config={}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="error_node", sourceHandle="error", target="handler", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    stored_run = storage.get_run(run.id)
+    events = storage.list_events(run.id)
+    assert stored_run is not None
+    assert stored_run.status == "succeeded"
+    event_types = [event.type for event in events]
+    assert "run_succeeded" in event_types
+    assert "run_failed" not in event_types
+    assert any(event.node_id == "handler" and event.type == "node_succeeded" for event in events)
 
 
 @pytest.mark.asyncio

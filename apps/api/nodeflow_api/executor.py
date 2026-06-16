@@ -71,8 +71,13 @@ class WorkflowExecutor:
             )
             context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
             executed.add(node_id)
+            outgoing_edges = outgoing.get(node_id, [])
+            if "error" in output_values and not any(
+                edge.sourceHandle == "error" for edge in outgoing_edges
+            ):
+                raise WorkflowExecutionError("Unhandled error output")
 
-            for edge in outgoing.get(node_id, []):
+            for edge in outgoing_edges:
                 if edge.sourceHandle not in output_values:
                     continue
                 node_inputs[edge.target][edge.targetHandle] = output_values[edge.sourceHandle]
