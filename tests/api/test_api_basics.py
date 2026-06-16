@@ -33,7 +33,7 @@ def test_workflow_endpoints_save_get_and_list_workflows():
                 "id": "node_1",
                 "type": "manual.trigger",
                 "position": {"x": 10, "y": 20},
-                "config": {"label": "Start"},
+                "config": {"payload": {"label": "Start"}},
             }
         ],
         "edges": [],

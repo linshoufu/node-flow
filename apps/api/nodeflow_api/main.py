@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .node_registry import NodeRegistry
 from .schemas import WorkflowDocument
 from .storage import Storage
+from .validation import validate_workflow
 
 
 def create_app(
@@ -48,7 +49,17 @@ def create_app(
 
     @app.post("/api/workflows")
     def save_workflow(workflow: WorkflowDocument):
+        result = validate_workflow(workflow, registry)
+        if not result.valid:
+            raise HTTPException(
+                status_code=422,
+                detail=[issue.model_dump() for issue in result.issues],
+            )
         return storage.save_workflow(workflow)
+
+    @app.post("/api/workflows/validate")
+    def validate(workflow: WorkflowDocument):
+        return validate_workflow(workflow, registry)
 
     @app.get("/api/workflows/{workflow_id}")
     def get_workflow(workflow_id: str):
