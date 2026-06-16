@@ -8,6 +8,11 @@ def test_resolve_expression_reads_nested_path():
     assert resolve_expression("{{ nodes.http_1.outputs.success.body.ok }}", context) is True
 
 
+def test_resolve_expression_reads_list_index_path():
+    context = {"items": [{"name": "Ada"}]}
+    assert resolve_expression("{{ items.0.name }}", context) == "Ada"
+
+
 def test_resolve_expression_returns_literals_without_template():
     assert resolve_expression("hello", {}) == "hello"
 
@@ -15,3 +20,8 @@ def test_resolve_expression_returns_literals_without_template():
 def test_resolve_expression_rejects_unknown_path():
     with pytest.raises(ExpressionError):
         resolve_expression("{{ missing.value }}", {})
+
+
+def test_resolve_expression_rejects_out_of_range_list_index():
+    with pytest.raises(ExpressionError):
+        resolve_expression("{{ items.3.name }}", {"items": []})

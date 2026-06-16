@@ -5,7 +5,7 @@ from typing import Any
 
 
 EXPRESSION_RE = re.compile(
-    r"^\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}\s*$"
+    r"^\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*)\s*\}\}\s*$"
 )
 
 
@@ -28,7 +28,10 @@ def resolve_path(path: str, context: dict[str, Any]) -> Any:
         if isinstance(current, dict) and part in current:
             current = current[part]
         elif isinstance(current, list) and part.isdigit():
-            current = current[int(part)]
+            index = int(part)
+            if index >= len(current):
+                raise ExpressionError(f"Cannot resolve expression path: {path}")
+            current = current[index]
         else:
             raise ExpressionError(f"Cannot resolve expression path: {path}")
     return current
