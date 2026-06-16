@@ -112,10 +112,15 @@ class WorkflowExecutor:
             context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
             completed_nodes.add(node_id)
             outgoing_edges = outgoing.get(node_id, [])
-            if "error" in output_values and not any(
-                edge.sourceHandle == "error" for edge in outgoing_edges
-            ):
-                raise WorkflowExecutionError("Unhandled error output")
+            unhandled_outputs = {
+                "error": "Unhandled error output",
+                "max_reached": "Unhandled max_reached output",
+            }
+            for output_name, error_message in unhandled_outputs.items():
+                if output_name in output_values and not any(
+                    edge.sourceHandle == output_name for edge in outgoing_edges
+                ):
+                    raise WorkflowExecutionError(error_message)
 
             candidates: set[str] = set()
             for edge in outgoing_edges:
@@ -168,30 +173,23 @@ class WorkflowExecutor:
             try:
                 output = await self._execute_foreach(run_id, node, context, scope, inputs)
             except TimeoutError as exc:
-                message = "For Each timed out"
-                self._event(
-                    run_id,
-                    "node_failed",
-                    node_id=node.id,
-                    scope=scope,
-                    payload={
-                        "error": {"message": message, "traceback": traceback.format_exc()},
-                    },
-                )
-                raise WorkflowExecutionError(message) from exc
+                output = {
+                    "error": {
+                        "message": "For Each timed out",
+                        "traceback": "".join(
+                            traceback.format_exception(type(exc), exc, exc.__traceback__)
+                        ),
+                    }
+                }
             except Exception as exc:
-                self._event(
-                    run_id,
-                    "node_failed",
-                    node_id=node.id,
-                    scope=scope,
-                    payload={
-                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
-                    },
-                )
-                if isinstance(exc, WorkflowExecutionError):
-                    raise
-                raise WorkflowExecutionError(str(exc)) from exc
+                output = {
+                    "error": {
+                        "message": str(exc),
+                        "traceback": "".join(
+                            traceback.format_exception(type(exc), exc, exc.__traceback__)
+                        ),
+                    }
+                }
             self._event(
                 run_id,
                 "node_succeeded",
@@ -204,30 +202,23 @@ class WorkflowExecutor:
             try:
                 output = await self._execute_while(run_id, node, context, scope, inputs)
             except TimeoutError as exc:
-                message = "While timed out"
-                self._event(
-                    run_id,
-                    "node_failed",
-                    node_id=node.id,
-                    scope=scope,
-                    payload={
-                        "error": {"message": message, "traceback": traceback.format_exc()},
-                    },
-                )
-                raise WorkflowExecutionError(message) from exc
+                output = {
+                    "error": {
+                        "message": "While timed out",
+                        "traceback": "".join(
+                            traceback.format_exception(type(exc), exc, exc.__traceback__)
+                        ),
+                    }
+                }
             except Exception as exc:
-                self._event(
-                    run_id,
-                    "node_failed",
-                    node_id=node.id,
-                    scope=scope,
-                    payload={
-                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
-                    },
-                )
-                if isinstance(exc, WorkflowExecutionError):
-                    raise
-                raise WorkflowExecutionError(str(exc)) from exc
+                output = {
+                    "error": {
+                        "message": str(exc),
+                        "traceback": "".join(
+                            traceback.format_exception(type(exc), exc, exc.__traceback__)
+                        ),
+                    }
+                }
             self._event(
                 run_id,
                 "node_succeeded",
@@ -342,13 +333,19 @@ class WorkflowExecutor:
                         return {"max_reached": {"iterations": max_iterations}}
 
                     context["loop"] = {"index": index}
-                    await self._execute_graph(
-                        run_id,
-                        body.nodes,
-                        body.edges,
-                        context,
-                        scope=[*scope, node.id, f"iteration:{index}"],
-                    )
+                    try:
+                        await self._execute_graph(
+                            run_id,
+                            body.nodes,
+                            body.edges,
+                            context,
+                            scope=[*scope, node.id, f"iteration:{index}"],
+                        )
+                    finally:
+                        if had_previous_loop:
+                            context["loop"] = previous_loop
+                        else:
+                            context.pop("loop", None)
                     index += 1
             finally:
                 if had_previous_loop:
