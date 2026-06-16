@@ -10,7 +10,9 @@ from .schemas import WorkflowDocument
 from .storage import Storage
 
 
-def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
+def create_app(
+    database_path: str = "node-flow.sqlite3", nodes_dir: str | Path | None = None
+) -> FastAPI:
     app = FastAPI(title="Node Flow API")
     app.add_middleware(
         CORSMiddleware,
@@ -21,10 +23,16 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
     )
     storage = Storage(database_path)
     storage.init_schema()
-    registry = NodeRegistry(nodes_dir=Path("nodes"))
+    repo_root = Path(__file__).resolve().parents[3]
+    default_nodes_dir = repo_root / "nodes"
+    registry = NodeRegistry(nodes_dir=Path(nodes_dir) if nodes_dir is not None else default_nodes_dir)
     registry.scan()
     app.state.storage = storage
     app.state.registry = registry
+
+    @app.on_event("shutdown")
+    def shutdown() -> None:
+        storage.close()
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
