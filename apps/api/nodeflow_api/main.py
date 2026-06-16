@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from .executor import WorkflowExecutor
 from .node_registry import NodeRegistry
 from .schemas import WorkflowDocument
 from .storage import Storage
@@ -28,8 +29,10 @@ def create_app(
     default_nodes_dir = repo_root / "nodes"
     registry = NodeRegistry(nodes_dir=Path(nodes_dir) if nodes_dir is not None else default_nodes_dir)
     registry.scan()
+    executor = WorkflowExecutor(storage=storage, registry=registry)
     app.state.storage = storage
     app.state.registry = registry
+    app.state.executor = executor
 
     @app.on_event("shutdown")
     def shutdown() -> None:
@@ -67,5 +70,27 @@ def create_app(
         if workflow is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         return workflow
+
+    @app.post("/api/workflows/{workflow_id}/runs")
+    def create_run(workflow_id: str, background_tasks: BackgroundTasks):
+        workflow = storage.get_workflow(workflow_id)
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        run = storage.create_run(workflow)
+        background_tasks.add_task(executor.execute, run.id, workflow)
+        return run
+
+    @app.get("/api/runs/{run_id}")
+    def get_run(run_id: str):
+        run = storage.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return run
+
+    @app.get("/api/runs/{run_id}/events")
+    def list_run_events(run_id: str):
+        if storage.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return storage.list_events(run_id)
 
     return app
