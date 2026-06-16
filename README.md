@@ -10,6 +10,14 @@ Install frontend dependencies:
 pnpm install
 ```
 
+Install backend dependencies:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e ".[test]"
+```
+
 Run the backend:
 
 ```powershell
