@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import traceback
 from collections import defaultdict, deque
 from typing import Any
@@ -163,6 +164,78 @@ class WorkflowExecutor:
                 payload={"outputs": output},
             )
             return output
+        if node.type == "control.foreach":
+            try:
+                output = await self._execute_foreach(run_id, node, context, scope, inputs)
+            except TimeoutError as exc:
+                message = "For Each timed out"
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": message, "traceback": traceback.format_exc()},
+                    },
+                )
+                raise WorkflowExecutionError(message) from exc
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    },
+                )
+                if isinstance(exc, WorkflowExecutionError):
+                    raise
+                raise WorkflowExecutionError(str(exc)) from exc
+            self._event(
+                run_id,
+                "node_succeeded",
+                node_id=node.id,
+                scope=scope,
+                payload={"outputs": output},
+            )
+            return output
+        if node.type == "control.while":
+            try:
+                output = await self._execute_while(run_id, node, context, scope, inputs)
+            except TimeoutError as exc:
+                message = "While timed out"
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": message, "traceback": traceback.format_exc()},
+                    },
+                )
+                raise WorkflowExecutionError(message) from exc
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    },
+                )
+                if isinstance(exc, WorkflowExecutionError):
+                    raise
+                raise WorkflowExecutionError(str(exc)) from exc
+            self._event(
+                run_id,
+                "node_succeeded",
+                node_id=node.id,
+                scope=scope,
+                payload={"outputs": output},
+            )
+            return output
         node_type = self.registry.get(node.type)
         instance = node_type.node_class(config=node.config)
         ctx = NodeContext(run_id=run_id, node_id=node.id, scope=scope)
@@ -188,6 +261,100 @@ class WorkflowExecutor:
             payload={"outputs": outputs, "logs": ctx.logs},
         )
         return outputs
+
+    async def _execute_foreach(
+        self,
+        run_id: str,
+        node: WorkflowNode,
+        context: dict[str, Any],
+        scope: list[str],
+        inputs: dict[str, Any],
+    ) -> dict[str, Any]:
+        async with asyncio.timeout(node.config.get("timeout_seconds", 300)):
+            node_context = {**context, "inputs": inputs}
+            items = resolve_expression(node.config["items_expression"], node_context)
+            if not isinstance(items, list):
+                raise WorkflowExecutionError("For Each items_expression must resolve to a list")
+
+            max_items = node.config.get("max_items", 100)
+            if len(items) > max_items:
+                raise WorkflowExecutionError(
+                    f"For Each item count {len(items)} exceeds max_items {max_items}"
+                )
+
+            body = node.subflows["body"]
+            previous_loop = context.get("loop")
+            had_previous_loop = "loop" in context
+            iterations: list[dict[str, Any]] = []
+            errors: list[dict[str, Any]] = []
+
+            try:
+                for index, item in enumerate(items):
+                    context["loop"] = {"item": item, "index": index}
+                    try:
+                        await self._execute_graph(
+                            run_id,
+                            body.nodes,
+                            body.edges,
+                            context,
+                            scope=[*scope, node.id, f"iteration:{index}"],
+                        )
+                    except Exception as exc:
+                        if not node.config.get("continue_on_error", False):
+                            raise
+                        errors.append({"index": index, "message": str(exc)})
+                        iterations.append({"index": index, "item": item, "error": str(exc)})
+                        continue
+                    iterations.append({"index": index, "item": item})
+            finally:
+                if had_previous_loop:
+                    context["loop"] = previous_loop
+                else:
+                    context.pop("loop", None)
+
+            done: dict[str, Any] = {"iterations": iterations}
+            if errors:
+                done["errors"] = errors
+            return {"done": done}
+
+    async def _execute_while(
+        self,
+        run_id: str,
+        node: WorkflowNode,
+        context: dict[str, Any],
+        scope: list[str],
+        inputs: dict[str, Any],
+    ) -> dict[str, Any]:
+        async with asyncio.timeout(node.config.get("timeout_seconds", 300)):
+            body = node.subflows["body"]
+            max_iterations = node.config.get("max_iterations", 100)
+            previous_loop = context.get("loop")
+            had_previous_loop = "loop" in context
+            index = 0
+
+            try:
+                while True:
+                    node_context = {**context, "inputs": inputs}
+                    condition = resolve_expression(node.config["condition"], node_context)
+                    if not bool(condition):
+                        return {"done": {"iterations": index}}
+                    if index >= max_iterations:
+                        return {"max_reached": {"iterations": max_iterations}}
+
+                    context["loop"] = {"index": index}
+                    await self._execute_graph(
+                        run_id,
+                        body.nodes,
+                        body.edges,
+                        context,
+                        scope=[*scope, node.id, f"iteration:{index}"],
+                    )
+                    index += 1
+            finally:
+                if had_previous_loop:
+                    context["loop"] = previous_loop
+                else:
+                    context.pop("loop", None)
 
     def _event(
         self,
