@@ -1,0 +1,18 @@
+{
+  "name": "node-flow",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @node-flow/web dev",
+    "build:web": "pnpm --filter @node-flow/web build",
+    "test:web": "pnpm --filter @node-flow/web test",
+    "dev:api": "uvicorn apps.api.nodeflow_api.main:app --reload --host 127.0.0.1 --port 8000",
+    "test:api": "pytest tests/api -q",
+    "test": "pnpm test:web && pytest tests/api -q"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  }
+}
