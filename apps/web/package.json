@@ -8,9 +8,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "reactflow": "^11.11.4"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
