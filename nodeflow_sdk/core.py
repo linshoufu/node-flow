@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, ClassVar, Generic, TypeVar, get_args, get_origin
+from typing import Any, Callable, ClassVar, Generic, TypeVar, cast, get_args, get_origin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
+NodeClassT = TypeVar("NodeClassT", bound=type["BaseNode[Any]"])
 
 
 @dataclass(frozen=True)
@@ -91,16 +92,20 @@ class BaseNode(Generic[ConfigT]):
     def __init__(self, *, config: dict[str, Any] | ConfigT | None = None) -> None:
         model = self.config_model()
         raw_config = config or {}
-        self.config = raw_config if isinstance(raw_config, model) else model.model_validate(raw_config)
+        self.config: ConfigT = (
+            raw_config
+            if isinstance(raw_config, model)
+            else model.model_validate(raw_config, extra="forbid")
+        )
 
     @classmethod
-    def config_model(cls) -> type[BaseModel]:
+    def config_model(cls) -> type[ConfigT]:
         for base in getattr(cls, "__orig_bases__", []):
             if get_origin(base) is BaseNode:
                 args = get_args(base)
                 if args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
                     return args[0]
-        return EmptyConfig
+        return cast(type[ConfigT], EmptyConfig)
 
     @classmethod
     def config_schema(cls) -> dict[str, Any]:
@@ -111,11 +116,13 @@ class BaseNode(Generic[ConfigT]):
 
 
 class EmptyConfig(BaseModel):
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 
-def node(*, id: str, name: str, category: str, description: str = ""):
-    def decorator(cls: type[BaseNode[Any]]) -> type[BaseNode[Any]]:
+def node(
+    *, id: str, name: str, category: str, description: str = ""
+) -> Callable[[NodeClassT], NodeClassT]:
+    def decorator(cls: NodeClassT) -> NodeClassT:
         cls.__node_meta__ = NodeMeta(
             id=id,
             name=name,

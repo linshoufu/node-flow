@@ -1,14 +1,18 @@
 from typing import Literal
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from nodeflow_sdk import BaseNode, Input, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, Input, NodeContext, NodeMeta, Output, node
 
 
 class DemoConfig(BaseModel):
     mode: Literal["fast", "safe"] = "fast"
     count: int = Field(default=1, ge=1)
+
+
+class RequiredConfig(BaseModel):
+    name: str
 
 
 @node(id="demo.node", name="Demo Node", category="Demo", description="A demo node.")
@@ -21,11 +25,20 @@ class DemoNode(BaseNode[DemoConfig]):
         return {"success": {"count": self.config.count, "input": inputs["input"]}}
 
 
+class RequiredNode(BaseNode[RequiredConfig]):
+    pass
+
+
+class EmptyNode(BaseNode):
+    pass
+
+
 def test_node_decorator_attaches_metadata():
     assert DemoNode.__node_meta__.id == "demo.node"
     assert DemoNode.__node_meta__.name == "Demo Node"
     assert DemoNode.__node_meta__.category == "Demo"
     assert DemoNode.__node_meta__.description == "A demo node."
+    assert isinstance(DemoNode.__node_meta__, NodeMeta)
 
 
 def test_input_and_output_serialize_to_dicts():
@@ -40,6 +53,26 @@ def test_base_node_extracts_config_model():
     assert DemoNode.config_model() is DemoConfig
     schema = DemoNode.config_schema()
     assert schema["properties"]["mode"]["enum"] == ["fast", "safe"]
+
+
+def test_base_node_rejects_invalid_config_constraints():
+    with pytest.raises(ValidationError):
+        DemoNode(config={"count": 0})
+
+
+def test_base_node_rejects_extra_config_keys():
+    with pytest.raises(ValidationError):
+        DemoNode(config={"count": 1, "typo": True})
+
+
+def test_base_node_rejects_missing_required_config_fields():
+    with pytest.raises(ValidationError):
+        RequiredNode(config={})
+
+
+def test_empty_config_node_rejects_extra_keys():
+    with pytest.raises(ValidationError):
+        EmptyNode(config={"typo": True})
 
 
 @pytest.mark.asyncio
