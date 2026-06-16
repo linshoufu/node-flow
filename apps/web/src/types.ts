@@ -1,13 +1,25 @@
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 export type JsonSchema = {
+  [key: string]: unknown;
+  $ref?: string;
+  $defs?: Record<string, JsonSchema>;
   type?: string | string[];
   title?: string;
   default?: unknown;
   enum?: unknown[];
   properties?: Record<string, JsonSchema>;
   required?: string[];
+  items?: JsonSchema | JsonSchema[];
+  additionalProperties?: boolean | JsonSchema;
+  anyOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+  allOf?: JsonSchema[];
   minimum?: number;
   maximum?: number;
   description?: string;
+  format?: string;
+  examples?: unknown[];
 };
 
 export type NodePort = {

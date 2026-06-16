@@ -56,4 +56,27 @@ describe("ApiClient", () => {
       body: JSON.stringify(workflow),
     });
   });
+
+  it("creates runs with POST and an encoded workflow id", async () => {
+    const run = {
+      id: "run_1",
+      workflow_id: "workflow/with space",
+      workflow_version: 1,
+      status: "queued",
+      created_at: "2026-06-16T00:00:00Z",
+      started_at: null,
+      completed_at: null,
+      error: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(run),
+    });
+    const client = new ApiClient("http://api.test", fetchMock);
+
+    await expect(client.createRun("workflow/with space")).resolves.toEqual(run);
+    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/workflows/workflow%2Fwith%20space/runs", {
+      method: "POST",
+    });
+  });
 });
