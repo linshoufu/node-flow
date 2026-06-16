@@ -298,6 +298,46 @@ async def test_executor_waits_for_multi_root_dependencies(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_executor_waits_for_late_activated_join_predecessor(tmp_path):
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_temp_registry(tmp_path)
+    workflow = WorkflowDocument(
+        id="wf_late_predecessor",
+        name="Late Predecessor",
+        nodes=[
+            WorkflowNode(id="direct_root", type="test.source", position=Position(x=0, y=-100), config={"payload": {"value": "direct"}}),
+            WorkflowNode(id="cond_root", type="test.source", position=Position(x=0, y=100), config={"payload": {"enabled": True}}),
+            WorkflowNode(id="if_1", type="logic.if", position=Position(x=200, y=100), config={"condition": "{{ inputs.input.enabled }}"}),
+            WorkflowNode(id="branch", type="test.pass", position=Position(x=400, y=100), config={}),
+            WorkflowNode(id="join", type="test.join", position=Position(x=600, y=0), config={}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="direct_root", sourceHandle="success", target="join", targetHandle="left"),
+            WorkflowEdge(id="e2", source="cond_root", sourceHandle="success", target="if_1", targetHandle="input"),
+            WorkflowEdge(id="e3", source="if_1", sourceHandle="true", target="branch", targetHandle="input"),
+            WorkflowEdge(id="e4", source="branch", sourceHandle="success", target="join", targetHandle="right"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "succeeded"
+    join_started_events = [
+        event for event in events if event.node_id == "join" and event.type == "node_started"
+    ]
+    assert len(join_started_events) == 1
+    assert join_started_events[0].payload["inputs"] == {
+        "left": {"value": "direct"},
+        "right": {"input": {"input": {"enabled": True}}},
+    }
+
+
+@pytest.mark.asyncio
 async def test_executor_if_condition_can_read_current_node_inputs():
     storage = Storage(":memory:")
     storage.init_schema()

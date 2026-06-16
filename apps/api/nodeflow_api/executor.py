@@ -52,6 +52,21 @@ class WorkflowExecutor:
         for edge in edges:
             outgoing[edge.source].append(edge)
             incoming_by_target[edge.target].append(edge)
+        reachable_from: dict[str, set[str]] = {}
+
+        def collect_reachable_targets(node_id: str) -> set[str]:
+            reachable: set[str] = set()
+            pending = [edge.target for edge in outgoing.get(node_id, [])]
+            while pending:
+                target_id = pending.pop()
+                if target_id in reachable:
+                    continue
+                reachable.add(target_id)
+                pending.extend(edge.target for edge in outgoing.get(target_id, []))
+            return reachable
+
+        for node_id in node_by_id:
+            reachable_from[node_id] = collect_reachable_targets(node_id)
 
         root_ids = [node.id for node in nodes if not incoming_by_target.get(node.id)]
         ready = deque(root_ids)
@@ -67,9 +82,17 @@ class WorkflowExecutor:
                 or node_id in queued_nodes
             ):
                 return False
-            return all(
+            direct_predecessors_ready = all(
                 edge.source not in active_nodes or edge.source in completed_nodes
                 for edge in incoming_by_target.get(node_id, [])
+            )
+            if not direct_predecessors_ready:
+                return False
+            return not any(
+                active_id != node_id
+                and active_id not in completed_nodes
+                and node_id in reachable_from.get(active_id, set())
+                for active_id in active_nodes
             )
 
         while ready:
@@ -101,7 +124,7 @@ class WorkflowExecutor:
                 node_inputs[edge.target][edge.targetHandle] = output_values[edge.sourceHandle]
                 active_nodes.add(edge.target)
 
-            for target_id in candidates:
+            for target_id in candidates | active_nodes:
                 if is_ready(target_id):
                     ready.append(target_id)
                     queued_nodes.add(target_id)
