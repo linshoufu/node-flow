@@ -30,7 +30,11 @@ export function ConfigPanel({ node, nodeType, onConfigChange }: ConfigPanelProps
           {entries.length === 0 ? (
             <p className="empty-state">No configurable fields.</p>
           ) : (
-            <form className="field-list">
+            <form
+              aria-label="Configuration fields"
+              className="field-list"
+              onSubmit={(event) => event.preventDefault()}
+            >
               {entries.map(([key, schema]) => (
                 <SchemaField
                   key={key}
@@ -150,6 +154,12 @@ function JsonField({ expectedType, label, value, onChange }: JsonFieldProps) {
           setText(nextText);
           try {
             const nextValue = JSON.parse(nextText) as unknown;
+            const shapeError = validateJsonShape(nextValue, expectedType);
+            if (shapeError) {
+              setError(shapeError);
+              return;
+            }
+
             setError(null);
             onChange(nextValue);
           } catch {
@@ -164,4 +174,16 @@ function JsonField({ expectedType, label, value, onChange }: JsonFieldProps) {
 
 function formatJson(value: unknown, expectedType: "object" | "array"): string {
   return JSON.stringify(value ?? (expectedType === "array" ? [] : {}), null, 2);
+}
+
+function validateJsonShape(value: unknown, expectedType: "object" | "array"): string | null {
+  if (expectedType === "array") {
+    return Array.isArray(value) ? null : "Expected a JSON array";
+  }
+
+  return isPlainObject(value) ? null : "Expected a JSON object";
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeType, WorkflowNode } from "../types";
 import { ConfigPanel } from "./ConfigPanel";
 
@@ -31,7 +31,36 @@ const manualTriggerNode: WorkflowNode = {
   },
 };
 
+const listNodeType: NodeType = {
+  ...manualTriggerType,
+  id: "test.list",
+  name: "List Node",
+  configSchema: {
+    type: "object",
+    properties: {
+      items: {
+        title: "Items",
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+  },
+};
+
+const listNode: WorkflowNode = {
+  ...manualTriggerNode,
+  id: "node_list",
+  type: "test.list",
+  config: {
+    items: ["one"],
+  },
+};
+
 describe("ConfigPanel", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("edits object config as JSON without corrupting invalid input", () => {
     const onConfigChange = vi.fn();
     render(<ConfigPanel node={manualTriggerNode} nodeType={manualTriggerType} onConfigChange={onConfigChange} />);
@@ -45,5 +74,51 @@ describe("ConfigPanel", () => {
     fireEvent.change(payloadEditor, { target: { value: "{ invalid" } });
     expect(screen.getByText("Invalid JSON")).toBeInTheDocument();
     expect(onConfigChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects wrong top-level JSON shapes for object config", () => {
+    const onConfigChange = vi.fn();
+    render(<ConfigPanel node={manualTriggerNode} nodeType={manualTriggerType} onConfigChange={onConfigChange} />);
+
+    const payloadEditor = screen.getByLabelText("Payload");
+
+    fireEvent.change(payloadEditor, { target: { value: '["wrong"]' } });
+    expect(screen.getByText("Expected a JSON object")).toBeInTheDocument();
+    expect(onConfigChange).not.toHaveBeenCalled();
+
+    fireEvent.change(payloadEditor, { target: { value: "null" } });
+    expect(screen.getByText("Expected a JSON object")).toBeInTheDocument();
+    expect(onConfigChange).not.toHaveBeenCalled();
+
+    fireEvent.change(payloadEditor, { target: { value: '"wrong"' } });
+    expect(screen.getByText("Expected a JSON object")).toBeInTheDocument();
+    expect(onConfigChange).not.toHaveBeenCalled();
+  });
+
+  it("accepts arrays and rejects objects for array config", () => {
+    const onConfigChange = vi.fn();
+    render(<ConfigPanel node={listNode} nodeType={listNodeType} onConfigChange={onConfigChange} />);
+
+    const itemsEditor = screen.getByLabelText("Items");
+    expect(itemsEditor).toHaveValue('[\n  "one"\n]');
+
+    fireEvent.change(itemsEditor, { target: { value: '["two", "three"]' } });
+    expect(onConfigChange).toHaveBeenLastCalledWith("node_list", "items", ["two", "three"]);
+
+    fireEvent.change(itemsEditor, { target: { value: '{ "wrong": true }' } });
+    expect(screen.getByText("Expected a JSON array")).toBeInTheDocument();
+    expect(onConfigChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("prevents config form submission", () => {
+    const onConfigChange = vi.fn();
+    render(<ConfigPanel node={manualTriggerNode} nodeType={manualTriggerType} onConfigChange={onConfigChange} />);
+
+    const form = screen.getByLabelText("Configuration fields");
+    const submitEvent = new Event("submit", { bubbles: true, cancelable: true });
+
+    form.dispatchEvent(submitEvent);
+
+    expect(submitEvent.defaultPrevented).toBe(true);
   });
 });
