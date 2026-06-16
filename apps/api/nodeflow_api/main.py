@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+from .node_registry import NodeRegistry
+from .schemas import WorkflowDocument
+from .storage import Storage
+
+
+def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
+    app = FastAPI(title="Node Flow API")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    storage = Storage(database_path)
+    storage.init_schema()
+    registry = NodeRegistry(nodes_dir=Path("nodes"))
+    registry.scan()
+    app.state.storage = storage
+    app.state.registry = registry
+
+    @app.get("/api/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/node-types")
+    def node_types() -> list[dict]:
+        return [node_type.to_api_dict() for node_type in registry.list_node_types()]
+
+    @app.get("/api/workflows")
+    def list_workflows():
+        return storage.list_workflows()
+
+    @app.post("/api/workflows")
+    def save_workflow(workflow: WorkflowDocument):
+        return storage.save_workflow(workflow)
+
+    @app.get("/api/workflows/{workflow_id}")
+    def get_workflow(workflow_id: str):
+        workflow = storage.get_workflow(workflow_id)
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return workflow
+
+    return app
+
+
+app = create_app()
