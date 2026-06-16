@@ -58,6 +58,3 @@ def create_app(
         return workflow
 
     return app
-
-
-app = create_app()

@@ -37,7 +37,8 @@ class Storage:
                       version INTEGER NOT NULL,
                       document_json TEXT NOT NULL,
                       created_at TEXT NOT NULL,
-                      PRIMARY KEY (workflow_id, version)
+                      PRIMARY KEY (workflow_id, version),
+                      FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
                     );
                     CREATE TABLE IF NOT EXISTS runs (
                       id TEXT PRIMARY KEY,
@@ -47,7 +48,9 @@ class Storage:
                       created_at TEXT NOT NULL,
                       started_at TEXT,
                       completed_at TEXT,
-                      error TEXT
+                      error TEXT,
+                      FOREIGN KEY (workflow_id, workflow_version)
+                        REFERENCES workflow_versions(workflow_id, version)
                     );
                     CREATE TABLE IF NOT EXISTS run_events (
                       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +59,8 @@ class Storage:
                       timestamp TEXT NOT NULL,
                       node_id TEXT,
                       scope_json TEXT NOT NULL,
-                      payload_json TEXT NOT NULL
+                      payload_json TEXT NOT NULL,
+                      FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
                     );
                     """
                 )

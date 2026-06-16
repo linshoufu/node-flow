@@ -1,4 +1,7 @@
+import sqlite3
 from datetime import datetime, timezone
+
+import pytest
 
 from apps.api.nodeflow_api.schemas import (
     Position,
@@ -8,7 +11,7 @@ from apps.api.nodeflow_api.schemas import (
     WorkflowNode,
     WorkflowSubflow,
 )
-from apps.api.nodeflow_api.storage import Storage
+from apps.api.nodeflow_api.storage import Storage, utc_now
 
 
 def workflow_document(name: str = "Demo Workflow") -> WorkflowDocument:
@@ -132,5 +135,34 @@ def test_run_events_round_trip_scope_and_json_mode_payload():
         "response": {"status": 200},
         "occurred_at": "2026-06-16T12:30:00Z",
     }
+
+    storage.close()
+
+
+def test_storage_enforces_run_event_foreign_key():
+    storage = Storage(":memory:")
+    storage.init_schema()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        storage.append_event(
+            RunEvent(run_id="missing", type="node_started", timestamp=utc_now())
+        )
+
+    storage.close()
+
+
+def test_storage_enforces_run_workflow_version_foreign_key():
+    storage = Storage(":memory:")
+    storage.init_schema()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        with storage._connection:
+            storage._connection.execute(
+                """
+                INSERT INTO runs (id, workflow_id, workflow_version, status, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("run_bad", "missing", 99, "queued", utc_now()),
+            )
 
     storage.close()

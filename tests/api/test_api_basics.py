@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -58,3 +59,12 @@ def test_missing_workflow_returns_404():
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Workflow not found"}
+
+
+def test_importing_main_does_not_create_default_database(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    import apps.api.nodeflow_api.main as main_module
+
+    importlib.reload(main_module)
+
+    assert not (tmp_path / "node-flow.sqlite3").exists()
