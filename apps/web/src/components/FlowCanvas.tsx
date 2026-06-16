@@ -50,13 +50,12 @@ export function FlowCanvas({
         id: node.id,
         type: "workflowNode",
         position: node.position,
-        selected: node.id === selectedNodeId,
         data: {
           workflowNode: node,
           nodeType: nodeTypeById.get(node.type),
         },
       })),
-    [nodeTypeById, selectedNodeId, workflow.nodes]
+    [nodeTypeById, workflow.nodes]
   );
 
   const edges = useMemo<Edge[]>(
@@ -157,7 +156,6 @@ export function FlowCanvas({
         onNodeClick={(_, node) => onSelectNode(node.id)}
         onNodesChange={handleNodesChange}
         onPaneClick={() => onSelectNode(null)}
-        onSelectionChange={({ nodes: selectedNodes }) => onSelectNode(selectedNodes[0]?.id ?? null)}
       >
         <Background />
         <Controls />
