@@ -140,8 +140,20 @@ class WorkflowExecutor:
         self._event(run_id, "node_started", node_id=node.id, scope=scope, payload={"inputs": inputs})
         context.setdefault("nodes", {}).setdefault(node.id, {})["inputs"] = inputs
         if node.type == "logic.if":
-            node_context = {**context, "inputs": inputs}
-            condition = resolve_expression(node.config["condition"], node_context)
+            try:
+                node_context = {**context, "inputs": inputs}
+                condition = resolve_expression(node.config["condition"], node_context)
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    },
+                )
+                raise WorkflowExecutionError(str(exc)) from exc
             output = {"true": inputs} if bool(condition) else {"false": inputs}
             self._event(
                 run_id,

@@ -135,6 +135,39 @@ async def test_executor_routes_if_false_branch():
 
 
 @pytest.mark.asyncio
+async def test_executor_records_failed_if_expression():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_if_expression_error",
+        name="If Expression Error",
+        nodes=[
+            WorkflowNode(id="start", type="manual.trigger", position=Position(x=0, y=0), config={"payload": {}}),
+            WorkflowNode(id="if_1", type="logic.if", position=Position(x=200, y=0), config={"condition": "{{ missing.value }}"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="start", sourceHandle="success", target="if_1", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "failed"
+    assert any(event.node_id == "if_1" and event.type == "node_started" for event in events)
+    failed_events = [
+        event for event in events if event.node_id == "if_1" and event.type == "node_failed"
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].payload["error"]["message"]
+    assert any(event.type == "run_failed" for event in events)
+
+
+@pytest.mark.asyncio
 async def test_executor_fails_run_when_node_raises_without_error_branch(tmp_path):
     storage = Storage(":memory:")
     storage.init_schema()
