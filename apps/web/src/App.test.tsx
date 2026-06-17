@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -21,6 +22,7 @@ describe("App", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -33,4 +35,80 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
   });
+
+  it("saves the workflow, creates a run, and loads initial run events", async () => {
+    const nodeType = {
+      id: "manual.trigger",
+      name: "Manual Trigger",
+      category: "Triggers",
+      description: "Starts a workflow manually.",
+      inputs: {},
+      outputs: { success: { description: "Initial payload" } },
+      configSchema: { type: "object", properties: {} },
+    };
+    const run = {
+      id: "run_1",
+      workflow_id: "wf_1",
+      workflow_version: 2,
+      status: "succeeded",
+      created_at: "2026-06-16T00:00:00Z",
+      started_at: "2026-06-16T00:00:01Z",
+      completed_at: "2026-06-16T00:00:02Z",
+      error: null,
+    };
+    const event = {
+      id: 1,
+      run_id: "run_1",
+      type: "workflow.completed",
+      timestamp: "2026-06-16T00:00:02Z",
+      node_id: null,
+      scope: [],
+      payload: {},
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([nodeType]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        return jsonResponse({ ...(JSON.parse(String(init.body)) as object), id: "wf_1", version: 2 });
+      }
+      if (url.endsWith("/api/workflows/wf_1/runs") && init?.method === "POST") {
+        return jsonResponse(run);
+      }
+      if (url.endsWith("/api/runs/run_1/events")) {
+        return jsonResponse([event]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Manual Trigger\s+manual\.trigger/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await screen.findByText("Run run_1 succeeded.");
+    expect(screen.getByText("workflow.completed")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/workflows/wf_1/runs",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/runs/run_1/events",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
 });
+
+function jsonResponse(body: unknown) {
+  return {
+    ok: true,
+    json: () => Promise.resolve(body),
+  } as Response;
+}

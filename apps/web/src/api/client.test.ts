@@ -6,6 +6,7 @@ describe("ApiClient", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.useRealTimers();
   });
 
   it("lists node types from the configured API base URL", async () => {
@@ -27,7 +28,9 @@ describe("ApiClient", () => {
     const client = new ApiClient("http://api.test", fetchMock);
 
     await expect(client.listNodeTypes()).resolves.toEqual(nodeTypes);
-    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/node-types", undefined);
+    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/node-types", {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("does not invoke the default global fetch as an ApiClient method", async () => {
@@ -55,7 +58,9 @@ describe("ApiClient", () => {
     const client = new ApiClient("http://api.test");
 
     await expect(client.listNodeTypes()).resolves.toEqual(nodeTypes);
-    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/node-types", undefined);
+    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/node-types", {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("throws status and response text when the API returns an error", async () => {
@@ -84,11 +89,15 @@ describe("ApiClient", () => {
     const client = new ApiClient("http://api.test", fetchMock);
 
     await expect(client.saveWorkflow(workflow)).resolves.toEqual(workflow);
-    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/workflows", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(workflow),
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/workflows",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(workflow),
+        signal: expect.any(AbortSignal),
+      })
+    );
   });
 
   it("creates runs with POST and an encoded workflow id", async () => {
@@ -109,8 +118,24 @@ describe("ApiClient", () => {
     const client = new ApiClient("http://api.test", fetchMock);
 
     await expect(client.createRun("workflow/with space")).resolves.toEqual(run);
-    expect(fetchMock).toHaveBeenCalledWith("http://api.test/api/workflows/workflow%2Fwith%20space/runs", {
-      method: "POST",
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/workflows/workflow%2Fwith%20space/runs",
+      expect.objectContaining({
+        method: "POST",
+        signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
+  it("rejects requests that do not settle before the configured timeout", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined));
+    const client = new ApiClient("http://api.test", fetchMock, { requestTimeoutMs: 25 });
+
+    const request = client.listNodeTypes();
+    const expectedTimeout = expect(request).rejects.toThrow("API request timed out after 25ms");
+    await vi.advanceTimersByTimeAsync(25);
+
+    await expectedTimeout;
   });
 });

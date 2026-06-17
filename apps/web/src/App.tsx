@@ -24,6 +24,8 @@ export default function App() {
   const runTokenRef = useRef(0);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
       runTokenRef.current += 1;
