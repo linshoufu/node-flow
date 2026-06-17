@@ -111,6 +111,22 @@ class BaseNode(Generic[ConfigT]):
     def config_schema(cls) -> dict[str, Any]:
         return cls.config_model().model_json_schema()
 
+    @classmethod
+    def validate_outputs(cls, outputs: Any) -> dict[str, Any]:
+        if not isinstance(outputs, dict):
+            raise ValueError(
+                f"{cls.__name__}.execute() must return a dict of output names to values"
+            )
+        undeclared = sorted(str(name) for name in outputs if name not in cls.outputs)
+        if undeclared:
+            declared = ", ".join(sorted(cls.outputs)) or "<none>"
+            returned = ", ".join(undeclared)
+            raise ValueError(
+                f"{cls.__name__}.execute() returned undeclared output(s): {returned}. "
+                f"Declared outputs: {declared}"
+            )
+        return outputs
+
     async def execute(self, ctx: NodeContext, inputs: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 

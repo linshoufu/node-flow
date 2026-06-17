@@ -5,7 +5,10 @@ import traceback
 from collections import defaultdict, deque
 from typing import Any
 
-from nodeflow_sdk import NodeContext
+from nodeflow_sdk import BaseNode, NodeContext
+from nodes.builtin.control import ForEachNode, WhileNode
+from nodes.builtin.logic import IfNode, SetVariableNode
+from nodes.builtin.utility import TransformNode
 
 from .expressions import resolve_expression
 from .node_registry import NodeRegistry
@@ -15,6 +18,15 @@ from .storage import Storage, utc_now
 
 class WorkflowExecutionError(RuntimeError):
     pass
+
+
+SPECIAL_NODE_CLASSES: dict[str, type[BaseNode[Any]]] = {
+    "logic.if": IfNode,
+    "logic.set_variable": SetVariableNode,
+    "utility.transform": TransformNode,
+    "control.foreach": ForEachNode,
+    "control.while": WhileNode,
+}
 
 
 class WorkflowExecutor:
@@ -160,7 +172,12 @@ class WorkflowExecutor:
                     },
                 )
                 raise WorkflowExecutionError(str(exc)) from exc
-            output = {"true": inputs} if bool(condition) else {"false": inputs}
+            output = self._validate_node_outputs(
+                run_id,
+                node,
+                scope,
+                {"true": inputs} if bool(condition) else {"false": inputs},
+            )
             self._event(
                 run_id,
                 "node_succeeded",
@@ -188,13 +205,18 @@ class WorkflowExecutor:
                     },
                 )
                 raise WorkflowExecutionError(str(exc)) from exc
-            output = {
-                "success": {
-                    "name": instance.config.name,
-                    "value": value,
-                    "variables": dict(variables),
-                }
-            }
+            output = self._validate_node_outputs(
+                run_id,
+                node,
+                scope,
+                {
+                    "success": {
+                        "name": instance.config.name,
+                        "value": value,
+                        "variables": dict(variables),
+                    }
+                },
+            )
             self._event(
                 run_id,
                 "node_succeeded",
@@ -220,7 +242,7 @@ class WorkflowExecutor:
                     },
                 )
                 raise WorkflowExecutionError(str(exc)) from exc
-            output = {"success": value}
+            output = self._validate_node_outputs(run_id, node, scope, {"success": value})
             self._event(
                 run_id,
                 "node_succeeded",
@@ -250,6 +272,7 @@ class WorkflowExecutor:
                         ),
                     }
                 }
+            output = self._validate_node_outputs(run_id, node, scope, output)
             self._event(
                 run_id,
                 "node_succeeded",
@@ -279,6 +302,7 @@ class WorkflowExecutor:
                         ),
                     }
                 }
+            output = self._validate_node_outputs(run_id, node, scope, output)
             self._event(
                 run_id,
                 "node_succeeded",
@@ -304,6 +328,20 @@ class WorkflowExecutor:
                 },
             )
             raise WorkflowExecutionError(str(exc)) from exc
+        try:
+            outputs = instance.validate_outputs(outputs)
+        except Exception as exc:
+            self._event(
+                run_id,
+                "node_failed",
+                node_id=node.id,
+                scope=scope,
+                payload={
+                    "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    "logs": ctx.logs,
+                },
+            )
+            raise WorkflowExecutionError(str(exc)) from exc
         self._event(
             run_id,
             "node_succeeded",
@@ -312,6 +350,29 @@ class WorkflowExecutor:
             payload={"outputs": outputs, "logs": ctx.logs},
         )
         return outputs
+
+    def _validate_node_outputs(
+        self,
+        run_id: str,
+        node: WorkflowNode,
+        scope: list[str],
+        outputs: Any,
+    ) -> dict[str, Any]:
+        if self.registry.has(node.type):
+            node_class = self.registry.get(node.type).node_class
+        else:
+            node_class = SPECIAL_NODE_CLASSES[node.type]
+        try:
+            return node_class.validate_outputs(outputs)
+        except Exception as exc:
+            self._event(
+                run_id,
+                "node_failed",
+                node_id=node.id,
+                scope=scope,
+                payload={"error": {"message": str(exc), "traceback": traceback.format_exc()}},
+            )
+            raise WorkflowExecutionError(str(exc)) from exc
 
     async def _execute_foreach(
         self,

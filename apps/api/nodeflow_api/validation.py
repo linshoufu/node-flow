@@ -23,6 +23,7 @@ def validate_workflow(workflow: WorkflowDocument, registry: NodeRegistry) -> Val
         _validate_node(node, registry, f"nodes.{node.id}", issues)
     for edge in workflow.edges:
         _validate_edge(edge, node_by_id, registry, issues)
+    _validate_required_inputs(workflow.nodes, workflow.edges, node_by_id, registry, issues)
     _validate_no_cycles(workflow.nodes, workflow.edges, issues)
     for node in workflow.nodes:
         for subflow_name, subflow in node.subflows.items():
@@ -102,6 +103,33 @@ def _validate_edge(
                 message=f"Unknown target handle: {edge.targetHandle}",
             )
         )
+
+
+def _validate_required_inputs(
+    nodes: list[WorkflowNode],
+    edges: list[WorkflowEdge],
+    node_by_id: dict[str, WorkflowNode],
+    registry: NodeRegistry,
+    issues: list[ValidationIssue],
+) -> None:
+    connected_handles = {
+        (edge.target, edge.targetHandle) for edge in edges if edge.target in node_by_id
+    }
+    for node in nodes:
+        if not registry.has(node.type):
+            continue
+        node_type = registry.get(node.type)
+        for input_name, input_meta in node_type.inputs.items():
+            if input_meta.get("required", True) and (
+                node.id,
+                input_name,
+            ) not in connected_handles:
+                issues.append(
+                    ValidationIssue(
+                        path=f"nodes.{node.id}.inputs.{input_name}",
+                        message=f"Missing required input: {input_name}",
+                    )
+                )
 
 
 def _validate_no_cycles(

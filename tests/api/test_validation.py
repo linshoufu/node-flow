@@ -1,4 +1,5 @@
 from pathlib import Path
+from textwrap import dedent
 
 from fastapi.testclient import TestClient
 
@@ -16,6 +17,54 @@ from apps.api.nodeflow_api.validation import validate_workflow
 
 def registry() -> NodeRegistry:
     node_registry = NodeRegistry(nodes_dir=Path("nodes"))
+    node_registry.scan()
+    return node_registry
+
+
+def temp_required_input_registry(tmp_path: Path) -> NodeRegistry:
+    (tmp_path / "test_nodes.py").write_text(
+        dedent(
+            """
+            from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
+
+
+            @node(id="test.source", name="Source", category="Test", description="Emit a payload.")
+            class SourceNode(BaseNode[NodeConfig]):
+                outputs = {"success": Output(description="Payload")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return {"success": {"ok": True}}
+
+
+            @node(id="test.required_sink", name="Required Sink", category="Test", description="Needs input.")
+            class RequiredSinkNode(BaseNode[NodeConfig]):
+                inputs = {"input": Input(required=True, description="Required input")}
+                outputs = {"success": Output(description="Input passthrough")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return {"success": inputs}
+
+
+            @node(id="test.optional_sink", name="Optional Sink", category="Test", description="Optional input.")
+            class OptionalSinkNode(BaseNode[NodeConfig]):
+                inputs = {"input": Input(required=False, description="Optional input")}
+                outputs = {"success": Output(description="Input passthrough")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return {"success": inputs}
+
+
+            @node(id="control.test_loop", name="Test Loop", category="Test", description="Owns a body subflow.")
+            class TestLoopNode(BaseNode[NodeConfig]):
+                outputs = {"success": Output(description="Done")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return {"success": inputs}
+            """
+        ),
+        encoding="utf-8",
+    )
+    node_registry = NodeRegistry(nodes_dir=tmp_path)
     node_registry.scan()
     return node_registry
 
@@ -338,6 +387,49 @@ def test_validation_rejects_invalid_target_handle():
     assert result.issues[0].message == "Unknown target handle: missing"
 
 
+def test_validation_rejects_missing_required_input(tmp_path):
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[
+            WorkflowNode(id="sink", type="test.required_sink", position=position()),
+        ],
+        edges=[],
+    )
+
+    result = validate_workflow(workflow, temp_required_input_registry(tmp_path))
+
+    assert not result.valid
+    assert "nodes.sink.inputs.input" in issue_paths(result)
+    assert "Missing required input: input" in issue_messages(result)
+
+
+def test_validation_accepts_connected_required_input_and_unconnected_optional_input(tmp_path):
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[
+            WorkflowNode(id="source", type="test.source", position=position()),
+            WorkflowNode(id="required", type="test.required_sink", position=position(x=200)),
+            WorkflowNode(id="optional", type="test.optional_sink", position=position(x=400)),
+        ],
+        edges=[
+            WorkflowEdge(
+                id="e1",
+                source="source",
+                sourceHandle="success",
+                target="required",
+                targetHandle="input",
+            )
+        ],
+    )
+
+    result = validate_workflow(workflow, temp_required_input_registry(tmp_path))
+
+    assert result.valid is True
+    assert result.issues == []
+
+
 def test_validation_rejects_normal_graph_cycle():
     workflow = WorkflowDocument(
         id="wf_1",
@@ -466,6 +558,39 @@ def test_validation_prefixes_invalid_body_subflow_issue_path():
     assert not result.valid
     assert result.issues[0].path == "nodes.loop.subflows.body.nodes.nested"
     assert result.issues[0].message == "Unknown node type: missing.node"
+
+
+def test_validation_rejects_missing_required_input_inside_body_subflow(tmp_path):
+    workflow = WorkflowDocument(
+        id="wf_1",
+        name="Demo",
+        nodes=[
+            WorkflowNode(
+                id="loop",
+                type="control.test_loop",
+                position=position(),
+                subflows={
+                    "body": WorkflowSubflow(
+                        nodes=[
+                            WorkflowNode(
+                                id="nested",
+                                type="test.required_sink",
+                                position=position(),
+                            )
+                        ],
+                        edges=[],
+                    )
+                },
+            )
+        ],
+        edges=[],
+    )
+
+    result = validate_workflow(workflow, temp_required_input_registry(tmp_path))
+
+    assert not result.valid
+    assert "nodes.loop.subflows.body.nodes.nested.inputs.input" in issue_paths(result)
+    assert "Missing required input: input" in issue_messages(result)
 
 
 def test_validation_handles_edge_attached_to_unknown_node_type_without_raising():

@@ -69,6 +69,22 @@ def make_temp_registry(tmp_path: Path) -> NodeRegistry:
                     return {"error": {"message": "bad"}}
 
 
+            @node(id="test.undeclared_output", name="Undeclared Output", category="Test", description="Return an undeclared output.")
+            class UndeclaredOutputNode(BaseNode[NodeConfig]):
+                outputs = {"success": Output(description="Declared output")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return {"typo": {"message": "wrong handle"}}
+
+
+            @node(id="test.non_dict_output", name="Non Dict Output", category="Test", description="Return a non-dict output.")
+            class NonDictOutputNode(BaseNode[NodeConfig]):
+                outputs = {"success": Output(description="Declared output")}
+
+                async def execute(self, ctx: NodeContext, inputs: dict):
+                    return ["success"]
+
+
             @node(id="test.fail", name="Fail", category="Test", description="Always fail.")
             class FailNode(BaseNode[NodeConfig]):
                 outputs = {"success": Output(description="Unreachable")}
@@ -261,6 +277,69 @@ async def test_executor_routes_error_output_when_error_edge_exists(tmp_path):
     assert "run_succeeded" in event_types
     assert "run_failed" not in event_types
     assert any(event.node_id == "handler" and event.type == "node_succeeded" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_executor_fails_run_when_node_returns_undeclared_output(tmp_path):
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_temp_registry(tmp_path)
+    workflow = WorkflowDocument(
+        id="wf_undeclared_output",
+        name="Undeclared Output",
+        nodes=[
+            WorkflowNode(id="bad", type="test.undeclared_output", position=Position(x=0, y=0), config={}),
+        ],
+        edges=[],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    stored_run = storage.get_run(run.id)
+    events = storage.list_events(run.id)
+    assert stored_run is not None
+    assert stored_run.status == "failed"
+    failed_events = [
+        event for event in events if event.node_id == "bad" and event.type == "node_failed"
+    ]
+    assert len(failed_events) == 1
+    assert "undeclared output" in failed_events[0].payload["error"]["message"].lower()
+    assert "typo" in failed_events[0].payload["error"]["message"]
+    assert not any(event.node_id == "bad" and event.type == "node_succeeded" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_executor_fails_run_when_node_returns_non_dict_output(tmp_path):
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_temp_registry(tmp_path)
+    workflow = WorkflowDocument(
+        id="wf_non_dict_output",
+        name="Non Dict Output",
+        nodes=[
+            WorkflowNode(id="bad", type="test.non_dict_output", position=Position(x=0, y=0), config={}),
+        ],
+        edges=[],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    stored_run = storage.get_run(run.id)
+    events = storage.list_events(run.id)
+    assert stored_run is not None
+    assert stored_run.status == "failed"
+    failed_events = [
+        event for event in events if event.node_id == "bad" and event.type == "node_failed"
+    ]
+    assert len(failed_events) == 1
+    assert "dict" in failed_events[0].payload["error"]["message"]
+    assert not any(event.node_id == "bad" and event.type == "node_succeeded" for event in events)
 
 
 @pytest.mark.asyncio
