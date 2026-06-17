@@ -56,6 +56,37 @@ const listNode: WorkflowNode = {
   },
 };
 
+const forEachType: NodeType = {
+  ...manualTriggerType,
+  id: "control.foreach",
+  name: "For Each",
+  category: "control",
+  configSchema: {
+    type: "object",
+    properties: {
+      items_path: {
+        title: "Items Path",
+        type: "string",
+      },
+    },
+  },
+};
+
+const forEachNode: WorkflowNode = {
+  ...manualTriggerNode,
+  id: "node_loop",
+  type: "control.foreach",
+  config: {
+    items_path: "$.items",
+  },
+  subflows: {
+    body: {
+      nodes: [],
+      edges: [],
+    },
+  },
+};
+
 describe("ConfigPanel", () => {
   afterEach(() => {
     cleanup();
@@ -120,5 +151,21 @@ describe("ConfigPanel", () => {
     form.dispatchEvent(submitEvent);
 
     expect(submitEvent.defaultPrevented).toBe(true);
+  });
+
+  it.each(["control.foreach", "control.while"])("opens the body subflow for %s nodes", (nodeTypeId) => {
+    const onOpenSubflow = vi.fn();
+    render(
+      <ConfigPanel
+        node={{ ...forEachNode, type: nodeTypeId }}
+        nodeType={{ ...forEachType, id: nodeTypeId }}
+        onConfigChange={vi.fn()}
+        onOpenSubflow={onOpenSubflow}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Body" }));
+
+    expect(onOpenSubflow).toHaveBeenCalledWith("node_loop", "body");
   });
 });

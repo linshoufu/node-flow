@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NodeType } from "../types";
-import { createEmptyWorkflow, createWorkflowEdge, createWorkflowNode, defaultsFromSchema } from "./workflow";
+import {
+  createEmptyWorkflow,
+  createWorkflowEdge,
+  createWorkflowNode,
+  defaultsFromSchema,
+  getEditableWorkflow,
+  updateEditableWorkflow,
+} from "./workflow";
 
 function nodeType(overrides: Partial<NodeType> = {}): NodeType {
   return {
@@ -81,6 +88,119 @@ describe("workflow helpers", () => {
       target: "target-node",
       targetHandle: "input",
     });
+  });
+
+  it("gets root nodes and edges when edit scope is empty", () => {
+    const node = createWorkflowNode(nodeType(), { x: 0, y: 0 });
+    const edge = createWorkflowEdge("source-node", "result", "target-node", "input");
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [node],
+      edges: [edge],
+    };
+
+    expect(getEditableWorkflow(workflow, undefined)).toEqual({
+      nodes: [node],
+      edges: [edge],
+    });
+  });
+
+  it("gets body subflow nodes and edges for scoped loop editing", () => {
+    const bodyNode = createWorkflowNode(nodeType({ id: "action.log" }), { x: 40, y: 60 });
+    const bodyEdge = createWorkflowEdge("body-source", "result", "body-target", "input");
+    const loopNode = {
+      ...createWorkflowNode(nodeType({ id: "control.foreach" }), { x: 0, y: 0 }),
+      id: "loop-1",
+      subflows: {
+        body: {
+          nodes: [bodyNode],
+          edges: [bodyEdge],
+        },
+      },
+    };
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [loopNode],
+      edges: [],
+    };
+
+    expect(getEditableWorkflow(workflow, { nodeId: "loop-1", subflowName: "body" })).toEqual({
+      nodes: [bodyNode],
+      edges: [bodyEdge],
+    });
+  });
+
+  it("returns an empty editable workflow when scoped subflow is missing", () => {
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [{ ...createWorkflowNode(nodeType({ id: "control.foreach" }), { x: 0, y: 0 }), id: "loop-1" }],
+      edges: [],
+    };
+
+    expect(getEditableWorkflow(workflow, { nodeId: "missing", subflowName: "body" })).toEqual({
+      nodes: [],
+      edges: [],
+    });
+    expect(getEditableWorkflow(workflow, { nodeId: "loop-1", subflowName: "missing" })).toEqual({
+      nodes: [],
+      edges: [],
+    });
+  });
+
+  it("updates root nodes and edges when edit scope is empty", () => {
+    const originalNode = createWorkflowNode(nodeType(), { x: 0, y: 0 });
+    const nextNode = createWorkflowNode(nodeType(), { x: 100, y: 120 });
+    const nextEdge = createWorkflowEdge("source-node", "result", "target-node", "input");
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [originalNode],
+      edges: [],
+    };
+
+    expect(updateEditableWorkflow(workflow, undefined, { nodes: [nextNode], edges: [nextEdge] })).toEqual({
+      ...workflow,
+      nodes: [nextNode],
+      edges: [nextEdge],
+    });
+  });
+
+  it("updates a body subflow without changing root nodes and edges", () => {
+    const nextBodyNode = createWorkflowNode(nodeType({ id: "action.log" }), { x: 40, y: 60 });
+    const nextBodyEdge = createWorkflowEdge("body-source", "result", "body-target", "input");
+    const rootEdge = createWorkflowEdge("root-source", "result", "root-target", "input");
+    const loopNode = {
+      ...createWorkflowNode(nodeType({ id: "control.while" }), { x: 0, y: 0 }),
+      id: "loop-1",
+      subflows: {
+        body: {
+          nodes: [],
+          edges: [],
+        },
+      },
+    };
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [loopNode],
+      edges: [rootEdge],
+    };
+
+    const updated = updateEditableWorkflow(workflow, { nodeId: "loop-1", subflowName: "body" }, {
+      nodes: [nextBodyNode],
+      edges: [nextBodyEdge],
+    });
+
+    expect(updated.edges).toEqual([rootEdge]);
+    expect(updated.nodes).toEqual([
+      {
+        ...loopNode,
+        subflows: {
+          body: {
+            nodes: [nextBodyNode],
+            edges: [nextBodyEdge],
+          },
+        },
+      },
+    ]);
   });
 
   it.each(["control.foreach", "control.while"])("creates a body subflow for %s", (id) => {

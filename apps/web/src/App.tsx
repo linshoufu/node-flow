@@ -4,7 +4,13 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { NodePalette } from "./components/NodePalette";
 import { RunPanel } from "./components/RunPanel";
-import { createEmptyWorkflow, createWorkflowNode } from "./lib/workflow";
+import {
+  createEmptyWorkflow,
+  createWorkflowNode,
+  getEditableWorkflow,
+  updateEditableWorkflow,
+  type EditScope,
+} from "./lib/workflow";
 import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from "./types";
 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
@@ -14,6 +20,7 @@ const MAX_RUN_POLL_ATTEMPTS = 120;
 export default function App() {
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowDocument>(() => createEmptyWorkflow());
+  const [editScope, setEditScope] = useState<EditScope>(undefined);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [message, setMessage] = useState("Loading node types...");
   const [isBusy, setIsBusy] = useState(false);
@@ -55,32 +62,72 @@ export default function App() {
     };
   }, []);
 
-  const selectedNode = workflow.nodes.find((node) => node.id === selectedNodeId);
+  const editableWorkflow = useMemo(() => getEditableWorkflow(workflow, editScope), [editScope, workflow]);
+  const canvasWorkflow = useMemo(
+    () => ({
+      ...workflow,
+      nodes: editableWorkflow.nodes,
+      edges: editableWorkflow.edges,
+    }),
+    [editableWorkflow.edges, editableWorkflow.nodes, workflow]
+  );
+  const scopeNode = editScope ? workflow.nodes.find((node) => node.id === editScope.nodeId) : undefined;
+  const scopeNodeType = useMemo(
+    () => nodeTypes.find((nodeType) => nodeType.id === scopeNode?.type),
+    [nodeTypes, scopeNode?.type]
+  );
+  const selectedNode = editableWorkflow.nodes.find((node) => node.id === selectedNodeId);
   const selectedNodeType = useMemo(
     () => nodeTypes.find((nodeType) => nodeType.id === selectedNode?.type),
     [nodeTypes, selectedNode?.type]
   );
 
   function addNode(nodeType: NodeType) {
+    const editableNodeCount = editableWorkflow.nodes.length;
     const nextNode = createWorkflowNode(nodeType, {
-      x: 80 + workflow.nodes.length * 40,
-      y: 80 + workflow.nodes.length * 30,
+      x: 80 + editableNodeCount * 40,
+      y: 80 + editableNodeCount * 30,
     });
 
-    setWorkflow((current) => ({
-      ...current,
-      nodes: [...current.nodes, nextNode],
-    }));
+    setWorkflow((current) => {
+      const currentEditableWorkflow = getEditableWorkflow(current, editScope);
+      return updateEditableWorkflow(current, editScope, {
+        nodes: [...currentEditableWorkflow.nodes, nextNode],
+        edges: currentEditableWorkflow.edges,
+      });
+    });
     setSelectedNodeId(nextNode.id);
   }
 
   function updateNodeConfig(nodeId: string, key: string, value: unknown) {
-    setWorkflow((current) => ({
-      ...current,
-      nodes: current.nodes.map((node) =>
-        node.id === nodeId ? { ...node, config: { ...node.config, [key]: value } } : node
-      ),
-    }));
+    setWorkflow((current) => {
+      const currentEditableWorkflow = getEditableWorkflow(current, editScope);
+      return updateEditableWorkflow(current, editScope, {
+        nodes: currentEditableWorkflow.nodes.map((node) =>
+          node.id === nodeId ? { ...node, config: { ...node.config, [key]: value } } : node
+        ),
+        edges: currentEditableWorkflow.edges,
+      });
+    });
+  }
+
+  function updateCurrentEditableWorkflow(nextWorkflow: WorkflowDocument) {
+    setWorkflow((current) =>
+      updateEditableWorkflow(current, editScope, {
+        nodes: nextWorkflow.nodes,
+        edges: nextWorkflow.edges,
+      })
+    );
+  }
+
+  function openSubflow(nodeId: string, subflowName: string) {
+    setEditScope({ nodeId, subflowName });
+    setSelectedNodeId(null);
+  }
+
+  function returnToMain() {
+    setEditScope(undefined);
+    setSelectedNodeId(null);
   }
 
   async function validateWorkflow() {
@@ -202,6 +249,14 @@ export default function App() {
             value={workflow.name}
             onChange={(event) => setWorkflow({ ...workflow, name: event.currentTarget.value })}
           />
+          <nav aria-label="Edit scope" className="breadcrumbs">
+            <button disabled={!editScope} type="button" onClick={returnToMain}>
+              Main
+            </button>
+            {editScope ? (
+              <span className="breadcrumb-current">/ {scopeNodeType?.name ?? scopeNode?.type ?? editScope.nodeId}.{editScope.subflowName}</span>
+            ) : null}
+          </nav>
         </div>
         <div className="topbar-actions">
           <button disabled={isBusy} type="button" onClick={validateWorkflow}>
@@ -225,11 +280,16 @@ export default function App() {
         <FlowCanvas
           nodeTypes={nodeTypes}
           selectedNodeId={selectedNodeId}
-          workflow={workflow}
+          workflow={canvasWorkflow}
           onSelectNode={setSelectedNodeId}
-          onWorkflowChange={setWorkflow}
+          onWorkflowChange={updateCurrentEditableWorkflow}
         />
-        <ConfigPanel node={selectedNode} nodeType={selectedNodeType} onConfigChange={updateNodeConfig} />
+        <ConfigPanel
+          node={selectedNode}
+          nodeType={selectedNodeType}
+          onConfigChange={updateNodeConfig}
+          onOpenSubflow={openSubflow}
+        />
         <RunPanel events={runEvents} run={run} />
       </main>
     </div>

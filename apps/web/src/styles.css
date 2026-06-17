@@ -100,6 +100,27 @@ button:disabled {
   font-weight: 600;
 }
 
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.breadcrumbs button {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.breadcrumb-current {
+  overflow: hidden;
+  color: #556377;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -287,6 +308,15 @@ button:disabled {
   padding: 12px;
 }
 
+.subflow-actions {
+  border-top: 1px solid #e7ebf0;
+  padding: 10px 12px 12px;
+}
+
+.open-subflow-button {
+  width: 100%;
+}
+
 .field {
   display: grid;
   gap: 5px;
@@ -425,9 +455,17 @@ button:disabled {
     width: 100%;
   }
 
+  .brand {
+    flex-wrap: wrap;
+  }
+
   .workflow-name {
     flex: 1;
     width: auto;
+  }
+
+  .breadcrumbs {
+    flex: 1 1 100%;
   }
 
   .topbar-actions {

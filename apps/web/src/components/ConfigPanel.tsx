@@ -5,11 +5,15 @@ type ConfigPanelProps = {
   node?: WorkflowNode;
   nodeType?: NodeType;
   onConfigChange: (nodeId: string, key: string, value: unknown) => void;
+  onOpenSubflow?: (nodeId: string, subflowName: string) => void;
 };
 
-export function ConfigPanel({ node, nodeType, onConfigChange }: ConfigPanelProps) {
+const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
+
+export function ConfigPanel({ node, nodeType, onConfigChange, onOpenSubflow }: ConfigPanelProps) {
   const properties = nodeType?.configSchema.properties ?? {};
   const entries = Object.entries(properties);
+  const canOpenBody = Boolean(node && nodeType && LOOP_NODE_TYPES.has(nodeType.id) && onOpenSubflow);
 
   return (
     <aside className="panel config-panel" aria-label="Config panel">
@@ -46,6 +50,18 @@ export function ConfigPanel({ node, nodeType, onConfigChange }: ConfigPanelProps
               ))}
             </form>
           )}
+
+          {canOpenBody ? (
+            <div className="subflow-actions">
+              <button
+                className="open-subflow-button"
+                type="button"
+                onClick={() => onOpenSubflow?.(node.id, "body")}
+              >
+                Open Body
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </aside>

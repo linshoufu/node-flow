@@ -1,6 +1,7 @@
-import type { JsonSchema, NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
+import type { JsonSchema, NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode, WorkflowSubflow } from "../types";
 
 type NodePosition = WorkflowNode["position"];
+export type EditScope = { nodeId: string; subflowName: string } | undefined;
 
 const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
 
@@ -46,6 +47,51 @@ export function createWorkflowEdge(
     sourceHandle,
     target,
     targetHandle,
+  };
+}
+
+export function getEditableWorkflow(workflow: WorkflowDocument, scope: EditScope): WorkflowSubflow {
+  if (!scope) {
+    return {
+      nodes: workflow.nodes,
+      edges: workflow.edges,
+    };
+  }
+
+  return (
+    workflow.nodes.find((node) => node.id === scope.nodeId)?.subflows?.[scope.subflowName] ?? {
+      nodes: [],
+      edges: [],
+    }
+  );
+}
+
+export function updateEditableWorkflow(
+  workflow: WorkflowDocument,
+  scope: EditScope,
+  next: WorkflowSubflow
+): WorkflowDocument {
+  if (!scope) {
+    return {
+      ...workflow,
+      nodes: next.nodes,
+      edges: next.edges,
+    };
+  }
+
+  return {
+    ...workflow,
+    nodes: workflow.nodes.map((node) =>
+      node.id === scope.nodeId
+        ? {
+            ...node,
+            subflows: {
+              ...node.subflows,
+              [scope.subflowName]: next,
+            },
+          }
+        : node
+    ),
   };
 }
 

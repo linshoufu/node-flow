@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -103,6 +103,85 @@ describe("App", () => {
       "http://127.0.0.1:8000/api/runs/run_1/events",
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
+  });
+
+  it("edits a structured loop body subflow from the frontend", async () => {
+    const forEachType = {
+      id: "control.foreach",
+      name: "For Each",
+      category: "Control",
+      description: "Runs body nodes for each item.",
+      inputs: { items: { description: "Items" } },
+      outputs: { done: { description: "Done" } },
+      configSchema: {
+        type: "object",
+        properties: {
+          items_path: { title: "Items Path", type: "string", default: "$.items" },
+        },
+      },
+    };
+    const logType = {
+      id: "action.log",
+      name: "Log",
+      category: "Actions",
+      description: "Writes a log entry.",
+      inputs: { input: { description: "Input" } },
+      outputs: { done: { description: "Done" } },
+      configSchema: {
+        type: "object",
+        properties: {
+          message: { title: "Message", type: "string", default: "hello" },
+        },
+      },
+    };
+    const savedWorkflows: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([forEachType, logType]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        savedWorkflows.push(body);
+        return jsonResponse({ ...body, id: "wf_saved", version: 2 });
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.method === "POST") {
+        return jsonResponse({ valid: true, issues: [] });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /For Each\s+control\.foreach/i }));
+    const canvas = screen.getByLabelText("Canvas workspace");
+    expect(within(canvas).getByText("For Each")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Body" }));
+
+    expect(screen.getByText("/ For Each.body")).toBeInTheDocument();
+    expect(within(canvas).queryByText("For Each")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log\s+action\.log/i }));
+    expect(within(canvas).getByText("Log")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Main" }));
+    expect(within(canvas).getByText("For Each")).toBeInTheDocument();
+    expect(within(canvas).queryByText("Log")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Saved version 2.");
+    const savedWorkflow = savedWorkflows.at(-1) as {
+      nodes: Array<{ type: string; subflows?: { body?: { nodes: Array<{ type: string }> } } }>;
+    };
+    expect(savedWorkflow.nodes).toHaveLength(1);
+    expect(savedWorkflow.nodes[0].type).toBe("control.foreach");
+    expect(savedWorkflow.nodes[0].subflows?.body?.nodes).toEqual([expect.objectContaining({ type: "action.log" })]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await screen.findByText("Workflow is valid.");
   });
 });
 
