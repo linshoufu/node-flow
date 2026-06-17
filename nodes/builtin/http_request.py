@@ -26,13 +26,21 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
     async def execute(self, ctx: NodeContext, inputs: dict):
         headers = inputs.get("headers") or {}
         body = inputs.get("body")
-        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
-            response = await client.request(
-                self.config.method,
-                self.config.url,
-                headers=headers,
-                json=body if body is not None else None,
-            )
+        try:
+            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+                response = await client.request(
+                    self.config.method,
+                    self.config.url,
+                    headers=headers,
+                    json=body if body is not None else None,
+                )
+        except (httpx.RequestError, httpx.TimeoutException) as exc:
+            return {
+                "error": {
+                    "message": str(exc),
+                    "type": exc.__class__.__name__,
+                }
+            }
         if response.is_error:
             return {
                 "error": {

@@ -169,6 +169,66 @@ class WorkflowExecutor:
                 payload={"outputs": output},
             )
             return output
+        if node.type == "logic.set_variable":
+            try:
+                node_type = self.registry.get(node.type)
+                instance = node_type.node_class(config=node.config)
+                node_context = {**context, "inputs": inputs}
+                value = resolve_expression(instance.config.value, node_context)
+                variables = context.setdefault("variables", {})
+                variables[instance.config.name] = value
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    },
+                )
+                raise WorkflowExecutionError(str(exc)) from exc
+            output = {
+                "success": {
+                    "name": instance.config.name,
+                    "value": value,
+                    "variables": dict(variables),
+                }
+            }
+            self._event(
+                run_id,
+                "node_succeeded",
+                node_id=node.id,
+                scope=scope,
+                payload={"outputs": output},
+            )
+            return output
+        if node.type == "utility.transform":
+            try:
+                node_type = self.registry.get(node.type)
+                instance = node_type.node_class(config=node.config)
+                node_context = {**context, "inputs": inputs}
+                value = resolve_expression(instance.config.value, node_context)
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    },
+                )
+                raise WorkflowExecutionError(str(exc)) from exc
+            output = {"success": value}
+            self._event(
+                run_id,
+                "node_succeeded",
+                node_id=node.id,
+                scope=scope,
+                payload={"outputs": output},
+            )
+            return output
         if node.type == "control.foreach":
             try:
                 output = await self._execute_foreach(run_id, node, context, scope, inputs)

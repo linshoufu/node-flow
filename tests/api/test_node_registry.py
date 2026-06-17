@@ -31,6 +31,8 @@ def test_registry_discovers_builtin_nodes():
     assert "manual.trigger" in node_ids
     assert "http.request" in node_ids
     assert "logic.if" in node_ids
+    assert "logic.set_variable" in node_ids
+    assert "utility.transform" in node_ids
     assert "control.foreach" in node_ids
     assert "control.while" in node_ids
 

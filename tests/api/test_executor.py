@@ -1,6 +1,7 @@
 from pathlib import Path
 from textwrap import dedent
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -397,6 +398,159 @@ async def test_executor_if_condition_can_read_current_node_inputs():
     events = storage.list_events(run.id)
     assert storage.get_run(run.id).status == "succeeded"
     assert any(event.node_id == "false_log" and event.type == "node_succeeded" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_executor_transform_resolves_current_node_inputs():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_transform_inputs",
+        name="Transform Inputs",
+        nodes=[
+            WorkflowNode(id="start", type="manual.trigger", position=Position(x=0, y=0), config={"payload": {"user": {"name": "Ada"}}}),
+            WorkflowNode(id="transform", type="utility.transform", position=Position(x=200, y=0), config={"value": "{{ inputs.input.user.name }}"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="start", sourceHandle="success", target="transform", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "succeeded"
+    succeeded_events = [
+        event
+        for event in events
+        if event.node_id == "transform" and event.type == "node_succeeded"
+    ]
+    assert len(succeeded_events) == 1
+    assert succeeded_events[0].payload["outputs"] == {"success": "Ada"}
+
+
+@pytest.mark.asyncio
+async def test_executor_set_variable_updates_context_for_later_expressions():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_set_variable",
+        name="Set Variable",
+        nodes=[
+            WorkflowNode(id="start", type="manual.trigger", position=Position(x=0, y=0), config={"payload": {"answer": 42}}),
+            WorkflowNode(id="set_answer", type="logic.set_variable", position=Position(x=200, y=0), config={"name": "answer", "value": "{{ inputs.input.answer }}"}),
+            WorkflowNode(id="transform", type="utility.transform", position=Position(x=400, y=0), config={"value": "{{ variables.answer }}"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="start", sourceHandle="success", target="set_answer", targetHandle="input"),
+            WorkflowEdge(id="e2", source="set_answer", sourceHandle="success", target="transform", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "succeeded"
+    set_events = [
+        event
+        for event in events
+        if event.node_id == "set_answer" and event.type == "node_succeeded"
+    ]
+    transform_events = [
+        event
+        for event in events
+        if event.node_id == "transform" and event.type == "node_succeeded"
+    ]
+    assert len(set_events) == 1
+    assert set_events[0].payload["outputs"]["success"]["value"] == 42
+    assert set_events[0].payload["outputs"]["success"]["variables"]["answer"] == 42
+    assert len(transform_events) == 1
+    assert transform_events[0].payload["outputs"] == {"success": 42}
+
+
+@pytest.mark.asyncio
+async def test_executor_records_failed_transform_expression():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_transform_expression_error",
+        name="Transform Expression Error",
+        nodes=[
+            WorkflowNode(id="start", type="manual.trigger", position=Position(x=0, y=0), config={"payload": {}}),
+            WorkflowNode(id="transform", type="utility.transform", position=Position(x=200, y=0), config={"value": "{{ missing.value }}"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="start", sourceHandle="success", target="transform", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "failed"
+    assert any(event.node_id == "transform" and event.type == "node_started" for event in events)
+    failed_events = [
+        event
+        for event in events
+        if event.node_id == "transform" and event.type == "node_failed"
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].payload["error"]["message"]
+    assert any(event.type == "run_failed" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_executor_routes_http_request_transport_errors(monkeypatch: pytest.MonkeyPatch):
+    async def raise_connect_error(self, method, url, *, headers, json):
+        request = httpx.Request(method, url)
+        raise httpx.ConnectError("connect failed", request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", raise_connect_error)
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_http_error",
+        name="HTTP Error",
+        nodes=[
+            WorkflowNode(id="http", type="http.request", position=Position(x=0, y=0), config={"url": "https://example.invalid"}),
+            WorkflowNode(id="handler", type="utility.log", position=Position(x=200, y=0), config={"message": "handled"}),
+        ],
+        edges=[
+            WorkflowEdge(id="e1", source="http", sourceHandle="error", target="handler", targetHandle="input"),
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    assert storage.get_run(run.id).status == "succeeded"
+    http_events = [
+        event for event in events if event.node_id == "http" and event.type == "node_succeeded"
+    ]
+    handler_started = [
+        event for event in events if event.node_id == "handler" and event.type == "node_started"
+    ]
+    assert len(http_events) == 1
+    assert http_events[0].payload["outputs"]["error"]["type"] == "ConnectError"
+    assert "connect failed" in http_events[0].payload["outputs"]["error"]["message"]
+    assert len(handler_started) == 1
+    assert handler_started[0].payload["inputs"]["input"]["type"] == "ConnectError"
 
 
 @pytest.mark.asyncio
