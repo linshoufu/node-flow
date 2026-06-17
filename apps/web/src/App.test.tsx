@@ -183,6 +183,85 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
     await screen.findByText("Workflow is valid.");
   });
+
+  it("edits nested structured loop body subflows from the frontend", async () => {
+    const forEachType = {
+      id: "control.foreach",
+      name: "For Each",
+      category: "Control",
+      description: "Runs body nodes for each item.",
+      inputs: { items: { description: "Items" } },
+      outputs: { done: { description: "Done" } },
+      configSchema: { type: "object", properties: {} },
+    };
+    const whileType = {
+      id: "control.while",
+      name: "While",
+      category: "Control",
+      description: "Runs body nodes while a condition is true.",
+      inputs: { input: { description: "Input" } },
+      outputs: { done: { description: "Done" } },
+      configSchema: { type: "object", properties: {} },
+    };
+    const logType = {
+      id: "action.log",
+      name: "Log",
+      category: "Actions",
+      description: "Writes a log entry.",
+      inputs: { input: { description: "Input" } },
+      outputs: { done: { description: "Done" } },
+      configSchema: { type: "object", properties: {} },
+    };
+    const savedWorkflows: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([forEachType, whileType, logType]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        savedWorkflows.push(body);
+        return jsonResponse({ ...body, id: "wf_saved", version: 2 });
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.method === "POST") {
+        return jsonResponse({ valid: true, issues: [] });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /For Each\s+control\.foreach/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Body" }));
+    expect(screen.getByText("/ For Each.body")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /While\s+control\.while/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Body" }));
+    expect(screen.getByText("/ For Each.body / While.body")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Log\s+action\.log/i }));
+    const canvas = screen.getByLabelText("Canvas workspace");
+    expect(within(canvas).getByText("Log")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Main" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Saved version 2.");
+    const savedWorkflow = savedWorkflows.at(-1) as {
+      nodes: Array<{
+        type: string;
+        subflows?: { body?: { nodes: Array<{ type: string; subflows?: { body?: { nodes: Array<{ type: string }> } } }> } };
+      }>;
+    };
+    const whileNode = savedWorkflow.nodes[0].subflows?.body?.nodes[0];
+    expect(savedWorkflow.nodes[0].type).toBe("control.foreach");
+    expect(whileNode?.type).toBe("control.while");
+    expect(whileNode?.subflows?.body?.nodes).toEqual([expect.objectContaining({ type: "action.log" })]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await screen.findByText("Workflow is valid.");
+  });
 });
 
 function jsonResponse(body: unknown) {

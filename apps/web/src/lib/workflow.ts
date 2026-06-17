@@ -1,7 +1,8 @@
 import type { JsonSchema, NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode, WorkflowSubflow } from "../types";
 
 type NodePosition = WorkflowNode["position"];
-export type EditScope = { nodeId: string; subflowName: string } | undefined;
+export type EditScopeStep = { nodeId: string; subflowName: string };
+export type EditScope = EditScopeStep[] | undefined;
 
 const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
 
@@ -51,19 +52,23 @@ export function createWorkflowEdge(
 }
 
 export function getEditableWorkflow(workflow: WorkflowDocument, scope: EditScope): WorkflowSubflow {
-  if (!scope) {
-    return {
-      nodes: workflow.nodes,
-      edges: workflow.edges,
-    };
+  let current: WorkflowSubflow = {
+    nodes: workflow.nodes,
+    edges: workflow.edges,
+  };
+
+  for (const step of scope ?? []) {
+    const next = current.nodes.find((node) => node.id === step.nodeId)?.subflows?.[step.subflowName];
+    if (!next) {
+      return {
+        nodes: [],
+        edges: [],
+      };
+    }
+    current = next;
   }
 
-  return (
-    workflow.nodes.find((node) => node.id === scope.nodeId)?.subflows?.[scope.subflowName] ?? {
-      nodes: [],
-      edges: [],
-    }
-  );
+  return current;
 }
 
 export function updateEditableWorkflow(
@@ -71,7 +76,9 @@ export function updateEditableWorkflow(
   scope: EditScope,
   next: WorkflowSubflow
 ): WorkflowDocument {
-  if (!scope) {
+  const path = scope ?? [];
+
+  if (path.length === 0) {
     return {
       ...workflow,
       nodes: next.nodes,
@@ -79,20 +86,105 @@ export function updateEditableWorkflow(
     };
   }
 
-  return {
-    ...workflow,
-    nodes: workflow.nodes.map((node) =>
-      node.id === scope.nodeId
-        ? {
-            ...node,
-            subflows: {
-              ...node.subflows,
-              [scope.subflowName]: next,
-            },
-          }
-        : node
-    ),
+  const [updatedRoot, didUpdate] = updateSubflowAtPath(
+    {
+      nodes: workflow.nodes,
+      edges: workflow.edges,
+    },
+    path,
+    next
+  );
+
+  return didUpdate
+    ? {
+        ...workflow,
+        nodes: updatedRoot.nodes,
+        edges: updatedRoot.edges,
+      }
+    : workflow;
+}
+
+function updateSubflowAtPath(
+  current: WorkflowSubflow,
+  path: EditScopeStep[],
+  next: WorkflowSubflow
+): [WorkflowSubflow, boolean] {
+  const [step, ...rest] = path;
+  const nodeIndex = current.nodes.findIndex((node) => node.id === step.nodeId);
+
+  if (nodeIndex === -1) {
+    return [current, false];
+  }
+
+  const node = current.nodes[nodeIndex];
+  const currentChild = node.subflows?.[step.subflowName];
+  if (rest.length > 0 && !currentChild) {
+    return [current, false];
+  }
+
+  const [updatedChild, didUpdate] =
+    rest.length === 0
+      ? [next, true]
+      : updateSubflowAtPath(
+          currentChild ?? {
+            nodes: [],
+            edges: [],
+          },
+          rest,
+          next
+        );
+
+  if (!didUpdate) {
+    return [current, false];
+  }
+
+  const updatedNode: WorkflowNode = {
+    ...node,
+    subflows: {
+      ...node.subflows,
+      [step.subflowName]: updatedChild,
+    },
   };
+  const updatedNodes = [...current.nodes];
+  updatedNodes[nodeIndex] = updatedNode;
+
+  return [
+    {
+      nodes: updatedNodes,
+      edges: current.edges,
+    },
+    true,
+  ];
+}
+
+export function scopeKey(scope: EditScope): string {
+  return (scope ?? []).map((step) => `${step.nodeId}.${step.subflowName}`).join("/");
+}
+
+export function scopeLabel(workflow: WorkflowDocument, scope: EditScope, nodeTypes: NodeType[]): string {
+  if (!scope?.length) {
+    return "";
+  }
+
+  const labels: string[] = [];
+  let current: WorkflowSubflow = {
+    nodes: workflow.nodes,
+    edges: workflow.edges,
+  };
+
+  for (const step of scope) {
+    const node = current.nodes.find((candidate) => candidate.id === step.nodeId);
+    const nodeType = nodeTypes.find((candidate) => candidate.id === node?.type);
+    labels.push(`${nodeType?.name ?? node?.type ?? step.nodeId}.${step.subflowName}`);
+    const next = node?.subflows?.[step.subflowName];
+    current =
+      next ?? {
+        nodes: [],
+        edges: [],
+      };
+  }
+
+  return labels.join(" / ");
 }
 
 export function defaultsFromSchema(schema: JsonSchema | undefined): Record<string, unknown> {

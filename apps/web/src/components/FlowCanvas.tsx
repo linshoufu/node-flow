@@ -12,7 +12,7 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createWorkflowEdge } from "../lib/workflow";
 import type { NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
 
@@ -20,6 +20,7 @@ type FlowCanvasProps = {
   workflow: WorkflowDocument;
   nodeTypes: NodeType[];
   selectedNodeId: string | null;
+  selectionResetKey?: string;
   onWorkflowChange: (workflow: WorkflowDocument) => void;
   onSelectNode: (nodeId: string | null) => void;
 };
@@ -39,11 +40,18 @@ export function FlowCanvas({
   workflow,
   nodeTypes,
   selectedNodeId,
+  selectionResetKey,
   onWorkflowChange,
   onSelectNode,
 }: FlowCanvasProps) {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(() => new Set());
   const nodeTypeById = useMemo(() => new Map(nodeTypes.map((nodeType) => [nodeType.id, nodeType])), [nodeTypes]);
+
+  useEffect(() => {
+    setSelectedEdgeIds((currentSelectedEdgeIds) =>
+      currentSelectedEdgeIds.size === 0 ? currentSelectedEdgeIds : new Set()
+    );
+  }, [selectionResetKey]);
 
   const nodes = useMemo<EditorNode[]>(
     () =>

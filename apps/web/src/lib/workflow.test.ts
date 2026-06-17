@@ -124,7 +124,7 @@ describe("workflow helpers", () => {
       edges: [],
     };
 
-    expect(getEditableWorkflow(workflow, { nodeId: "loop-1", subflowName: "body" })).toEqual({
+    expect(getEditableWorkflow(workflow, [{ nodeId: "loop-1", subflowName: "body" }])).toEqual({
       nodes: [bodyNode],
       edges: [bodyEdge],
     });
@@ -137,11 +137,11 @@ describe("workflow helpers", () => {
       edges: [],
     };
 
-    expect(getEditableWorkflow(workflow, { nodeId: "missing", subflowName: "body" })).toEqual({
+    expect(getEditableWorkflow(workflow, [{ nodeId: "missing", subflowName: "body" }])).toEqual({
       nodes: [],
       edges: [],
     });
-    expect(getEditableWorkflow(workflow, { nodeId: "loop-1", subflowName: "missing" })).toEqual({
+    expect(getEditableWorkflow(workflow, [{ nodeId: "loop-1", subflowName: "missing" }])).toEqual({
       nodes: [],
       edges: [],
     });
@@ -184,7 +184,7 @@ describe("workflow helpers", () => {
       edges: [rootEdge],
     };
 
-    const updated = updateEditableWorkflow(workflow, { nodeId: "loop-1", subflowName: "body" }, {
+    const updated = updateEditableWorkflow(workflow, [{ nodeId: "loop-1", subflowName: "body" }], {
       nodes: [nextBodyNode],
       edges: [nextBodyEdge],
     });
@@ -201,6 +201,105 @@ describe("workflow helpers", () => {
         },
       },
     ]);
+  });
+
+  it("gets a nested body subflow by walking the edit scope path", () => {
+    const nestedBodyNode = createWorkflowNode(nodeType({ id: "action.log" }), { x: 80, y: 90 });
+    const whileNode = {
+      ...createWorkflowNode(nodeType({ id: "control.while" }), { x: 40, y: 60 }),
+      id: "while-1",
+      subflows: {
+        body: {
+          nodes: [nestedBodyNode],
+          edges: [],
+        },
+      },
+    };
+    const foreachNode = {
+      ...createWorkflowNode(nodeType({ id: "control.foreach" }), { x: 0, y: 0 }),
+      id: "foreach-1",
+      subflows: {
+        body: {
+          nodes: [whileNode],
+          edges: [],
+        },
+      },
+    };
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [foreachNode],
+      edges: [],
+    };
+
+    expect(
+      getEditableWorkflow(workflow, [
+        { nodeId: "foreach-1", subflowName: "body" },
+        { nodeId: "while-1", subflowName: "body" },
+      ])
+    ).toEqual({
+      nodes: [nestedBodyNode],
+      edges: [],
+    });
+  });
+
+  it("updates a nested body subflow without replacing unrelated subflows", () => {
+    const nextNestedBodyNode = createWorkflowNode(nodeType({ id: "action.log" }), { x: 120, y: 130 });
+    const siblingBodyNode = createWorkflowNode(nodeType({ id: "action.sibling" }), { x: 140, y: 150 });
+    const whileNode = {
+      ...createWorkflowNode(nodeType({ id: "control.while" }), { x: 40, y: 60 }),
+      id: "while-1",
+      subflows: {
+        body: {
+          nodes: [],
+          edges: [],
+        },
+        fallback: {
+          nodes: [siblingBodyNode],
+          edges: [],
+        },
+      },
+    };
+    const foreachNode = {
+      ...createWorkflowNode(nodeType({ id: "control.foreach" }), { x: 0, y: 0 }),
+      id: "foreach-1",
+      subflows: {
+        body: {
+          nodes: [whileNode],
+          edges: [],
+        },
+      },
+    };
+    const workflow = {
+      ...createEmptyWorkflow(),
+      nodes: [foreachNode],
+      edges: [],
+    };
+
+    const updated = updateEditableWorkflow(
+      workflow,
+      [
+        { nodeId: "foreach-1", subflowName: "body" },
+        { nodeId: "while-1", subflowName: "body" },
+      ],
+      {
+        nodes: [nextNestedBodyNode],
+        edges: [],
+      }
+    );
+
+    expect(updated.nodes[0].subflows?.body?.nodes[0]).toMatchObject({
+      id: "while-1",
+      subflows: {
+        body: {
+          nodes: [nextNestedBodyNode],
+          edges: [],
+        },
+        fallback: {
+          nodes: [siblingBodyNode],
+          edges: [],
+        },
+      },
+    });
   });
 
   it.each(["control.foreach", "control.while"])("creates a body subflow for %s", (id) => {

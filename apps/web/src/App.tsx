@@ -8,6 +8,8 @@ import {
   createEmptyWorkflow,
   createWorkflowNode,
   getEditableWorkflow,
+  scopeKey,
+  scopeLabel,
   updateEditableWorkflow,
   type EditScope,
 } from "./lib/workflow";
@@ -63,6 +65,8 @@ export default function App() {
   }, []);
 
   const editableWorkflow = useMemo(() => getEditableWorkflow(workflow, editScope), [editScope, workflow]);
+  const editScopeKey = useMemo(() => scopeKey(editScope), [editScope]);
+  const editScopeLabel = useMemo(() => scopeLabel(workflow, editScope, nodeTypes), [editScope, nodeTypes, workflow]);
   const canvasWorkflow = useMemo(
     () => ({
       ...workflow,
@@ -70,11 +74,6 @@ export default function App() {
       edges: editableWorkflow.edges,
     }),
     [editableWorkflow.edges, editableWorkflow.nodes, workflow]
-  );
-  const scopeNode = editScope ? workflow.nodes.find((node) => node.id === editScope.nodeId) : undefined;
-  const scopeNodeType = useMemo(
-    () => nodeTypes.find((nodeType) => nodeType.id === scopeNode?.type),
-    [nodeTypes, scopeNode?.type]
   );
   const selectedNode = editableWorkflow.nodes.find((node) => node.id === selectedNodeId);
   const selectedNodeType = useMemo(
@@ -121,7 +120,7 @@ export default function App() {
   }
 
   function openSubflow(nodeId: string, subflowName: string) {
-    setEditScope({ nodeId, subflowName });
+    setEditScope((currentScope) => [...(currentScope ?? []), { nodeId, subflowName }]);
     setSelectedNodeId(null);
   }
 
@@ -250,12 +249,10 @@ export default function App() {
             onChange={(event) => setWorkflow({ ...workflow, name: event.currentTarget.value })}
           />
           <nav aria-label="Edit scope" className="breadcrumbs">
-            <button disabled={!editScope} type="button" onClick={returnToMain}>
+            <button disabled={!editScope?.length} type="button" onClick={returnToMain}>
               Main
             </button>
-            {editScope ? (
-              <span className="breadcrumb-current">/ {scopeNodeType?.name ?? scopeNode?.type ?? editScope.nodeId}.{editScope.subflowName}</span>
-            ) : null}
+            {editScope?.length ? <span className="breadcrumb-current">/ {editScopeLabel}</span> : null}
           </nav>
         </div>
         <div className="topbar-actions">
@@ -280,6 +277,7 @@ export default function App() {
         <FlowCanvas
           nodeTypes={nodeTypes}
           selectedNodeId={selectedNodeId}
+          selectionResetKey={editScopeKey}
           workflow={canvasWorkflow}
           onSelectNode={setSelectedNodeId}
           onWorkflowChange={updateCurrentEditableWorkflow}

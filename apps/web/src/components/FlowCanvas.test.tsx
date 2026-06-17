@@ -201,6 +201,38 @@ describe("FlowCanvas", () => {
     expect(deselectedEdges[0]).toHaveProperty("selected", false);
   });
 
+  it("clears selected edges when the selection reset key changes", () => {
+    const { rerender } = render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType, logType]}
+        selectedNodeId={null}
+        selectionResetKey="root"
+        workflow={workflowWithEdge}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      />
+    );
+
+    const onEdgesChange = reactFlowProps.current?.onEdgesChange as (changes: Array<Record<string, unknown>>) => void;
+    act(() => {
+      onEdgesChange([{ id: "edge_manual_log", type: "select", selected: true }]);
+    });
+    expect((reactFlowProps.current?.edges as Array<Record<string, unknown>>)[0]).toHaveProperty("selected", true);
+
+    rerender(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType, logType]}
+        selectedNodeId={null}
+        selectionResetKey="foreach.body"
+        workflow={workflowWithEdge}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      />
+    );
+
+    expect((reactFlowProps.current?.edges as Array<Record<string, unknown>>)[0]).toHaveProperty("selected", false);
+  });
+
   it("removes edges from controlled React Flow edge changes", () => {
     const onWorkflowChange = vi.fn();
     render(
