@@ -36,6 +36,134 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
   });
 
+  it("loads the saved workflow list on startup", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([{ id: "wf_saved", name: "Saved Import", version: 4 }]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const selector = await screen.findByLabelText("Saved workflows");
+    expect(selector).toHaveValue("");
+    expect(screen.getByRole("option", { name: "Saved Import v4" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/workflows",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it("loads a selected saved workflow into the editor", async () => {
+    const savedWorkflow = workflowDocument({ id: "wf_saved", name: "Customer Intake", version: 3 });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([{ id: "wf_saved", name: "Customer Intake", version: 3 }]);
+      }
+      if (url.endsWith("/api/workflows/wf_saved")) {
+        return jsonResponse(savedWorkflow);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Saved workflows"), { target: { value: "wf_saved" } });
+
+    await screen.findByText("Loaded Customer Intake v3.");
+    expect(screen.getByLabelText("Workflow name")).toHaveValue("Customer Intake");
+  });
+
+  it("starts a new empty workflow after a saved workflow is loaded", async () => {
+    const savedWorkflow = workflowDocument({
+      id: "wf_saved",
+      name: "Customer Intake",
+      version: 3,
+      nodes: [
+        {
+          id: "node_1",
+          type: "manual.trigger",
+          position: { x: 80, y: 80 },
+          config: {},
+        },
+      ],
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "manual.trigger",
+            name: "Manual Trigger",
+            category: "Triggers",
+            description: "Starts a workflow manually.",
+            inputs: {},
+            outputs: {},
+            configSchema: { type: "object", properties: {} },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([{ id: "wf_saved", name: "Customer Intake", version: 3 }]);
+      }
+      if (url.endsWith("/api/workflows/wf_saved")) {
+        return jsonResponse(savedWorkflow);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("Saved workflows"), { target: { value: "wf_saved" } });
+    await screen.findByText("Loaded Customer Intake v3.");
+    expect(within(screen.getByLabelText("Canvas workspace")).getByText("Manual Trigger")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+
+    expect(screen.getByLabelText("Workflow name")).toHaveValue("Untitled Workflow");
+    expect(screen.getByLabelText("Saved workflows")).toHaveValue("");
+    expect(within(screen.getByLabelText("Canvas workspace")).queryByText("Manual Trigger")).not.toBeInTheDocument();
+    expect(screen.getByText("Started a new workflow.")).toBeInTheDocument();
+  });
+
+  it("updates the saved workflow selector after saving", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        return jsonResponse({ ...(JSON.parse(String(init.body)) as object), id: "wf_saved", version: 2 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Workflow name"), { target: { value: "Saved From Editor" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText("Saved version 2.");
+    expect(screen.getByLabelText("Saved workflows")).toHaveValue("wf_saved");
+    expect(screen.getByRole("option", { name: "Saved From Editor v2" })).toBeInTheDocument();
+  });
+
   it("saves the workflow, creates a run, and loads initial run events", async () => {
     const nodeType = {
       id: "manual.trigger",
@@ -69,6 +197,9 @@ describe("App", () => {
       const url = String(input);
       if (url.endsWith("/api/node-types")) {
         return jsonResponse([nodeType]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
       }
       if (url.endsWith("/api/workflows") && init?.method === "POST") {
         return jsonResponse({ ...(JSON.parse(String(init.body)) as object), id: "wf_1", version: 2 });
@@ -139,6 +270,9 @@ describe("App", () => {
       const url = String(input);
       if (url.endsWith("/api/node-types")) {
         return jsonResponse([forEachType, logType]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
       }
       if (url.endsWith("/api/workflows") && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
@@ -218,6 +352,9 @@ describe("App", () => {
       if (url.endsWith("/api/node-types")) {
         return jsonResponse([forEachType, whileType, logType]);
       }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
       if (url.endsWith("/api/workflows") && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as Record<string, unknown>;
         savedWorkflows.push(body);
@@ -269,4 +406,15 @@ function jsonResponse(body: unknown) {
     ok: true,
     json: () => Promise.resolve(body),
   } as Response;
+}
+
+function workflowDocument(overrides: Partial<import("./types").WorkflowDocument> = {}): import("./types").WorkflowDocument {
+  return {
+    id: "wf_1",
+    name: "Untitled Workflow",
+    version: 1,
+    nodes: [],
+    edges: [],
+    ...overrides,
+  };
 }

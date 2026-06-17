@@ -18,9 +18,12 @@ import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
 const RUN_POLL_INTERVAL_MS = 1000;
 const MAX_RUN_POLL_ATTEMPTS = 120;
+type WorkflowSummary = { id: string; name: string; version: number };
 
 export default function App() {
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
   const [workflow, setWorkflow] = useState<WorkflowDocument>(() => createEmptyWorkflow());
   const [editScope, setEditScope] = useState<EditScope>(undefined);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -56,6 +59,28 @@ export default function App() {
       .catch((error: unknown) => {
         if (!cancelled) {
           setMessage(`Node type load failed: ${formatError(error)}`);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    apiClient
+      .listWorkflows()
+      .then((savedWorkflows) => {
+        if (cancelled) {
+          return;
+        }
+        setWorkflows(savedWorkflows);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setMessage(`Workflow list load failed: ${formatError(error)}`);
         }
       });
 
@@ -129,6 +154,44 @@ export default function App() {
     setSelectedNodeId(null);
   }
 
+  function resetRunState() {
+    runTokenRef.current += 1;
+    runInFlightRef.current = false;
+    setRun(null);
+    setRunEvents([]);
+  }
+
+  function startNewWorkflow() {
+    resetRunState();
+    setWorkflow(createEmptyWorkflow());
+    setSelectedWorkflowId("");
+    setEditScope(undefined);
+    setSelectedNodeId(null);
+    setMessage("Started a new workflow.");
+  }
+
+  async function loadWorkflow(workflowId: string) {
+    setSelectedWorkflowId(workflowId);
+    if (!workflowId) {
+      return;
+    }
+
+    resetRunState();
+    setIsBusy(true);
+    try {
+      const loaded = await apiClient.getWorkflow(workflowId);
+      setWorkflow(loaded);
+      setSelectedWorkflowId(loaded.id);
+      setEditScope(undefined);
+      setSelectedNodeId(null);
+      setMessage(`Loaded ${loaded.name} v${loaded.version}.`);
+    } catch (error) {
+      setMessage(`Workflow load failed: ${formatError(error)}`);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function validateWorkflow() {
     setIsBusy(true);
     try {
@@ -152,6 +215,8 @@ export default function App() {
     try {
       const saved = await apiClient.saveWorkflow(workflow);
       setWorkflow(saved);
+      setSelectedWorkflowId(saved.id);
+      upsertWorkflowSummary(saved);
       setMessage(`Saved version ${saved.version}.`);
       return saved;
     } catch (error) {
@@ -182,6 +247,8 @@ export default function App() {
         return;
       }
       setWorkflow(saved);
+      setSelectedWorkflowId(saved.id);
+      upsertWorkflowSummary(saved);
       setMessage(`Saved version ${saved.version}. Starting run...`);
 
       let currentRun = await apiClient.createRun(saved.id);
@@ -237,6 +304,17 @@ export default function App() {
     }
   }
 
+  function upsertWorkflowSummary(saved: WorkflowDocument) {
+    setWorkflows((current) => {
+      const summary = { id: saved.id, name: saved.name, version: saved.version };
+      const existingIndex = current.findIndex((item) => item.id === saved.id);
+      if (existingIndex === -1) {
+        return [...current, summary];
+      }
+      return current.map((item, index) => (index === existingIndex ? summary : item));
+    });
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -256,6 +334,25 @@ export default function App() {
           </nav>
         </div>
         <div className="topbar-actions">
+          <label className="workflow-picker">
+            <span>Workflow</span>
+            <select
+              aria-label="Saved workflows"
+              disabled={isBusy || workflows.length === 0}
+              value={selectedWorkflowId}
+              onChange={(event) => void loadWorkflow(event.currentTarget.value)}
+            >
+              <option value="">Select workflow...</option>
+              {workflows.map((savedWorkflow) => (
+                <option key={savedWorkflow.id} value={savedWorkflow.id}>
+                  {savedWorkflow.name} v{savedWorkflow.version}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button disabled={isBusy} type="button" onClick={startNewWorkflow}>
+            New
+          </button>
           <button disabled={isBusy} type="button" onClick={validateWorkflow}>
             Validate
           </button>
