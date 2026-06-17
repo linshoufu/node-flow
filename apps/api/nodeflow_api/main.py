@@ -76,6 +76,12 @@ def create_app(
         workflow = storage.get_workflow(workflow_id)
         if workflow is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
+        result = validate_workflow(workflow, registry)
+        if not result.valid:
+            raise HTTPException(
+                status_code=422,
+                detail=[issue.model_dump() for issue in result.issues],
+            )
         run = storage.create_run(workflow)
         background_tasks.add_task(executor.execute, run.id, workflow)
         return run
