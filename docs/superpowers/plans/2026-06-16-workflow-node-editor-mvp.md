@@ -79,7 +79,7 @@ Modify these files during implementation:
 - Create: `pnpm-workspace.yaml`
 - Create: `pyproject.toml`
 
-- [ ] **Step 1: Initialize git**
+- [x] **Step 1: Initialize git**
 
 Run:
 
@@ -89,7 +89,7 @@ git init
 
 Expected: output includes `Initialized empty Git repository`.
 
-- [ ] **Step 2: Create root project files**
+- [x] **Step 2: Create root project files**
 
 Create `.gitignore`:
 
@@ -197,7 +197,7 @@ pnpm test
 ```
 ```
 
-- [ ] **Step 3: Verify root files exist**
+- [x] **Step 3: Verify root files exist**
 
 Run:
 
@@ -207,7 +207,7 @@ Get-ChildItem -Force
 
 Expected: output includes `.git`, `.gitignore`, `README.md`, `package.json`, `pnpm-workspace.yaml`, and `pyproject.toml`.
 
-- [ ] **Step 4: Commit tooling**
+- [x] **Step 4: Commit tooling**
 
 Run:
 
@@ -227,7 +227,7 @@ Expected: commit succeeds.
 - Create: `nodeflow_sdk/core.py`
 - Test: `tests/api/test_sdk.py`
 
-- [ ] **Step 1: Write SDK tests first**
+- [x] **Step 1: Write SDK tests first**
 
 Create `tests/api/test_sdk.py`:
 
@@ -277,7 +277,7 @@ async def test_node_context_collects_logs():
     assert ctx.logs[0]["message"] == "running"
 ```
 
-- [ ] **Step 2: Run SDK tests and verify failure**
+- [x] **Step 2: Run SDK tests and verify failure**
 
 Run:
 
@@ -287,7 +287,7 @@ pytest tests/api/test_sdk.py -q
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'nodeflow_sdk'`.
 
-- [ ] **Step 3: Implement SDK exports**
+- [x] **Step 3: Implement SDK exports**
 
 Create `nodeflow_sdk/__init__.py`:
 
@@ -297,7 +297,7 @@ from .core import BaseNode, Input, NodeContext, Output, node
 __all__ = ["BaseNode", "Input", "NodeContext", "Output", "node"]
 ```
 
-- [ ] **Step 4: Implement SDK core**
+- [x] **Step 4: Implement SDK core**
 
 Create `nodeflow_sdk/core.py`:
 
@@ -431,7 +431,7 @@ def node(*, id: str, name: str, category: str, description: str = ""):
     return decorator
 ```
 
-- [ ] **Step 5: Run SDK tests and verify pass**
+- [x] **Step 5: Run SDK tests and verify pass**
 
 Run:
 
@@ -441,7 +441,7 @@ pytest tests/api/test_sdk.py -q
 
 Expected: PASS, `3 passed`.
 
-- [ ] **Step 6: Commit SDK**
+- [x] **Step 6: Commit SDK**
 
 Run:
 
@@ -466,7 +466,7 @@ Expected: commit succeeds.
 - Create: `nodes/builtin/control.py`
 - Test: `tests/api/test_node_registry.py`
 
-- [ ] **Step 1: Write registry tests first**
+- [x] **Step 1: Write registry tests first**
 
 Create `tests/api/test_node_registry.py`:
 
@@ -495,7 +495,7 @@ def test_registry_returns_json_schema_for_config():
     assert node_type.outputs["success"]["description"] == "Response data"
 ```
 
-- [ ] **Step 2: Run registry tests and verify failure**
+- [x] **Step 2: Run registry tests and verify failure**
 
 Run:
 
@@ -505,7 +505,7 @@ pytest tests/api/test_node_registry.py -q
 
 Expected: FAIL with `ModuleNotFoundError` or import error for `node_registry`.
 
-- [ ] **Step 3: Create backend package marker**
+- [x] **Step 3: Create backend package marker**
 
 Create `apps/api/nodeflow_api/__init__.py`:
 
@@ -513,7 +513,7 @@ Create `apps/api/nodeflow_api/__init__.py`:
 __all__ = []
 ```
 
-- [ ] **Step 4: Implement node registry**
+- [x] **Step 4: Implement node registry**
 
 Create `apps/api/nodeflow_api/node_registry.py`:
 
@@ -607,7 +607,7 @@ class NodeRegistry:
         )
 ```
 
-- [ ] **Step 5: Add built-in nodes**
+- [x] **Step 5: Add built-in nodes**
 
 Create `nodes/builtin/manual_trigger.py`:
 
@@ -822,7 +822,7 @@ class WhileNode(BaseNode[WhileConfig]):
         return {"done": inputs}
 ```
 
-- [ ] **Step 6: Run registry tests and verify pass**
+- [x] **Step 6: Run registry tests and verify pass**
 
 Run:
 
@@ -832,7 +832,7 @@ pytest tests/api/test_node_registry.py -q
 
 Expected: PASS, `2 passed`.
 
-- [ ] **Step 7: Commit registry and built-ins**
+- [x] **Step 7: Commit registry and built-ins**
 
 Run:
 
@@ -853,7 +853,7 @@ Expected: commit succeeds.
 - Create: `apps/api/nodeflow_api/main.py`
 - Test: `tests/api/test_api_basics.py`
 
-- [ ] **Step 1: Write API tests first**
+- [x] **Step 1: Write API tests first**
 
 Create `tests/api/test_api_basics.py`:
 
@@ -880,7 +880,7 @@ def test_node_types_endpoint_lists_builtin_nodes():
     assert "http.request" in ids
 ```
 
-- [ ] **Step 2: Run API tests and verify failure**
+- [x] **Step 2: Run API tests and verify failure**
 
 Run:
 
@@ -890,7 +890,7 @@ pytest tests/api/test_api_basics.py -q
 
 Expected: FAIL because `apps.api.nodeflow_api.main` does not define `create_app`.
 
-- [ ] **Step 3: Implement API schemas**
+- [x] **Step 3: Implement API schemas**
 
 Create `apps/api/nodeflow_api/schemas.py`:
 
@@ -976,7 +976,7 @@ class RunEvent(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 ```
 
-- [ ] **Step 4: Implement SQLite storage**
+- [x] **Step 4: Implement SQLite storage**
 
 Create `apps/api/nodeflow_api/storage.py`:
 
@@ -1174,7 +1174,7 @@ class Storage:
         ]
 ```
 
-- [ ] **Step 5: Implement FastAPI app and node endpoint**
+- [x] **Step 5: Implement FastAPI app and node endpoint**
 
 Create `apps/api/nodeflow_api/main.py`:
 
@@ -1236,7 +1236,7 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 6: Run API tests and verify pass**
+- [x] **Step 6: Run API tests and verify pass**
 
 Run:
 
@@ -1246,7 +1246,7 @@ pytest tests/api/test_api_basics.py -q
 
 Expected: PASS, `2 passed`.
 
-- [ ] **Step 7: Commit backend API basics**
+- [x] **Step 7: Commit backend API basics**
 
 Run:
 
@@ -1266,7 +1266,7 @@ Expected: commit succeeds.
 - Modify: `apps/api/nodeflow_api/main.py`
 - Test: `tests/api/test_validation.py`
 
-- [ ] **Step 1: Write validation tests first**
+- [x] **Step 1: Write validation tests first**
 
 Create `tests/api/test_validation.py`:
 
@@ -1323,7 +1323,7 @@ def test_validation_rejects_invalid_edge_handle():
     assert result.issues[0].message == "Unknown source handle: missing"
 ```
 
-- [ ] **Step 2: Run validation tests and verify failure**
+- [x] **Step 2: Run validation tests and verify failure**
 
 Run:
 
@@ -1333,7 +1333,7 @@ pytest tests/api/test_validation.py -q
 
 Expected: FAIL because `validation.py` does not exist.
 
-- [ ] **Step 3: Implement validation**
+- [x] **Step 3: Implement validation**
 
 Create `apps/api/nodeflow_api/validation.py`:
 
@@ -1440,7 +1440,7 @@ def _validate_no_cycles(nodes: list[WorkflowNode], edges: list[WorkflowEdge], is
             return
 ```
 
-- [ ] **Step 4: Add validation endpoint**
+- [x] **Step 4: Add validation endpoint**
 
 Modify `apps/api/nodeflow_api/main.py` to import and expose validation:
 
@@ -1510,7 +1510,7 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 5: Run validation tests and API tests**
+- [x] **Step 5: Run validation tests and API tests**
 
 Run:
 
@@ -1520,7 +1520,7 @@ pytest tests/api/test_validation.py tests/api/test_api_basics.py -q
 
 Expected: PASS, `5 passed`.
 
-- [ ] **Step 6: Commit validation**
+- [x] **Step 6: Commit validation**
 
 Run:
 
@@ -1542,7 +1542,7 @@ Expected: commit succeeds.
 - Test: `tests/api/test_expressions.py`
 - Test: `tests/api/test_executor.py`
 
-- [ ] **Step 1: Write expression tests first**
+- [x] **Step 1: Write expression tests first**
 
 Create `tests/api/test_expressions.py`:
 
@@ -1566,7 +1566,7 @@ def test_resolve_expression_rejects_unknown_path():
         resolve_expression("{{ missing.value }}", {})
 ```
 
-- [ ] **Step 2: Write executor tests first**
+- [x] **Step 2: Write executor tests first**
 
 Create `tests/api/test_executor.py`:
 
@@ -1638,7 +1638,7 @@ async def test_executor_routes_if_false_branch():
     assert any(event.node_id == "false_log" and event.type == "node_succeeded" for event in events)
 ```
 
-- [ ] **Step 3: Run executor tests and verify failure**
+- [x] **Step 3: Run executor tests and verify failure**
 
 Run:
 
@@ -1648,7 +1648,7 @@ pytest tests/api/test_expressions.py tests/api/test_executor.py -q
 
 Expected: FAIL because `expressions.py` and `executor.py` do not exist.
 
-- [ ] **Step 4: Implement expression resolver**
+- [x] **Step 4: Implement expression resolver**
 
 Create `apps/api/nodeflow_api/expressions.py`:
 
@@ -1687,7 +1687,7 @@ def resolve_path(path: str, context: dict[str, Any]) -> Any:
     return current
 ```
 
-- [ ] **Step 5: Implement executor**
+- [x] **Step 5: Implement executor**
 
 Create `apps/api/nodeflow_api/executor.py`:
 
@@ -1815,7 +1815,7 @@ class WorkflowExecutor:
         )
 ```
 
-- [ ] **Step 6: Add run endpoints**
+- [x] **Step 6: Add run endpoints**
 
 Modify `apps/api/nodeflow_api/main.py`:
 
@@ -1911,7 +1911,7 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 7: Run executor tests and verify pass**
+- [x] **Step 7: Run executor tests and verify pass**
 
 Run:
 
@@ -1921,7 +1921,7 @@ pytest tests/api/test_expressions.py tests/api/test_executor.py -q
 
 Expected: PASS, `5 passed`.
 
-- [ ] **Step 8: Run all API tests**
+- [x] **Step 8: Run all API tests**
 
 Run:
 
@@ -1931,7 +1931,7 @@ pytest tests/api -q
 
 Expected: all API tests pass.
 
-- [ ] **Step 9: Commit executor MVP**
+- [x] **Step 9: Commit executor MVP**
 
 Run:
 
@@ -1950,7 +1950,7 @@ Expected: commit succeeds.
 - Modify: `apps/api/nodeflow_api/executor.py`
 - Test: `tests/api/test_loops.py`
 
-- [ ] **Step 1: Write loop tests first**
+- [x] **Step 1: Write loop tests first**
 
 Create `tests/api/test_loops.py`:
 
@@ -2027,7 +2027,7 @@ async def test_while_stops_at_max_reached_handle():
     assert any(event.node_id == "max_log" and event.type == "node_succeeded" for event in events)
 ```
 
-- [ ] **Step 2: Run loop tests and verify failure**
+- [x] **Step 2: Run loop tests and verify failure**
 
 Run:
 
@@ -2037,7 +2037,7 @@ pytest tests/api/test_loops.py -q
 
 Expected: FAIL because `control.foreach` and `control.while` still use normal node execution.
 
-- [ ] **Step 3: Add loop execution to executor**
+- [x] **Step 3: Add loop execution to executor**
 
 Modify `apps/api/nodeflow_api/executor.py` by adding this import at the top:
 
@@ -2139,7 +2139,7 @@ Add these methods below `_execute_node`:
             return {"max_reached": {"iterations": max_iterations}}
 ```
 
-- [ ] **Step 4: Fix while test context**
+- [x] **Step 4: Fix while test context**
 
 Modify `tests/api/test_loops.py` so the while workflow begins with a trigger payload:
 
@@ -2170,7 +2170,7 @@ async def test_while_stops_at_max_reached_handle():
     assert any(event.node_id == "max_log" and event.type == "node_succeeded" for event in events)
 ```
 
-- [ ] **Step 5: Run loop tests and verify pass**
+- [x] **Step 5: Run loop tests and verify pass**
 
 Run:
 
@@ -2180,7 +2180,7 @@ pytest tests/api/test_loops.py -q
 
 Expected: PASS, `2 passed`.
 
-- [ ] **Step 6: Run all API tests**
+- [x] **Step 6: Run all API tests**
 
 Run:
 
@@ -2190,7 +2190,7 @@ pytest tests/api -q
 
 Expected: all API tests pass.
 
-- [ ] **Step 7: Commit loops**
+- [x] **Step 7: Commit loops**
 
 Run:
 
@@ -2215,7 +2215,7 @@ Expected: commit succeeds.
 - Create: `apps/web/src/App.test.tsx`
 - Create: `apps/web/src/styles.css`
 
-- [ ] **Step 1: Create frontend package files**
+- [x] **Step 1: Create frontend package files**
 
 Create `apps/web/package.json`:
 
@@ -2306,7 +2306,7 @@ Create `apps/web/tsconfig.json`:
 }
 ```
 
-- [ ] **Step 2: Create React shell**
+- [x] **Step 2: Create React shell**
 
 Create `apps/web/src/main.tsx`:
 
@@ -2428,7 +2428,7 @@ describe("App", () => {
 });
 ```
 
-- [ ] **Step 3: Install frontend dependencies**
+- [x] **Step 3: Install frontend dependencies**
 
 Run:
 
@@ -2438,7 +2438,7 @@ pnpm install
 
 Expected: dependencies install and `pnpm-lock.yaml` is created.
 
-- [ ] **Step 4: Run frontend test and verify initial matcher issue**
+- [x] **Step 4: Run frontend test and verify initial matcher issue**
 
 Run:
 
@@ -2448,7 +2448,7 @@ pnpm test:web
 
 Expected: FAIL because `toBeInTheDocument` is not registered.
 
-- [ ] **Step 5: Register jest-dom matchers**
+- [x] **Step 5: Register jest-dom matchers**
 
 Create `apps/web/src/test-setup.ts`:
 
@@ -2471,7 +2471,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 6: Run frontend test and build**
+- [x] **Step 6: Run frontend test and build**
 
 Run:
 
@@ -2482,7 +2482,7 @@ pnpm build:web
 
 Expected: both commands pass.
 
-- [ ] **Step 7: Commit frontend skeleton**
+- [x] **Step 7: Commit frontend skeleton**
 
 Run:
 
@@ -2502,7 +2502,7 @@ Expected: commit succeeds.
 - Create: `apps/web/src/api/client.ts`
 - Test: `apps/web/src/api/client.test.ts`
 
-- [ ] **Step 1: Add frontend types**
+- [x] **Step 1: Add frontend types**
 
 Create `apps/web/src/types.ts`:
 
@@ -2590,7 +2590,7 @@ export type RunEvent = {
 };
 ```
 
-- [ ] **Step 2: Write API client tests first**
+- [x] **Step 2: Write API client tests first**
 
 Create `apps/web/src/api/client.test.ts`:
 
@@ -2622,7 +2622,7 @@ describe("ApiClient", () => {
 });
 ```
 
-- [ ] **Step 3: Run API client tests and verify failure**
+- [x] **Step 3: Run API client tests and verify failure**
 
 Run:
 
@@ -2632,7 +2632,7 @@ pnpm test:web
 
 Expected: FAIL because `client.ts` does not exist.
 
-- [ ] **Step 4: Implement API client**
+- [x] **Step 4: Implement API client**
 
 Create `apps/web/src/api/client.ts`:
 
@@ -2697,7 +2697,7 @@ export class ApiClient {
 export const apiClient = new ApiClient();
 ```
 
-- [ ] **Step 5: Run frontend tests and verify pass**
+- [x] **Step 5: Run frontend tests and verify pass**
 
 Run:
 
@@ -2707,7 +2707,7 @@ pnpm test:web
 
 Expected: all frontend tests pass.
 
-- [ ] **Step 6: Commit API client**
+- [x] **Step 6: Commit API client**
 
 Run:
 
@@ -2732,7 +2732,7 @@ Expected: commit succeeds.
 - Modify: `apps/web/src/styles.css`
 - Test: `apps/web/src/lib/workflow.test.ts`
 
-- [ ] **Step 1: Write workflow helper tests first**
+- [x] **Step 1: Write workflow helper tests first**
 
 Create `apps/web/src/lib/workflow.test.ts`:
 
@@ -2772,7 +2772,7 @@ describe("workflow helpers", () => {
 });
 ```
 
-- [ ] **Step 2: Run helper tests and verify failure**
+- [x] **Step 2: Run helper tests and verify failure**
 
 Run:
 
@@ -2782,7 +2782,7 @@ pnpm test:web
 
 Expected: FAIL because `workflow.ts` does not exist.
 
-- [ ] **Step 3: Implement workflow helpers**
+- [x] **Step 3: Implement workflow helpers**
 
 Create `apps/web/src/lib/workflow.ts`:
 
@@ -2828,7 +2828,7 @@ export function defaultsFromSchema(schema: NodeType["configSchema"]): Record<str
 }
 ```
 
-- [ ] **Step 4: Implement palette, canvas, config panel, and run panel**
+- [x] **Step 4: Implement palette, canvas, config panel, and run panel**
 
 Create `apps/web/src/components/NodePalette.tsx`:
 
@@ -3079,7 +3079,7 @@ export function RunPanel({ run, events }: { run?: RunRecord; events: RunEvent[] 
 }
 ```
 
-- [ ] **Step 5: Wire editor into App**
+- [x] **Step 5: Wire editor into App**
 
 Modify `apps/web/src/App.tsx`:
 
@@ -3176,7 +3176,7 @@ export function App() {
 }
 ```
 
-- [ ] **Step 6: Extend CSS for editor**
+- [x] **Step 6: Extend CSS for editor**
 
 Append to `apps/web/src/styles.css`:
 
@@ -3332,7 +3332,7 @@ h3 {
 }
 ```
 
-- [ ] **Step 7: Run frontend tests and build**
+- [x] **Step 7: Run frontend tests and build**
 
 Run:
 
@@ -3343,7 +3343,7 @@ pnpm build:web
 
 Expected: both commands pass.
 
-- [ ] **Step 8: Commit editor**
+- [x] **Step 8: Commit editor**
 
 Run:
 
@@ -3364,7 +3364,7 @@ Expected: commit succeeds.
 - Modify: `apps/web/src/styles.css`
 - Test: `apps/web/src/lib/workflow.test.ts`
 
-- [ ] **Step 1: Add subflow helper test**
+- [x] **Step 1: Add subflow helper test**
 
 Append to `apps/web/src/lib/workflow.test.ts`:
 
@@ -3406,7 +3406,7 @@ describe("subflow helpers", () => {
 });
 ```
 
-- [ ] **Step 2: Run frontend tests and verify failure**
+- [x] **Step 2: Run frontend tests and verify failure**
 
 Run:
 
@@ -3416,7 +3416,7 @@ pnpm test:web
 
 Expected: FAIL because `getEditableWorkflow` and `updateEditableWorkflow` do not exist.
 
-- [ ] **Step 3: Implement subflow helpers**
+- [x] **Step 3: Implement subflow helpers**
 
 Append to `apps/web/src/lib/workflow.ts`:
 
@@ -3456,7 +3456,7 @@ export function updateEditableWorkflow(
 }
 ```
 
-- [ ] **Step 4: Add subflow controls to config panel**
+- [x] **Step 4: Add subflow controls to config panel**
 
 Modify `apps/web/src/components/ConfigPanel.tsx` props and footer:
 
@@ -3479,7 +3479,7 @@ Inside the selected-node return block, after schema fields, add:
       )}
 ```
 
-- [ ] **Step 5: Wire edit scope into App**
+- [x] **Step 5: Wire edit scope into App**
 
 Modify `apps/web/src/App.tsx` to import helpers:
 
@@ -3529,7 +3529,7 @@ Pass `onOpenSubflow` into `ConfigPanel`:
         />
 ```
 
-- [ ] **Step 6: Add subflow CSS**
+- [x] **Step 6: Add subflow CSS**
 
 Append to `apps/web/src/styles.css`:
 
@@ -3556,7 +3556,7 @@ Append to `apps/web/src/styles.css`:
 }
 ```
 
-- [ ] **Step 7: Run frontend tests and build**
+- [x] **Step 7: Run frontend tests and build**
 
 Run:
 
@@ -3567,7 +3567,7 @@ pnpm build:web
 
 Expected: both commands pass.
 
-- [ ] **Step 8: Commit subflow editing**
+- [x] **Step 8: Commit subflow editing**
 
 Run:
 
@@ -3586,7 +3586,7 @@ Expected: commit succeeds.
 - Create: `tests/api/test_api_workflow_run.py`
 - Modify: `README.md`
 
-- [ ] **Step 1: Write API workflow run smoke test**
+- [x] **Step 1: Write API workflow run smoke test**
 
 Create `tests/api/test_api_workflow_run.py`:
 
@@ -3627,7 +3627,7 @@ def test_save_and_run_workflow_through_api():
     assert any(event["node_id"] == "log" and event["type"] == "node_succeeded" for event in events)
 ```
 
-- [ ] **Step 2: Run smoke test and fix background task behavior if needed**
+- [x] **Step 2: Run smoke test and fix background task behavior if needed**
 
 Run:
 
@@ -3660,7 +3660,7 @@ with:
         background_tasks.add_task(executor.execute, run.id, workflow)
 ```
 
-- [ ] **Step 3: Update README with MVP workflow**
+- [x] **Step 3: Update README with MVP workflow**
 
 Append to `README.md`:
 
@@ -3679,7 +3679,7 @@ Append to `README.md`:
 Python node files live under `nodes/`. A node becomes available in the editor when it is registered with `@node(...)` and discovered by the API.
 ```
 
-- [ ] **Step 4: Run full verification**
+- [x] **Step 4: Run full verification**
 
 Run:
 
@@ -3691,7 +3691,7 @@ pnpm build:web
 
 Expected: all commands pass.
 
-- [ ] **Step 5: Check working tree**
+- [x] **Step 5: Check working tree**
 
 Run:
 
@@ -3701,7 +3701,7 @@ git status --short
 
 Expected: only planned changes are shown.
 
-- [ ] **Step 6: Commit smoke verification**
+- [x] **Step 6: Commit smoke verification**
 
 Run:
 
@@ -3713,6 +3713,34 @@ git commit -m "test: add workflow run smoke coverage"
 Expected: commit succeeds.
 
 ---
+
+## Phase 4 Completion Record
+
+Date: 2026-06-18
+
+Completed after the MVP baseline:
+
+- Added cooperative run cancellation with `POST /api/runs/{run_id}/cancel`, cancellation request persistence, executor cancellation checks, and `cancelled` run status handling.
+- Added workflow-level timeout through `WorkflowDocument.settings.timeout_seconds`, defaulting to 600 seconds.
+- Added complete frontend node runtime states: `pending`, `running`, `succeeded`, `failed`, `skipped`, and `cancelled`.
+- Added palette-to-canvas drag/drop while preserving click-to-add.
+- Added Chinese cancel controls, runtime state badges, run event labels, and runtime detail labels.
+- Added basic `{{ ... }}` expression syntax validation with field-path issue reporting.
+- Updated README with Chinese usage notes for drag/drop, cancellation, run details, CSV-driven loops, assertions, and report-writing.
+
+Verification completed:
+
+- `pytest tests/api -q`
+- `pnpm --filter @node-flow/web test`
+- `pnpm build:web`
+
+Known exclusions still intentional:
+
+- No online Python editing.
+- No multi-user authentication or permissions.
+- No distributed worker or external queue.
+- No production-grade secret management.
+- No publish/rollback UI.
 
 ## Self-Review
 
