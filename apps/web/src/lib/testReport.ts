@@ -73,11 +73,38 @@ function buildCaseReport(event: RunEvent, index: number): TestCaseReport | undef
 }
 
 function isRecordResultEvent(event: RunEvent): boolean {
-  return readNodeType(event) === "test.record_result";
+  const nodeType = readNodeType(event);
+  if (nodeType === "test.record_result") {
+    return true;
+  }
+
+  if (nodeType) {
+    return false;
+  }
+
+  const result = readResult(event.payload);
+  if (!isRecord(result)) {
+    return false;
+  }
+
+  const nodeId = event.node_id ?? "";
+  const nodeIdLooksLikeRecordResult = nodeId === "record_result";
+  const nodeIdLooksLikeRecord = nodeId.toLowerCase().includes("record");
+
+  return nodeIdLooksLikeRecordResult || (nodeIdLooksLikeRecord && hasTestCaseField(result));
 }
 
 function isSummaryEvent(event: RunEvent): boolean {
-  return readNodeType(event) === "test.summary";
+  const nodeType = readNodeType(event);
+  if (nodeType === "test.summary") {
+    return true;
+  }
+
+  if (nodeType) {
+    return false;
+  }
+
+  return readSummary(event.payload) !== undefined;
 }
 
 function readNodeType(event: RunEvent): string | undefined {
@@ -99,6 +126,7 @@ function readResult(payload: Record<string, unknown>): unknown {
   return (
     success?.result ??
     success?.case ??
+    (success && !isRecord(success.summary) ? success : undefined) ??
     outputs?.result ??
     outputs?.case ??
     payload.result ??
@@ -112,6 +140,10 @@ function readSummary(payload: Record<string, unknown>): TestReportSummary | unde
   const summary = success?.summary ?? outputs?.summary ?? payload.summary;
 
   if (!isRecord(summary)) {
+    return undefined;
+  }
+
+  if (!hasSummaryField(summary)) {
     return undefined;
   }
 
@@ -171,6 +203,21 @@ function readNumber(value: unknown): number | undefined {
 function readNonNegativeNumber(value: unknown): number {
   const number = readNumber(value);
   return number !== undefined && number >= 0 ? number : 0;
+}
+
+function hasTestCaseField(value: Record<string, unknown>): boolean {
+  return (
+    "name" in value ||
+    "status" in value ||
+    "passed" in value ||
+    "message" in value ||
+    "duration_ms" in value ||
+    "durationMs" in value
+  );
+}
+
+function hasSummaryField(value: Record<string, unknown>): boolean {
+  return "total" in value || "passed" in value || "failed" in value || "unknown" in value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

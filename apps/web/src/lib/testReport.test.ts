@@ -111,6 +111,102 @@ describe("buildTestReport", () => {
     expect(report.summary).toEqual({ total: 2, passed: 1, failed: 1, unknown: 0 });
   });
 
+  it("extracts a real record_result event without node_type when success is the result object", () => {
+    const report = buildTestReport([
+      runEvent({
+        type: "node_succeeded",
+        node_id: "record_result",
+        payload: {
+          outputs: {
+            success: {
+              name: "real shape",
+              status: "failed",
+              message: "Mismatch",
+              duration_ms: 14,
+            },
+          },
+          duration_ms: 15,
+        },
+      }),
+      runEvent({
+        type: "node_succeeded",
+        node_id: "record-1",
+        payload: {
+          outputs: {
+            success: {
+              name: "hyphen record",
+              passed: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(report.summary).toEqual({ total: 2, passed: 1, failed: 1, unknown: 0 });
+    expect(report.cases).toEqual([
+      {
+        id: "record_result",
+        name: "real shape",
+        status: "failed",
+        message: "Mismatch",
+        durationMs: 14,
+        sourceNodeId: "record_result",
+      },
+      {
+        id: "record-1",
+        name: "hyphen record",
+        status: "passed",
+        sourceNodeId: "record-1",
+      },
+    ]);
+  });
+
+  it("uses summary totals without node_type when summary output exists", () => {
+    const report = buildTestReport([
+      runEvent({
+        type: "node_succeeded",
+        node_id: "summary",
+        payload: {
+          outputs: {
+            success: {
+              summary: { total: 4, passed: 2, failed: 1, unknown: 1 },
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(report).toEqual({
+      summary: { total: 4, passed: 2, failed: 1, unknown: 1 },
+      cases: [],
+      hasCases: false,
+    });
+  });
+
+  it("does not treat ordinary node outputs as test cases", () => {
+    const report = buildTestReport([
+      runEvent({
+        type: "node_succeeded",
+        node_id: "request",
+        payload: {
+          outputs: {
+            success: {
+              response: { ok: true },
+              status_code: 200,
+              url: "https://example.test",
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(report).toEqual({
+      summary: { total: 0, passed: 0, failed: 0, unknown: 0 },
+      cases: [],
+      hasCases: false,
+    });
+  });
+
   it("does not mutate input events", () => {
     const events = [
       recordResultEvent("record-1", {
