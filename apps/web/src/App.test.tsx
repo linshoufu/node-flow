@@ -478,6 +478,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "运行" }));
 
     await screen.findByText("运行 run_1 成功。");
+    fireEvent.click(screen.getByRole("tab", { name: "运行事件" }));
     expect(screen.getByText("工作流完成")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
     expect(fetchMock).toHaveBeenCalledWith(
@@ -631,6 +632,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "运行" }));
 
     await screen.findByText("运行 run_1 成功。");
+    fireEvent.click(screen.getByRole("tab", { name: "运行事件" }));
     fireEvent.click(screen.getByRole("button", { name: /节点成功/ }));
     fireEvent.click(screen.getByRole("tab", { name: "运行详情" }));
 

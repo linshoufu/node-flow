@@ -31,8 +31,8 @@ export function TestReportView({ events, report }: TestReportViewProps) {
 
       {resolvedReport.cases.length > 0 ? (
         <div className="test-case-list" aria-label="测试用例明细">
-          {resolvedReport.cases.map((testCase) => (
-            <TestCaseRow key={testCase.id} testCase={testCase} />
+          {resolvedReport.cases.map((testCase, index) => (
+            <TestCaseRow key={`${testCase.id}-${index}`} testCase={testCase} />
           ))}
         </div>
       ) : (

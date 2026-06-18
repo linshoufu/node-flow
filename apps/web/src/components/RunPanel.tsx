@@ -15,6 +15,8 @@ type RunPanelTab = "report" | "events";
 export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
   const [activeTab, setActiveTab] = useState<RunPanelTab>("report");
   const report = useMemo(() => buildTestReport(events), [events]);
+  const activeTabId = activeTab === "report" ? "run-panel-report-tab" : "run-panel-events-tab";
+  const activePanelId = activeTab === "report" ? "run-panel-report-panel" : "run-panel-events-panel";
 
   useEffect(() => {
     setActiveTab("report");
@@ -34,7 +36,9 @@ export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
 
       <div className="run-panel-tabs" role="tablist" aria-label="运行面板视图">
         <button
+          aria-controls="run-panel-report-panel"
           aria-selected={activeTab === "report"}
+          id="run-panel-report-tab"
           role="tab"
           type="button"
           onClick={() => setActiveTab("report")}
@@ -42,7 +46,9 @@ export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
           测试报告
         </button>
         <button
+          aria-controls="run-panel-events-panel"
           aria-selected={activeTab === "events"}
+          id="run-panel-events-tab"
           role="tab"
           type="button"
           onClick={() => setActiveTab("events")}
@@ -51,7 +57,7 @@ export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
         </button>
       </div>
 
-      <div className="run-panel-content">
+      <div aria-labelledby={activeTabId} className="run-panel-content" id={activePanelId} role="tabpanel">
         {activeTab === "report" ? <TestReportView report={report} /> : <RunEventList events={events} onSelectNode={onSelectNode} />}
       </div>
     </section>

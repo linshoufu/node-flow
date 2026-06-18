@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RunEvent } from "../types";
+import type { RunEvent, RunRecord } from "../types";
 import { RunPanel } from "./RunPanel";
 
 describe("RunPanel", () => {
@@ -11,7 +11,12 @@ describe("RunPanel", () => {
   it("shows the test report tab by default", () => {
     render(<RunPanel events={[recordResultEvent("record-login", { name: "登录接口", status: "passed" })]} run={null} />);
 
-    expect(screen.getByRole("tab", { name: "测试报告" })).toHaveAttribute("aria-selected", "true");
+    const reportTab = screen.getByRole("tab", { name: "测试报告" });
+    const tabPanel = screen.getByRole("tabpanel");
+
+    expect(reportTab).toHaveAttribute("aria-selected", "true");
+    expect(reportTab).toHaveAttribute("aria-controls", tabPanel.id);
+    expect(tabPanel).toHaveAttribute("aria-labelledby", reportTab.id);
     expect(screen.getByText("登录接口")).toBeInTheDocument();
     expect(screen.queryByText("record-login")).not.toBeInTheDocument();
   });
@@ -49,6 +54,39 @@ describe("RunPanel", () => {
     expect(screen.getByText("资料接口")).toBeInTheDocument();
     expect(screen.queryByText("登录接口")).not.toBeInTheDocument();
   });
+
+  it("keeps the run events tab selected when events update for the same run", () => {
+    const run = runRecord({ id: "run_1" });
+    const { rerender } = render(
+      <RunPanel events={[runEvent({ type: "node_started", node_id: "request" })]} run={run} />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行事件" }));
+    expect(screen.getByRole("tab", { name: "运行事件" })).toHaveAttribute("aria-selected", "true");
+
+    rerender(<RunPanel events={[runEvent({ type: "node_succeeded", node_id: "request" })]} run={run} />);
+
+    expect(screen.getByRole("tab", { name: "运行事件" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("request")).toBeInTheDocument();
+  });
+
+  it("resets to the test report tab when the run id changes", () => {
+    const { rerender } = render(
+      <RunPanel events={[runEvent({ type: "node_started", node_id: "request" })]} run={runRecord({ id: "run_1" })} />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行事件" }));
+
+    rerender(
+      <RunPanel
+        events={[recordResultEvent("record-profile", { name: "资料接口", status: "passed" })]}
+        run={runRecord({ id: "run_2" })}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: "测试报告" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("资料接口")).toBeInTheDocument();
+  });
 });
 
 function recordResultEvent(nodeId: string, result: Record<string, unknown>): RunEvent {
@@ -72,6 +110,20 @@ function runEvent(overrides: Partial<RunEvent>): RunEvent {
     node_id: null,
     scope: [],
     payload: {},
+    ...overrides,
+  };
+}
+
+function runRecord(overrides: Partial<RunRecord>): RunRecord {
+  return {
+    id: "run_1",
+    workflow_id: "wf_1",
+    workflow_version: 1,
+    status: "succeeded",
+    created_at: "2026-06-18T00:00:00Z",
+    started_at: "2026-06-18T00:00:01Z",
+    completed_at: "2026-06-18T00:00:02Z",
+    error: null,
     ...overrides,
   };
 }
