@@ -31,7 +31,7 @@ const API_TESTING_TEMPLATE_SOURCE: WorkflowTemplate[] = [
         timeout_seconds: 600,
       },
       nodes: [
-        node("start", "control.start", 0, 0),
+        node("start", "manual.trigger", 0, 0),
         node("request", "http.request", 240, 0, {
           method: "GET",
           url: "https://api.example.com/health",
@@ -72,7 +72,7 @@ const API_TESTING_TEMPLATE_SOURCE: WorkflowTemplate[] = [
         timeout_seconds: 600,
       },
       nodes: [
-        node("start", "control.start", 0, 0),
+        node("start", "manual.trigger", 0, 0),
         node("csv", "data.csv_read", 240, 0, {
           path: "examples/api-cases.csv",
           delimiter: ",",

@@ -35,6 +35,7 @@ describe("workflow templates", () => {
       expect(template.nodeCount).toBe(countNodes(template.workflow.nodes));
       expect(template.tags.length).toBeGreaterThan(0);
       expect(templateAvailability(template)).toEqual({ available: true });
+      expect(template.workflow.nodes.find((node) => node.id === "start")?.type).toBe("manual.trigger");
     }
   });
 
@@ -69,7 +70,7 @@ describe("workflow templates", () => {
       "write_report",
     ]);
     expect(workflow.nodes.map((node) => node.type)).toEqual([
-      "control.start",
+      "manual.trigger",
       "http.request",
       "assert.status_code",
       "test.record_result",
