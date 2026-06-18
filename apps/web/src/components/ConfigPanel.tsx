@@ -12,11 +12,19 @@ type ConfigPanelProps = {
 
 const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
 
+const CONFIG_GUIDANCE_BY_NODE_TYPE: Record<string, string> = {
+  "http.request": "填写请求方法和 URL。",
+  "data.csv_read": "填写 CSV 文件路径，确认分隔符和表头设置。",
+  "assert.status_code": "填写期望状态码。",
+  "test.write_report": "填写测试报告输出路径。",
+};
+
 export function ConfigPanel({ node, nodeType, runtimeState, onConfigChange, onOpenSubflow }: ConfigPanelProps) {
   const [activeTab, setActiveTab] = useState<"config" | "runtime">("config");
   const properties = nodeType?.configSchema.properties ?? {};
   const entries = Object.entries(properties);
   const canOpenBody = Boolean(node && nodeType && LOOP_NODE_TYPES.has(nodeType.id) && onOpenSubflow);
+  const configGuidance = nodeType ? CONFIG_GUIDANCE_BY_NODE_TYPE[nodeType.id] : undefined;
   const hasRuntimeDetails = Boolean(runtimeState && runtimeState.status !== "pending");
 
   useEffect(() => {
@@ -62,6 +70,8 @@ export function ConfigPanel({ node, nodeType, runtimeState, onConfigChange, onOp
               </button>
             </div>
           ) : null}
+
+          {activeTab === "config" && configGuidance ? <p className="config-guidance">{configGuidance}</p> : null}
 
           {activeTab === "runtime" && runtimeState ? (
             <RuntimeDetails runtimeState={runtimeState} />

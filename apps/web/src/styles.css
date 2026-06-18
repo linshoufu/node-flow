@@ -605,6 +605,17 @@ button:disabled {
   padding: 12px;
 }
 
+.config-guidance {
+  margin: 0;
+  border-bottom: 1px solid #e7ebf0;
+  background: #f4f8fb;
+  color: #445266;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .subflow-actions {
   border-top: 1px solid #e7ebf0;
   padding: 10px 12px 12px;

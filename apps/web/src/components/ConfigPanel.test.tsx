@@ -112,6 +112,41 @@ const forEachNode: WorkflowNode = {
   },
 };
 
+const guidanceNodeTypes = [
+  ["http.request", "填写请求方法和 URL。"],
+  ["data.csv_read", "填写 CSV 文件路径，确认分隔符和表头设置。"],
+  ["assert.status_code", "填写期望状态码。"],
+  ["test.write_report", "填写测试报告输出路径。"],
+] as const;
+
+function createNodeType(id: string): NodeType {
+  return {
+    ...manualTriggerType,
+    id,
+    name: id,
+    configSchema: {
+      type: "object",
+      properties: {
+        value: {
+          title: "Value",
+          type: "string",
+        },
+      },
+    },
+  };
+}
+
+function createNode(type: string): WorkflowNode {
+  return {
+    ...manualTriggerNode,
+    id: `node_${type.replaceAll(".", "_")}`,
+    type,
+    config: {
+      value: "",
+    },
+  };
+}
+
 describe("ConfigPanel", () => {
   afterEach(() => {
     cleanup();
@@ -192,6 +227,20 @@ describe("ConfigPanel", () => {
     form.dispatchEvent(submitEvent);
 
     expect(submitEvent.defaultPrevented).toBe(true);
+  });
+
+  it.each(guidanceNodeTypes)("shows Chinese guidance for %s nodes", (nodeTypeId, guidance) => {
+    render(<ConfigPanel node={createNode(nodeTypeId)} nodeType={createNodeType(nodeTypeId)} onConfigChange={vi.fn()} />);
+
+    expect(screen.getByText(guidance)).toBeInTheDocument();
+  });
+
+  it("does not show specific testing guidance for unknown nodes", () => {
+    render(<ConfigPanel node={createNode("custom.unknown")} nodeType={createNodeType("custom.unknown")} onConfigChange={vi.fn()} />);
+
+    for (const [, guidance] of guidanceNodeTypes) {
+      expect(screen.queryByText(guidance)).not.toBeInTheDocument();
+    }
   });
 
   it.each(["control.foreach", "control.while"])("opens the body subflow for %s nodes", (nodeTypeId) => {
