@@ -5,9 +5,21 @@ import {
   templateAvailability,
   type WorkflowTemplate,
 } from "./workflowTemplates";
+import type { WorkflowNode } from "../types";
 
 function edgePairs(workflow: ReturnType<typeof createWorkflowFromTemplate>): string[] {
   return workflow.edges.map((edge) => `${edge.source}->${edge.target}`);
+}
+
+function countNodes(nodes: WorkflowNode[]): number {
+  return nodes.reduce((total, node) => {
+    const subflowNodeCount = Object.values(node.subflows ?? {}).reduce(
+      (subflowTotal, subflow) => subflowTotal + countNodes(subflow.nodes),
+      0
+    );
+
+    return total + 1 + subflowNodeCount;
+  }, 0);
 }
 
 describe("workflow templates", () => {
@@ -20,10 +32,22 @@ describe("workflow templates", () => {
     for (const template of API_TESTING_TEMPLATES) {
       expect(template.name).toEqual(expect.any(String));
       expect(template.description).toEqual(expect.any(String));
-      expect(template.nodeCount).toBeGreaterThan(0);
+      expect(template.nodeCount).toBe(countNodes(template.workflow.nodes));
       expect(template.tags.length).toBeGreaterThan(0);
       expect(templateAvailability(template)).toEqual({ available: true });
     }
+  });
+
+  it("exports frozen template definitions so callers cannot pollute the source workflows", () => {
+    const template = API_TESTING_TEMPLATES[0];
+    const requestNode = template.workflow.nodes.find((node) => node.id === "request");
+
+    expect(Object.isFrozen(API_TESTING_TEMPLATES)).toBe(true);
+    expect(Object.isFrozen(template)).toBe(true);
+    expect(Object.isFrozen(template.tags)).toBe(true);
+    expect(Object.isFrozen(template.workflow)).toBe(true);
+    expect(Object.isFrozen(template.workflow.nodes)).toBe(true);
+    expect(Object.isFrozen(requestNode?.config)).toBe(true);
   });
 
   it("throws a clear error for an unknown template id", () => {

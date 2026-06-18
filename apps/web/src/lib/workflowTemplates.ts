@@ -10,18 +10,17 @@ export type WorkflowTemplate = {
   name: string;
   description: string;
   nodeCount: number;
-  tags: string[];
+  tags: readonly string[];
   available: boolean;
   unavailableReason?: string;
   workflow: WorkflowDocument;
 };
 
-export const API_TESTING_TEMPLATES: WorkflowTemplate[] = [
-  {
+const API_TESTING_TEMPLATE_SOURCE: WorkflowTemplate[] = [
+  createTemplate({
     id: "single-api-status-code",
     name: "单接口状态码断言",
     description: "发送一次 HTTP 请求，并断言响应状态码为 200，随后记录结果并写入报告。",
-    nodeCount: 6,
     tags: ["API", "HTTP", "状态码", "报告"],
     available: true,
     workflow: {
@@ -58,12 +57,11 @@ export const API_TESTING_TEMPLATES: WorkflowTemplate[] = [
         edge("summary_write_report", "summary", "success", "write_report", "input"),
       ],
     },
-  },
-  {
+  }),
+  createTemplate({
     id: "csv-parameterized-api",
     name: "CSV 参数化接口测试",
     description: "读取 CSV 用例列表，逐行请求对应 URL，断言状态码为 200 并汇总报告。",
-    nodeCount: 8,
     tags: ["API", "CSV", "参数化", "循环"],
     available: true,
     workflow: {
@@ -123,8 +121,10 @@ export const API_TESTING_TEMPLATES: WorkflowTemplate[] = [
         edge("summary_write_report", "summary", "success", "write_report", "input"),
       ],
     },
-  },
+  }),
 ];
+
+export const API_TESTING_TEMPLATES: readonly WorkflowTemplate[] = deepFreeze(API_TESTING_TEMPLATE_SOURCE);
 
 export function templateAvailability(template: WorkflowTemplate): TemplateAvailability {
   if (template.available) {
@@ -148,6 +148,24 @@ export function createWorkflowFromTemplate(templateId: string): WorkflowDocument
     ...deepClone(template.workflow),
     id: workflowId(template.id),
   };
+}
+
+function createTemplate(template: Omit<WorkflowTemplate, "nodeCount">): WorkflowTemplate {
+  return {
+    ...template,
+    nodeCount: countWorkflowNodes(template.workflow.nodes),
+  };
+}
+
+function countWorkflowNodes(nodes: WorkflowNode[]): number {
+  return nodes.reduce((total, node) => {
+    const subflowNodeCount = Object.values(node.subflows ?? {}).reduce(
+      (subflowTotal, subflow) => subflowTotal + countWorkflowNodes(subflow.nodes),
+      0
+    );
+
+    return total + 1 + subflowNodeCount;
+  }, 0);
 }
 
 function node(id: string, type: string, x: number, y: number, config: Record<string, unknown> = {}): WorkflowNode {
@@ -177,6 +195,22 @@ function edge(
 
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (!isObject(value) || Object.isFrozen(value)) {
+    return value;
+  }
+
+  for (const child of Object.values(value)) {
+    deepFreeze(child);
+  }
+
+  return Object.freeze(value);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function workflowId(templateId: string): string {
