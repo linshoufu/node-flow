@@ -133,3 +133,12 @@ def test_create_run_revalidates_saved_workflow_against_current_registry(tmp_path
     ]
     run_count = client.app.state.storage._connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
     assert run_count == 0
+
+
+def test_cancel_missing_run_returns_404():
+    client = TestClient(create_app(database_path=":memory:"))
+
+    response = client.post("/api/runs/missing/cancel")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Run not found"}

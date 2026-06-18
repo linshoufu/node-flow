@@ -99,4 +99,13 @@ def create_app(
             raise HTTPException(status_code=404, detail="Run not found")
         return storage.list_events(run_id)
 
+    @app.post("/api/runs/{run_id}/cancel")
+    def cancel_run(run_id: str):
+        if not storage.request_run_cancel(run_id):
+            raise HTTPException(status_code=404, detail="Run not found")
+        run = storage.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return run
+
     return app

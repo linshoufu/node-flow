@@ -24,6 +24,10 @@ class WorkflowExecutionError(RuntimeError):
     pass
 
 
+class WorkflowCancelled(RuntimeError):
+    pass
+
+
 SPECIAL_NODE_CLASSES: dict[str, type[BaseNode[Any]]] = {
     "logic.if": IfNode,
     "logic.set_variable": SetVariableNode,
@@ -57,9 +61,25 @@ class WorkflowExecutor:
             "variables": {},
             "env": self.environment,
             "secrets": self.secrets,
+            "cancel_event_sent": False,
         }
         try:
-            await self._execute_graph(run_id, workflow.nodes, workflow.edges, context, scope=[])
+            async with asyncio.timeout(workflow.settings.timeout_seconds):
+                self._check_cancelled(run_id, context)
+                await self._execute_graph(run_id, workflow.nodes, workflow.edges, context, scope=[])
+        except WorkflowCancelled:
+            self._event(run_id, "run_cancelled")
+            self.storage.update_run(run_id, status="cancelled")
+            return
+        except TimeoutError:
+            error_message = f"Workflow timed out after {workflow.settings.timeout_seconds:g} seconds"
+            self._event(
+                run_id,
+                "run_failed",
+                payload={"error": error_message},
+            )
+            self.storage.update_run(run_id, status="failed", error=error_message)
+            return
         except Exception as exc:
             error_message = self._redact(str(exc))
             self._event(
@@ -135,6 +155,7 @@ class WorkflowExecutor:
             queued_nodes.discard(node_id)
             if node_id in completed_nodes:
                 continue
+            self._check_cancelled(run_id, context)
             node = node_by_id[node_id]
             output_values = await self._execute_node(
                 run_id,
@@ -143,6 +164,7 @@ class WorkflowExecutor:
                 scope,
                 node_inputs.get(node_id, {}),
             )
+            self._check_cancelled(run_id, context)
             context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
             completed_nodes.add(node_id)
             outgoing_edges = outgoing.get(node_id, [])
@@ -289,6 +311,8 @@ class WorkflowExecutor:
         if node.type == "control.foreach":
             try:
                 output = await self._execute_foreach(run_id, node, context, scope, inputs)
+            except WorkflowCancelled:
+                raise
             except TimeoutError as exc:
                 output = {
                     "error": {
@@ -319,6 +343,8 @@ class WorkflowExecutor:
         if node.type == "control.while":
             try:
                 output = await self._execute_while(run_id, node, context, scope, inputs)
+            except WorkflowCancelled:
+                raise
             except TimeoutError as exc:
                 output = {
                     "error": {
@@ -548,6 +574,7 @@ class WorkflowExecutor:
 
             try:
                 for index, item in enumerate(items):
+                    self._check_cancelled(run_id, context)
                     context["loop"] = {"item": item, "index": index}
                     try:
                         await self._execute_graph(
@@ -557,6 +584,8 @@ class WorkflowExecutor:
                             context,
                             scope=[*scope, node.id, f"iteration:{index}"],
                         )
+                    except WorkflowCancelled:
+                        raise
                     except Exception as exc:
                         if not node.config.get("continue_on_error", False):
                             raise
@@ -592,6 +621,7 @@ class WorkflowExecutor:
 
             try:
                 while True:
+                    self._check_cancelled(run_id, context)
                     node_context = {**context, "inputs": inputs}
                     condition = resolve_expression(node.config["condition"], node_context)
                     if not bool(condition):
@@ -639,6 +669,14 @@ class WorkflowExecutor:
                 payload=self._redact(payload or {}),
             )
         )
+
+    def _check_cancelled(self, run_id: str, context: dict[str, Any]) -> None:
+        if not self.storage.is_run_cancel_requested(run_id):
+            return
+        if not context.get("cancel_event_sent", False):
+            self._event(run_id, "run_cancel_requested")
+            context["cancel_event_sent"] = True
+        raise WorkflowCancelled("Run cancelled")
 
     def _duration_ms(self, started_at: float) -> float:
         return round((time.perf_counter() - started_at) * 1000, 3)

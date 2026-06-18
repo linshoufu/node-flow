@@ -653,3 +653,25 @@ def test_save_workflow_returns_422_with_issue_details_for_invalid_workflow():
         "path": "nodes.a",
         "message": "Unknown node type: missing.node",
     }
+
+
+def test_validation_rejects_invalid_expression_syntax_in_config():
+    workflow = WorkflowDocument(
+        id="wf_expression_syntax",
+        name="Expression Syntax",
+        nodes=[
+            WorkflowNode(
+                id="transform",
+                type="utility.transform",
+                position=position(),
+                config={"value": "{{ inputs.input. }}"},
+            )
+        ],
+        edges=[],
+    )
+
+    result = validate_workflow(workflow, registry())
+
+    assert not result.valid
+    assert result.issues[-1].path == "nodes.transform.config.value"
+    assert result.issues[-1].message == "Invalid expression syntax: {{ inputs.input. }}"

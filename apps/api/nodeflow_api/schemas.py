@@ -31,10 +31,15 @@ class WorkflowSubflow(BaseModel):
     edges: list[WorkflowEdge] = Field(default_factory=list)
 
 
+class WorkflowSettings(BaseModel):
+    timeout_seconds: float = Field(default=600, gt=0)
+
+
 class WorkflowDocument(BaseModel):
     id: str
     name: str
     version: int = 1
+    settings: WorkflowSettings = Field(default_factory=WorkflowSettings)
     nodes: list[WorkflowNode] = Field(default_factory=list)
     edges: list[WorkflowEdge] = Field(default_factory=list)
 
@@ -66,6 +71,7 @@ class RunRecord(BaseModel):
     created_at: str
     started_at: str | None = None
     completed_at: str | None = None
+    cancel_requested_at: str | None = None
     error: str | None = None
 
 

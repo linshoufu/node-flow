@@ -4,6 +4,7 @@ from collections import deque
 
 from pydantic import ValidationError
 
+from .expressions import invalid_expression_tokens
 from .node_registry import NodeRegistry
 from .schemas import ValidationIssue, ValidationResult, WorkflowDocument, WorkflowEdge, WorkflowNode
 
@@ -61,6 +62,7 @@ def _validate_node(
             field_path = ".".join(str(part) for part in error["loc"])
             issue_path = f"{path}.config" if not field_path else f"{path}.config.{field_path}"
             issues.append(ValidationIssue(path=issue_path, message=error["msg"]))
+    _validate_expression_syntax(node.config, f"{path}.config", issues)
     if node.type in CONTROL_NODE_TYPES and "body" not in node.subflows:
         issues.append(
             ValidationIssue(path=f"{path}.subflows", message="Control nodes require a body subflow")
@@ -156,3 +158,23 @@ def _validate_no_cycles(
 
     if visited_count != len(graph):
         issues.append(ValidationIssue(path="edges", message="Workflow graph contains a cycle"))
+
+
+def _validate_expression_syntax(
+    value: object,
+    path: str,
+    issues: list[ValidationIssue],
+) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _validate_expression_syntax(item, f"{path}.{key}", issues)
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_expression_syntax(item, f"{path}.{index}", issues)
+        return
+    if not isinstance(value, str):
+        return
+
+    for token in invalid_expression_tokens(value):
+        issues.append(ValidationIssue(path=path, message=f"Invalid expression syntax: {token}"))

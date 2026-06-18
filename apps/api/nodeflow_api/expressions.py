@@ -10,6 +10,7 @@ EXPRESSION_RE = re.compile(
 INLINE_EXPRESSION_RE = re.compile(
     r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*)\s*\}\}"
 )
+EXPRESSION_TOKEN_RE = re.compile(r"\{\{.*?\}\}")
 
 
 class ExpressionError(ValueError):
@@ -47,3 +48,18 @@ def resolve_path(path: str, context: dict[str, Any]) -> Any:
         else:
             raise ExpressionError(f"Cannot resolve expression path: {path}")
     return current
+
+
+def invalid_expression_tokens(value: str) -> list[str]:
+    if "{{" not in value and "}}" not in value:
+        return []
+
+    tokens = EXPRESSION_TOKEN_RE.findall(value)
+    if not tokens:
+        return [value]
+
+    invalid = [token for token in tokens if EXPRESSION_RE.match(token) is None]
+    remainder = EXPRESSION_TOKEN_RE.sub("", value)
+    if "{{" in remainder or "}}" in remainder:
+        invalid.append(value)
+    return invalid

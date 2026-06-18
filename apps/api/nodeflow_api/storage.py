@@ -48,6 +48,7 @@ class Storage:
                       created_at TEXT NOT NULL,
                       started_at TEXT,
                       completed_at TEXT,
+                      cancel_requested_at TEXT,
                       error TEXT,
                       FOREIGN KEY (workflow_id, workflow_version)
                         REFERENCES workflow_versions(workflow_id, version)
@@ -64,6 +65,14 @@ class Storage:
                     );
                     """
                 )
+                run_columns = {
+                    row["name"]
+                    for row in self._connection.execute("PRAGMA table_info(runs)").fetchall()
+                }
+                if "cancel_requested_at" not in run_columns:
+                    self._connection.execute(
+                        "ALTER TABLE runs ADD COLUMN cancel_requested_at TEXT"
+                    )
 
     def list_workflows(self) -> list[WorkflowSummary]:
         with self._lock:
@@ -160,6 +169,33 @@ class Storage:
                         "UPDATE runs SET status = ?, error = ? WHERE id = ?",
                         (status, error, run_id),
                     )
+
+    def request_run_cancel(self, run_id: str) -> bool:
+        timestamp = utc_now()
+        with self._lock:
+            with self._connection:
+                result = self._connection.execute(
+                    """
+                    UPDATE runs
+                    SET cancel_requested_at = COALESCE(cancel_requested_at, ?)
+                    WHERE id = ? AND status IN ('queued', 'running')
+                    """,
+                    (timestamp, run_id),
+                )
+                if result.rowcount > 0:
+                    return True
+                return self._connection.execute(
+                    "SELECT 1 FROM runs WHERE id = ?",
+                    (run_id,),
+                ).fetchone() is not None
+
+    def is_run_cancel_requested(self, run_id: str) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT cancel_requested_at FROM runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            return bool(row and row["cancel_requested_at"])
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
