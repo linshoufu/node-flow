@@ -13,6 +13,8 @@ import {
   updateEditableWorkflow,
   type EditScope,
 } from "./lib/workflow";
+import { localizeNodeType } from "./lib/display";
+import { buildNodeRunStates } from "./lib/runState";
 import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from "./types";
 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
@@ -27,7 +29,7 @@ export default function App() {
   const [workflow, setWorkflow] = useState<WorkflowDocument>(() => createEmptyWorkflow());
   const [editScope, setEditScope] = useState<EditScope>(undefined);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [message, setMessage] = useState("Loading node types...");
+  const [message, setMessage] = useState("正在加载节点类型...");
   const [isBusy, setIsBusy] = useState(false);
   const [run, setRun] = useState<RunRecord | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -54,11 +56,11 @@ export default function App() {
           return;
         }
         setNodeTypes(types);
-        setMessage(types.length === 0 ? "No node types available." : `Loaded ${types.length} node types.`);
+        setMessage(types.length === 0 ? "没有可用节点。" : `已加载 ${types.length} 个节点类型。`);
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setMessage(`Node type load failed: ${formatError(error)}`);
+          setMessage(`节点类型加载失败：${formatError(error)}`);
         }
       });
 
@@ -80,7 +82,7 @@ export default function App() {
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setMessage(`Workflow list load failed: ${formatError(error)}`);
+          setMessage(`工作流列表加载失败：${formatError(error)}`);
         }
       });
 
@@ -89,9 +91,13 @@ export default function App() {
     };
   }, []);
 
+  const displayNodeTypes = useMemo(() => nodeTypes.map(localizeNodeType), [nodeTypes]);
   const editableWorkflow = useMemo(() => getEditableWorkflow(workflow, editScope), [editScope, workflow]);
   const editScopeKey = useMemo(() => scopeKey(editScope), [editScope]);
-  const editScopeLabel = useMemo(() => scopeLabel(workflow, editScope, nodeTypes), [editScope, nodeTypes, workflow]);
+  const editScopeLabel = useMemo(
+    () => scopeLabel(workflow, editScope, displayNodeTypes),
+    [displayNodeTypes, editScope, workflow]
+  );
   const canvasWorkflow = useMemo(
     () => ({
       ...workflow,
@@ -102,9 +108,14 @@ export default function App() {
   );
   const selectedNode = editableWorkflow.nodes.find((node) => node.id === selectedNodeId);
   const selectedNodeType = useMemo(
-    () => nodeTypes.find((nodeType) => nodeType.id === selectedNode?.type),
-    [nodeTypes, selectedNode?.type]
+    () => displayNodeTypes.find((nodeType) => nodeType.id === selectedNode?.type),
+    [displayNodeTypes, selectedNode?.type]
   );
+  const nodeRunStates = useMemo(
+    () => buildNodeRunStates(editableWorkflow.nodes, runEvents),
+    [editableWorkflow.nodes, runEvents]
+  );
+  const selectedRuntimeState = selectedNodeId ? nodeRunStates[selectedNodeId] : undefined;
 
   function addNode(nodeType: NodeType) {
     const editableNodeCount = editableWorkflow.nodes.length;
@@ -154,6 +165,15 @@ export default function App() {
     setSelectedNodeId(null);
   }
 
+  function selectRunEventNode(nodeId: string) {
+    if (editableWorkflow.nodes.some((node) => node.id === nodeId)) {
+      setSelectedNodeId(nodeId);
+      return;
+    }
+
+    setMessage("这个运行事件属于未打开的子流程，请先进入对应循环体查看。");
+  }
+
   function resetRunState() {
     runTokenRef.current += 1;
     runInFlightRef.current = false;
@@ -167,7 +187,7 @@ export default function App() {
     setSelectedWorkflowId("");
     setEditScope(undefined);
     setSelectedNodeId(null);
-    setMessage("Started a new workflow.");
+    setMessage("已新建工作流。");
   }
 
   async function loadWorkflow(workflowId: string) {
@@ -184,9 +204,9 @@ export default function App() {
       setSelectedWorkflowId(loaded.id);
       setEditScope(undefined);
       setSelectedNodeId(null);
-      setMessage(`Loaded ${loaded.name} v${loaded.version}.`);
+      setMessage(`已加载 ${loaded.name} v${loaded.version}。`);
     } catch (error) {
-      setMessage(`Workflow load failed: ${formatError(error)}`);
+      setMessage(`工作流加载失败：${formatError(error)}`);
     } finally {
       setIsBusy(false);
     }
@@ -198,13 +218,13 @@ export default function App() {
       const result = await apiClient.validateWorkflow(workflow);
       setMessage(
         result.valid
-          ? "Workflow is valid."
-          : `Workflow has ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}: ${result.issues
+          ? "工作流验证通过。"
+          : `工作流有 ${result.issues.length} 个问题：${result.issues
               .map((issue) => `${issue.path}: ${issue.message}`)
               .join("; ")}`
       );
     } catch (error) {
-      setMessage(`Validate failed: ${formatError(error)}`);
+      setMessage(`验证失败：${formatError(error)}`);
     } finally {
       setIsBusy(false);
     }
@@ -217,10 +237,10 @@ export default function App() {
       setWorkflow(saved);
       setSelectedWorkflowId(saved.id);
       upsertWorkflowSummary(saved);
-      setMessage(`Saved version ${saved.version}.`);
+      setMessage(`已保存 v${saved.version}。`);
       return saved;
     } catch (error) {
-      setMessage(`Save failed: ${formatError(error)}`);
+      setMessage(`保存失败：${formatError(error)}`);
       return null;
     } finally {
       setIsBusy(false);
@@ -249,7 +269,7 @@ export default function App() {
       setWorkflow(saved);
       setSelectedWorkflowId(saved.id);
       upsertWorkflowSummary(saved);
-      setMessage(`Saved version ${saved.version}. Starting run...`);
+      setMessage(`已保存 v${saved.version}，正在运行...`);
 
       let currentRun = await apiClient.createRun(saved.id);
       if (!isActiveRun(runToken)) {
@@ -287,12 +307,12 @@ export default function App() {
 
       setMessage(
         TERMINAL_RUN_STATUSES.has(currentRun.status)
-          ? `Run ${currentRun.id} ${currentRun.status}.`
-          : `Run ${currentRun.id} polling timed out after ${MAX_RUN_POLL_ATTEMPTS} attempts.`
+          ? `运行 ${currentRun.id} ${formatRunStatus(currentRun.status)}。`
+          : `运行 ${currentRun.id} 轮询超时，已尝试 ${MAX_RUN_POLL_ATTEMPTS} 次。`
       );
     } catch (error) {
       if (isActiveRun(runToken)) {
-        setMessage(`Run failed: ${formatError(error)}`);
+        setMessage(`运行失败：${formatError(error)}`);
       }
     } finally {
       if (runTokenRef.current === runToken) {
@@ -319,30 +339,30 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-title">Node Flow</span>
+          <span className="brand-title">节点流</span>
           <input
-            aria-label="Workflow name"
+            aria-label="工作流名称"
             className="workflow-name"
             value={workflow.name}
             onChange={(event) => setWorkflow({ ...workflow, name: event.currentTarget.value })}
           />
-          <nav aria-label="Edit scope" className="breadcrumbs">
+          <nav aria-label="编辑范围" className="breadcrumbs">
             <button disabled={!editScope?.length} type="button" onClick={returnToMain}>
-              Main
+              主流程
             </button>
             {editScope?.length ? <span className="breadcrumb-current">/ {editScopeLabel}</span> : null}
           </nav>
         </div>
         <div className="topbar-actions">
           <label className="workflow-picker">
-            <span>Workflow</span>
+            <span>工作流</span>
             <select
-              aria-label="Saved workflows"
+              aria-label="已保存工作流"
               disabled={isBusy || workflows.length === 0}
               value={selectedWorkflowId}
               onChange={(event) => void loadWorkflow(event.currentTarget.value)}
             >
-              <option value="">Select workflow...</option>
+              <option value="">选择工作流...</option>
               {workflows.map((savedWorkflow) => (
                 <option key={savedWorkflow.id} value={savedWorkflow.id}>
                   {savedWorkflow.name} v{savedWorkflow.version}
@@ -351,16 +371,16 @@ export default function App() {
             </select>
           </label>
           <button disabled={isBusy} type="button" onClick={startNewWorkflow}>
-            New
+            新建
           </button>
           <button disabled={isBusy} type="button" onClick={validateWorkflow}>
-            Validate
+            验证
           </button>
           <button disabled={isBusy} type="button" onClick={saveWorkflow}>
-            Save
+            保存
           </button>
           <button className="primary-button" disabled={isBusy} type="button" onClick={runWorkflow}>
-            Run
+            运行
           </button>
         </div>
       </header>
@@ -370,9 +390,10 @@ export default function App() {
       </div>
 
       <main className="workspace-grid">
-        <NodePalette nodeTypes={nodeTypes} onAddNode={addNode} />
+        <NodePalette nodeTypes={displayNodeTypes} onAddNode={addNode} />
         <FlowCanvas
-          nodeTypes={nodeTypes}
+          nodeRunStates={nodeRunStates}
+          nodeTypes={displayNodeTypes}
           selectedNodeId={selectedNodeId}
           selectionResetKey={editScopeKey}
           workflow={canvasWorkflow}
@@ -382,10 +403,11 @@ export default function App() {
         <ConfigPanel
           node={selectedNode}
           nodeType={selectedNodeType}
+          runtimeState={selectedRuntimeState}
           onConfigChange={updateNodeConfig}
           onOpenSubflow={openSubflow}
         />
-        <RunPanel events={runEvents} run={run} />
+        <RunPanel events={runEvents} run={run} onSelectNode={selectRunEventNode} />
       </main>
     </div>
   );
@@ -397,4 +419,19 @@ function delay(ms: number) {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function formatRunStatus(status: RunStatus): string {
+  switch (status) {
+    case "succeeded":
+      return "成功";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+    case "running":
+      return "运行中";
+    case "queued":
+      return "排队中";
+  }
 }

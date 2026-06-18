@@ -1,41 +1,75 @@
 import { useEffect, useState } from "react";
+import type { NodeRuntimeState } from "../lib/runState";
 import type { JsonSchema, NodeType, WorkflowNode } from "../types";
 
 type ConfigPanelProps = {
   node?: WorkflowNode;
   nodeType?: NodeType;
+  runtimeState?: NodeRuntimeState;
   onConfigChange: (nodeId: string, key: string, value: unknown) => void;
   onOpenSubflow?: (nodeId: string, subflowName: string) => void;
 };
 
 const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
 
-export function ConfigPanel({ node, nodeType, onConfigChange, onOpenSubflow }: ConfigPanelProps) {
+export function ConfigPanel({ node, nodeType, runtimeState, onConfigChange, onOpenSubflow }: ConfigPanelProps) {
+  const [activeTab, setActiveTab] = useState<"config" | "runtime">("config");
   const properties = nodeType?.configSchema.properties ?? {};
   const entries = Object.entries(properties);
   const canOpenBody = Boolean(node && nodeType && LOOP_NODE_TYPES.has(nodeType.id) && onOpenSubflow);
+  const hasRuntimeDetails = Boolean(runtimeState && runtimeState.status !== "pending");
+
+  useEffect(() => {
+    setActiveTab("config");
+  }, [node?.id]);
 
   return (
-    <aside className="panel config-panel" aria-label="Config panel">
+    <aside className="panel config-panel" aria-label="配置面板">
       <div className="panel-heading">
-        <h2>Config</h2>
+        <div>
+          <h2>配置</h2>
+          <p>编辑所选节点参数</p>
+        </div>
         {nodeType ? <span>{nodeType.category}</span> : null}
       </div>
 
       {!node || !nodeType ? (
-        <p className="empty-state">Select a node to edit its settings.</p>
+        <p className="empty-state">选择一个节点后，在这里编辑它的参数。</p>
       ) : (
         <div className="config-content">
           <div className="selected-node">
             <strong>{nodeType.name}</strong>
-            <small>{node.id}</small>
+            <small>{nodeType.id}</small>
           </div>
 
-          {entries.length === 0 ? (
-            <p className="empty-state">No configurable fields.</p>
+          {hasRuntimeDetails ? (
+            <div className="config-tabs" role="tablist" aria-label="节点面板">
+              <button
+                aria-selected={activeTab === "config"}
+                role="tab"
+                type="button"
+                onClick={() => setActiveTab("config")}
+              >
+                配置
+              </button>
+              <button
+                aria-selected={activeTab === "runtime"}
+                role="tab"
+                type="button"
+                onClick={() => setActiveTab("runtime")}
+              >
+                运行详情
+              </button>
+            </div>
+          ) : null}
+
+          {activeTab === "runtime" && runtimeState ? (
+            <RuntimeDetails runtimeState={runtimeState} />
+          ) : entries.length === 0 ? (
+            <p className="empty-state">这个节点没有可配置字段。</p>
           ) : (
             <form
-              aria-label="Configuration fields"
+              aria-label="配置字段"
               className="field-list"
               onSubmit={(event) => event.preventDefault()}
             >
@@ -51,14 +85,14 @@ export function ConfigPanel({ node, nodeType, onConfigChange, onOpenSubflow }: C
             </form>
           )}
 
-          {canOpenBody ? (
+          {activeTab === "config" && canOpenBody ? (
             <div className="subflow-actions">
               <button
                 className="open-subflow-button"
                 type="button"
                 onClick={() => onOpenSubflow?.(node.id, "body")}
               >
-                Open Body
+                编辑循环体
               </button>
             </div>
           ) : null}
@@ -66,6 +100,57 @@ export function ConfigPanel({ node, nodeType, onConfigChange, onOpenSubflow }: C
       )}
     </aside>
   );
+}
+
+type RuntimeDetailsProps = {
+  runtimeState: NodeRuntimeState;
+};
+
+function RuntimeDetails({ runtimeState }: RuntimeDetailsProps) {
+  return (
+    <div className="runtime-details">
+      <div className="runtime-summary">
+        <span>状态：{runStatusLabel(runtimeState.status)}</span>
+        {typeof runtimeState.durationMs === "number" ? <span>耗时：{runtimeState.durationMs} ms</span> : null}
+      </div>
+      <RuntimeBlock title="输入" value={runtimeState.inputs} />
+      <RuntimeBlock title="输出" value={runtimeState.outputs} />
+      <RuntimeBlock title="日志" value={runtimeState.logs} />
+      <RuntimeBlock title="错误" value={runtimeState.error} />
+      {runtimeState.scopes.length > 0 ? (
+        <div className="runtime-block">
+          <strong>范围</strong>
+          <pre>{runtimeState.scopes.map((scope) => (scope.length ? scope.join(" / ") : "主流程")).join("\n")}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RuntimeBlock({ title, value }: { title: string; value: unknown }) {
+  if (value === undefined) {
+    return null;
+  }
+
+  return (
+    <div className="runtime-block">
+      <strong>{title}</strong>
+      <pre>{formatUnknown(value)}</pre>
+    </div>
+  );
+}
+
+function runStatusLabel(status: NodeRuntimeState["status"]) {
+  switch (status) {
+    case "running":
+      return "运行中";
+    case "succeeded":
+      return "成功";
+    case "failed":
+      return "失败";
+    case "pending":
+      return "等待";
+  }
 }
 
 type SchemaFieldProps = {
@@ -134,10 +219,42 @@ function SchemaField({ name, schema, value, onChange }: SchemaFieldProps) {
     return <JsonField expectedType={schemaType} label={label} value={value} onChange={onChange} />;
   }
 
+  if (!schemaType) {
+    return <FlexibleValueField label={label} value={value} onChange={onChange} />;
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
       <input value={String(value ?? "")} type="text" onChange={(event) => onChange(event.currentTarget.value)} />
+    </label>
+  );
+}
+
+type FlexibleValueFieldProps = {
+  label: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+};
+
+function FlexibleValueField({ label, value, onChange }: FlexibleValueFieldProps) {
+  const [text, setText] = useState(() => formatFlexibleValue(value));
+
+  useEffect(() => {
+    setText(formatFlexibleValue(value));
+  }, [value]);
+
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <textarea
+        value={text}
+        onChange={(event) => {
+          const nextText = event.currentTarget.value;
+          setText(nextText);
+          onChange(parseFlexibleValue(nextText));
+        }}
+      />
     </label>
   );
 }
@@ -179,7 +296,7 @@ function JsonField({ expectedType, label, value, onChange }: JsonFieldProps) {
             setError(null);
             onChange(nextValue);
           } catch {
-            setError("Invalid JSON");
+            setError("JSON 格式无效");
           }
         }}
       />
@@ -192,12 +309,36 @@ function formatJson(value: unknown, expectedType: "object" | "array"): string {
   return JSON.stringify(value ?? (expectedType === "array" ? [] : {}), null, 2);
 }
 
-function validateJsonShape(value: unknown, expectedType: "object" | "array"): string | null {
-  if (expectedType === "array") {
-    return Array.isArray(value) ? null : "Expected a JSON array";
+function formatFlexibleValue(value: unknown): string {
+  if (typeof value === "string" || value === undefined || value === null) {
+    return String(value ?? "");
   }
 
-  return isPlainObject(value) ? null : "Expected a JSON object";
+  return JSON.stringify(value, null, 2);
+}
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function parseFlexibleValue(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function validateJsonShape(value: unknown, expectedType: "object" | "array"): string | null {
+  if (expectedType === "array") {
+    return Array.isArray(value) ? null : "需要 JSON 数组";
+  }
+
+  return isPlainObject(value) ? null : "需要 JSON 对象";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

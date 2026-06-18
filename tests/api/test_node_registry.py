@@ -35,6 +35,14 @@ def test_registry_discovers_builtin_nodes():
     assert "utility.transform" in node_ids
     assert "control.foreach" in node_ids
     assert "control.while" in node_ids
+    assert "data.csv_read" in node_ids
+    assert "data.extract" in node_ids
+    assert "assert.status_code" in node_ids
+    assert "assert.equals" in node_ids
+    assert "assert.contains" in node_ids
+    assert "test.record_result" in node_ids
+    assert "test.summary" in node_ids
+    assert "test.write_report" in node_ids
 
 
 def test_registry_returns_json_schema_for_config():

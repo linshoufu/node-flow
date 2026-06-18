@@ -23,6 +23,21 @@ def test_node_types_endpoint_lists_builtin_nodes():
     assert "http.request" in ids
 
 
+def test_cors_allows_fallback_vite_localhost_ports():
+    client = TestClient(create_app(database_path=":memory:", nodes_dir=Path("nodes")))
+
+    response = client.options(
+        "/api/node-types",
+        headers={
+            "Origin": "http://127.0.0.1:5174",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5174"
+
+
 def test_workflow_endpoints_save_get_and_list_workflows():
     client = TestClient(create_app(database_path=":memory:", nodes_dir=Path("nodes")))
     workflow = {

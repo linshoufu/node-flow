@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 import traceback
 from collections import defaultdict, deque
+from collections.abc import Mapping
 from typing import Any
 
 from nodeflow_sdk import BaseNode, NodeContext
 from nodes.builtin.control import ForEachNode, WhileNode
 from nodes.builtin.logic import IfNode, SetVariableNode
+from nodes.builtin.testing import RecordResultNode, SummaryNode
 from nodes.builtin.utility import TransformNode
 
 from .expressions import resolve_expression
@@ -26,26 +30,44 @@ SPECIAL_NODE_CLASSES: dict[str, type[BaseNode[Any]]] = {
     "utility.transform": TransformNode,
     "control.foreach": ForEachNode,
     "control.while": WhileNode,
+    "test.record_result": RecordResultNode,
+    "test.summary": SummaryNode,
 }
 
 
 class WorkflowExecutor:
-    def __init__(self, *, storage: Storage, registry: NodeRegistry) -> None:
+    def __init__(
+        self,
+        *,
+        storage: Storage,
+        registry: NodeRegistry,
+        environment: Mapping[str, Any] | None = None,
+        secrets: Mapping[str, str] | None = None,
+    ) -> None:
         self.storage = storage
         self.registry = registry
+        self.environment = dict(os.environ if environment is None else environment)
+        self.secrets = dict(secrets) if secrets is not None else load_secrets_from_environment(self.environment)
 
     async def execute(self, run_id: str, workflow: WorkflowDocument) -> None:
         self.storage.update_run(run_id, status="running")
-        context: dict[str, Any] = {"inputs": {}, "nodes": {}, "variables": {}}
+        context: dict[str, Any] = {
+            "inputs": {},
+            "nodes": {},
+            "variables": {},
+            "env": self.environment,
+            "secrets": self.secrets,
+        }
         try:
             await self._execute_graph(run_id, workflow.nodes, workflow.edges, context, scope=[])
         except Exception as exc:
+            error_message = self._redact(str(exc))
             self._event(
                 run_id,
                 "run_failed",
                 payload={"error": str(exc), "traceback": traceback.format_exc()},
             )
-            self.storage.update_run(run_id, status="failed", error=str(exc))
+            self.storage.update_run(run_id, status="failed", error=error_message)
             return
         self._event(run_id, "run_succeeded")
         self.storage.update_run(run_id, status="succeeded")
@@ -126,6 +148,7 @@ class WorkflowExecutor:
             outgoing_edges = outgoing.get(node_id, [])
             unhandled_outputs = {
                 "error": "Unhandled error output",
+                "failed": "Unhandled failed output",
                 "max_reached": "Unhandled max_reached output",
             }
             for output_name, error_message in unhandled_outputs.items():
@@ -156,10 +179,11 @@ class WorkflowExecutor:
         inputs: dict[str, Any],
     ) -> dict[str, Any]:
         self._event(run_id, "node_started", node_id=node.id, scope=scope, payload={"inputs": inputs})
+        started_at = time.perf_counter()
         context.setdefault("nodes", {}).setdefault(node.id, {})["inputs"] = inputs
         if node.type == "logic.if":
             try:
-                node_context = {**context, "inputs": inputs}
+                node_context = self._node_context(context, inputs)
                 condition = resolve_expression(node.config["condition"], node_context)
             except Exception as exc:
                 self._event(
@@ -169,6 +193,7 @@ class WorkflowExecutor:
                     scope=scope,
                     payload={
                         "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                        "duration_ms": self._duration_ms(started_at),
                     },
                 )
                 raise WorkflowExecutionError(str(exc)) from exc
@@ -177,20 +202,21 @@ class WorkflowExecutor:
                 node,
                 scope,
                 {"true": inputs} if bool(condition) else {"false": inputs},
+                started_at=started_at,
             )
             self._event(
                 run_id,
                 "node_succeeded",
                 node_id=node.id,
                 scope=scope,
-                payload={"outputs": output},
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
             )
             return output
         if node.type == "logic.set_variable":
             try:
                 node_type = self.registry.get(node.type)
                 instance = node_type.node_class(config=node.config)
-                node_context = {**context, "inputs": inputs}
+                node_context = self._node_context(context, inputs)
                 value = resolve_expression(instance.config.value, node_context)
                 variables = context.setdefault("variables", {})
                 variables[instance.config.name] = value
@@ -202,6 +228,7 @@ class WorkflowExecutor:
                     scope=scope,
                     payload={
                         "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                        "duration_ms": self._duration_ms(started_at),
                     },
                 )
                 raise WorkflowExecutionError(str(exc)) from exc
@@ -216,20 +243,21 @@ class WorkflowExecutor:
                         "variables": dict(variables),
                     }
                 },
+                started_at=started_at,
             )
             self._event(
                 run_id,
                 "node_succeeded",
                 node_id=node.id,
                 scope=scope,
-                payload={"outputs": output},
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
             )
             return output
         if node.type == "utility.transform":
             try:
                 node_type = self.registry.get(node.type)
                 instance = node_type.node_class(config=node.config)
-                node_context = {**context, "inputs": inputs}
+                node_context = self._node_context(context, inputs)
                 value = resolve_expression(instance.config.value, node_context)
             except Exception as exc:
                 self._event(
@@ -239,16 +267,23 @@ class WorkflowExecutor:
                     scope=scope,
                     payload={
                         "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                        "duration_ms": self._duration_ms(started_at),
                     },
                 )
                 raise WorkflowExecutionError(str(exc)) from exc
-            output = self._validate_node_outputs(run_id, node, scope, {"success": value})
+            output = self._validate_node_outputs(
+                run_id,
+                node,
+                scope,
+                {"success": value},
+                started_at=started_at,
+            )
             self._event(
                 run_id,
                 "node_succeeded",
                 node_id=node.id,
                 scope=scope,
-                payload={"outputs": output},
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
             )
             return output
         if node.type == "control.foreach":
@@ -272,13 +307,13 @@ class WorkflowExecutor:
                         ),
                     }
                 }
-            output = self._validate_node_outputs(run_id, node, scope, output)
+            output = self._validate_node_outputs(run_id, node, scope, output, started_at=started_at)
             self._event(
                 run_id,
                 "node_succeeded",
                 node_id=node.id,
                 scope=scope,
-                payload={"outputs": output},
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
             )
             return output
         if node.type == "control.while":
@@ -302,18 +337,67 @@ class WorkflowExecutor:
                         ),
                     }
                 }
-            output = self._validate_node_outputs(run_id, node, scope, output)
+            output = self._validate_node_outputs(run_id, node, scope, output, started_at=started_at)
             self._event(
                 run_id,
                 "node_succeeded",
                 node_id=node.id,
                 scope=scope,
-                payload={"outputs": output},
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
+            )
+            return output
+        if node.type == "test.record_result":
+            try:
+                output = self._execute_record_result(node, context, inputs)
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                        "duration_ms": self._duration_ms(started_at),
+                    },
+                )
+                raise WorkflowExecutionError(str(exc)) from exc
+            output = self._validate_node_outputs(run_id, node, scope, output, started_at=started_at)
+            self._event(
+                run_id,
+                "node_succeeded",
+                node_id=node.id,
+                scope=scope,
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
+            )
+            return output
+        if node.type == "test.summary":
+            try:
+                output = self._execute_test_summary(node, context)
+            except Exception as exc:
+                self._event(
+                    run_id,
+                    "node_failed",
+                    node_id=node.id,
+                    scope=scope,
+                    payload={
+                        "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                        "duration_ms": self._duration_ms(started_at),
+                    },
+                )
+                raise WorkflowExecutionError(str(exc)) from exc
+            output = self._validate_node_outputs(run_id, node, scope, output, started_at=started_at)
+            self._event(
+                run_id,
+                "node_succeeded",
+                node_id=node.id,
+                scope=scope,
+                payload={"outputs": output, "duration_ms": self._duration_ms(started_at)},
             )
             return output
         node_type = self.registry.get(node.type)
-        instance = node_type.node_class(config=node.config)
-        ctx = NodeContext(run_id=run_id, node_id=node.id, scope=scope)
+        resolved_config = resolve_expression(node.config, self._node_context(context, inputs))
+        instance = node_type.node_class(config=resolved_config)
+        ctx = NodeContext(run_id=run_id, node_id=node.id, scope=scope, secrets=self.secrets)
         try:
             outputs = await instance.execute(ctx, inputs)
         except Exception as exc:
@@ -325,6 +409,7 @@ class WorkflowExecutor:
                 payload={
                     "error": {"message": str(exc), "traceback": traceback.format_exc()},
                     "logs": ctx.logs,
+                    "duration_ms": self._duration_ms(started_at),
                 },
             )
             raise WorkflowExecutionError(str(exc)) from exc
@@ -339,6 +424,7 @@ class WorkflowExecutor:
                 payload={
                     "error": {"message": str(exc), "traceback": traceback.format_exc()},
                     "logs": ctx.logs,
+                    "duration_ms": self._duration_ms(started_at),
                 },
             )
             raise WorkflowExecutionError(str(exc)) from exc
@@ -347,9 +433,60 @@ class WorkflowExecutor:
             "node_succeeded",
             node_id=node.id,
             scope=scope,
-            payload={"outputs": outputs, "logs": ctx.logs},
+            payload={"outputs": outputs, "logs": ctx.logs, "duration_ms": self._duration_ms(started_at)},
         )
         return outputs
+
+    def _execute_record_result(
+        self,
+        node: WorkflowNode,
+        context: dict[str, Any],
+        inputs: dict[str, Any],
+    ) -> dict[str, Any]:
+        node_type = self.registry.get(node.type)
+        instance = node_type.node_class(config=node.config)
+        assertion = inputs.get("input")
+        if not isinstance(assertion, dict):
+            assertion = {
+                "status": "failed",
+                "message": "Record result input must be an assertion result object",
+                "actual": assertion,
+            }
+        loop = context.get("loop")
+        result = {
+            "name": instance.config.name,
+            **assertion,
+        }
+        if isinstance(loop, dict):
+            result["index"] = loop.get("index")
+            if "item" in loop:
+                result["row"] = loop["item"]
+        context.setdefault("test_results", []).append(result)
+        return {"success": result}
+
+    def _execute_test_summary(
+        self,
+        node: WorkflowNode,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
+        node_type = self.registry.get(node.type)
+        instance = node_type.node_class(config=node.config)
+        results = list(context.get("test_results", []))
+        passed = sum(1 for result in results if result.get("status") == "passed")
+        failed = sum(1 for result in results if result.get("status") == "failed")
+        report = {
+            "summary": {
+                "total": len(results),
+                "passed": passed,
+                "failed": failed,
+            },
+            "results": results,
+        }
+        output_name = "failed" if instance.config.fail_run_on_failed and failed else "success"
+        return {output_name: report}
+
+    def _node_context(self, context: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+        return {**context, "inputs": inputs}
 
     def _validate_node_outputs(
         self,
@@ -357,6 +494,8 @@ class WorkflowExecutor:
         node: WorkflowNode,
         scope: list[str],
         outputs: Any,
+        *,
+        started_at: float | None = None,
     ) -> dict[str, Any]:
         if self.registry.has(node.type):
             node_class = self.registry.get(node.type).node_class
@@ -370,7 +509,14 @@ class WorkflowExecutor:
                 "node_failed",
                 node_id=node.id,
                 scope=scope,
-                payload={"error": {"message": str(exc), "traceback": traceback.format_exc()}},
+                payload={
+                    "error": {"message": str(exc), "traceback": traceback.format_exc()},
+                    **(
+                        {"duration_ms": self._duration_ms(started_at)}
+                        if started_at is not None
+                        else {}
+                    ),
+                },
             )
             raise WorkflowExecutionError(str(exc)) from exc
 
@@ -490,6 +636,34 @@ class WorkflowExecutor:
                 timestamp=utc_now(),
                 node_id=node_id,
                 scope=scope or [],
-                payload=payload or {},
+                payload=self._redact(payload or {}),
             )
         )
+
+    def _duration_ms(self, started_at: float) -> float:
+        return round((time.perf_counter() - started_at) * 1000, 3)
+
+    def _redact(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                self._redact(key) if isinstance(key, str) else key: self._redact(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._redact(item) for item in value]
+        if isinstance(value, str):
+            redacted = value
+            for secret_value in self.secrets.values():
+                if secret_value:
+                    redacted = redacted.replace(secret_value, "***")
+            return redacted
+        return value
+
+
+def load_secrets_from_environment(environment: Mapping[str, Any]) -> dict[str, str]:
+    prefix = "NODE_FLOW_SECRET_"
+    return {
+        key.removeprefix(prefix).lower(): str(value)
+        for key, value in environment.items()
+        if key.startswith(prefix) and value is not None
+    }

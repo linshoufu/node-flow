@@ -7,6 +7,9 @@ from typing import Any
 EXPRESSION_RE = re.compile(
     r"^\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*)\s*\}\}\s*$"
 )
+INLINE_EXPRESSION_RE = re.compile(
+    r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*)\s*\}\}"
+)
 
 
 class ExpressionError(ValueError):
@@ -14,12 +17,21 @@ class ExpressionError(ValueError):
 
 
 def resolve_expression(value: Any, context: dict[str, Any]) -> Any:
+    if isinstance(value, dict):
+        return {key: resolve_expression(item, context) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve_expression(item, context) for item in value]
     if not isinstance(value, str):
         return value
     match = EXPRESSION_RE.match(value)
-    if match is None:
+    if match is not None:
+        return resolve_path(match.group(1), context)
+    if INLINE_EXPRESSION_RE.search(value) is None:
         return value
-    return resolve_path(match.group(1), context)
+    return INLINE_EXPRESSION_RE.sub(
+        lambda match: str(resolve_path(match.group(1), context)),
+        value,
+    )
 
 
 def resolve_path(path: str, context: dict[str, Any]) -> Any:

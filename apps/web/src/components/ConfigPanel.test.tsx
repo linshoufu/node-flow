@@ -56,6 +56,31 @@ const listNode: WorkflowNode = {
   },
 };
 
+const flexibleNodeType: NodeType = {
+  ...manualTriggerType,
+  id: "test.flexible",
+  name: "Flexible Node",
+  configSchema: {
+    type: "object",
+    properties: {
+      value: {
+        title: "Value expression",
+      },
+    },
+  },
+};
+
+const flexibleNode: WorkflowNode = {
+  ...manualTriggerNode,
+  id: "node_flexible",
+  type: "test.flexible",
+  config: {
+    value: {
+      Authorization: "Bearer {{ secrets.api_token }}",
+    },
+  },
+};
+
 const forEachType: NodeType = {
   ...manualTriggerType,
   id: "control.foreach",
@@ -103,7 +128,7 @@ describe("ConfigPanel", () => {
     expect(onConfigChange).toHaveBeenLastCalledWith("node_manual", "payload", { count: 2 });
 
     fireEvent.change(payloadEditor, { target: { value: "{ invalid" } });
-    expect(screen.getByText("Invalid JSON")).toBeInTheDocument();
+    expect(screen.getByText("JSON 格式无效")).toBeInTheDocument();
     expect(onConfigChange).toHaveBeenCalledTimes(1);
   });
 
@@ -114,15 +139,15 @@ describe("ConfigPanel", () => {
     const payloadEditor = screen.getByLabelText("Payload");
 
     fireEvent.change(payloadEditor, { target: { value: '["wrong"]' } });
-    expect(screen.getByText("Expected a JSON object")).toBeInTheDocument();
+    expect(screen.getByText("需要 JSON 对象")).toBeInTheDocument();
     expect(onConfigChange).not.toHaveBeenCalled();
 
     fireEvent.change(payloadEditor, { target: { value: "null" } });
-    expect(screen.getByText("Expected a JSON object")).toBeInTheDocument();
+    expect(screen.getByText("需要 JSON 对象")).toBeInTheDocument();
     expect(onConfigChange).not.toHaveBeenCalled();
 
     fireEvent.change(payloadEditor, { target: { value: '"wrong"' } });
-    expect(screen.getByText("Expected a JSON object")).toBeInTheDocument();
+    expect(screen.getByText("需要 JSON 对象")).toBeInTheDocument();
     expect(onConfigChange).not.toHaveBeenCalled();
   });
 
@@ -137,15 +162,31 @@ describe("ConfigPanel", () => {
     expect(onConfigChange).toHaveBeenLastCalledWith("node_list", "items", ["two", "three"]);
 
     fireEvent.change(itemsEditor, { target: { value: '{ "wrong": true }' } });
-    expect(screen.getByText("Expected a JSON array")).toBeInTheDocument();
+    expect(screen.getByText("需要 JSON 数组")).toBeInTheDocument();
     expect(onConfigChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits flexible config as either JSON or plain text", () => {
+    const onConfigChange = vi.fn();
+    render(<ConfigPanel node={flexibleNode} nodeType={flexibleNodeType} onConfigChange={onConfigChange} />);
+
+    const valueEditor = screen.getByLabelText("Value expression");
+    expect(valueEditor).toHaveValue('{\n  "Authorization": "Bearer {{ secrets.api_token }}"\n}');
+
+    fireEvent.change(valueEditor, { target: { value: '{ "X-Target": "{{ env.target }}" }' } });
+    expect(onConfigChange).toHaveBeenLastCalledWith("node_flexible", "value", {
+      "X-Target": "{{ env.target }}",
+    });
+
+    fireEvent.change(valueEditor, { target: { value: "{{ env.base_url }}/users" } });
+    expect(onConfigChange).toHaveBeenLastCalledWith("node_flexible", "value", "{{ env.base_url }}/users");
   });
 
   it("prevents config form submission", () => {
     const onConfigChange = vi.fn();
     render(<ConfigPanel node={manualTriggerNode} nodeType={manualTriggerType} onConfigChange={onConfigChange} />);
 
-    const form = screen.getByLabelText("Configuration fields");
+    const form = screen.getByLabelText("配置字段");
     const submitEvent = new Event("submit", { bubbles: true, cancelable: true });
 
     form.dispatchEvent(submitEvent);
@@ -164,8 +205,34 @@ describe("ConfigPanel", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Body" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑循环体" }));
 
     expect(onOpenSubflow).toHaveBeenCalledWith("node_loop", "body");
+  });
+
+  it("shows runtime details for the selected node", () => {
+    render(
+      <ConfigPanel
+        node={manualTriggerNode}
+        nodeType={manualTriggerType}
+        runtimeState={{
+          nodeId: "node_manual",
+          status: "succeeded",
+          inputs: { input: { name: "Alice" } },
+          outputs: { success: { ok: true } },
+          durationMs: 12.25,
+          logs: [{ level: "info", message: "done" }],
+          scopes: [[]],
+        }}
+        onConfigChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行详情" }));
+
+    expect(screen.getByText("状态：成功")).toBeInTheDocument();
+    expect(screen.getByText("耗时：12.25 ms")).toBeInTheDocument();
+    expect(screen.getByText(/Alice/)).toBeInTheDocument();
+    expect(screen.getByText(/done/)).toBeInTheDocument();
   });
 });

@@ -39,7 +39,7 @@ describe("workflow helpers", () => {
     const workflow = createEmptyWorkflow();
 
     expect(workflow.id).toMatch(/^wf_/);
-    expect(workflow.name).toBe("Untitled Workflow");
+    expect(workflow.name).toBe("未命名工作流");
     expect(workflow.version).toBe(1);
     expect(workflow.nodes).toEqual([]);
     expect(workflow.edges).toEqual([]);

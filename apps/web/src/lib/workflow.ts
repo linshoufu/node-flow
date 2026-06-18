@@ -9,7 +9,7 @@ const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
 export function createEmptyWorkflow(): WorkflowDocument {
   return {
     id: prefixedId("wf"),
-    name: "Untitled Workflow",
+    name: "未命名工作流",
     version: 1,
     nodes: [],
     edges: [],
@@ -175,7 +175,7 @@ export function scopeLabel(workflow: WorkflowDocument, scope: EditScope, nodeTyp
   for (const step of scope) {
     const node = current.nodes.find((candidate) => candidate.id === step.nodeId);
     const nodeType = nodeTypes.find((candidate) => candidate.id === node?.type);
-    labels.push(`${nodeType?.name ?? node?.type ?? step.nodeId}.${step.subflowName}`);
+    labels.push(`${nodeType?.name ?? node?.type ?? step.nodeId}.${formatSubflowName(step.subflowName)}`);
     const next = node?.subflows?.[step.subflowName];
     current =
       next ?? {
@@ -185,6 +185,10 @@ export function scopeLabel(workflow: WorkflowDocument, scope: EditScope, nodeTyp
   }
 
   return labels.join(" / ");
+}
+
+function formatSubflowName(subflowName: string): string {
+  return subflowName === "body" ? "循环体" : subflowName;
 }
 
 export function defaultsFromSchema(schema: JsonSchema | undefined): Record<string, unknown> {

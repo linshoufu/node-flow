@@ -1,8 +1,8 @@
 :root {
-  color: #18212c;
-  background: #eef1f4;
+  color: #1b2430;
+  background: #e9edf2;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Inter, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -18,7 +18,7 @@ html,
 body,
 #root {
   min-width: 320px;
-  min-height: 100vh;
+  height: 100vh;
   margin: 0;
 }
 
@@ -36,15 +36,15 @@ select {
 button,
 select,
 input {
-  border: 1px solid #cbd3dc;
+  border: 1px solid #c6ced8;
   border-radius: 5px;
   background: #ffffff;
-  color: #1c2633;
+  color: #172231;
 }
 
 button {
-  min-height: 32px;
-  padding: 0 12px;
+  min-height: 34px;
+  padding: 0 13px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
@@ -52,8 +52,8 @@ button {
 }
 
 button:hover:not(:disabled) {
-  border-color: #8aa0b8;
-  background: #f5f7f9;
+  border-color: #7d91a8;
+  background: #f4f7fa;
 }
 
 button:disabled {
@@ -63,9 +63,9 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-rows: 56px 34px minmax(0, 1fr);
-  min-height: 100vh;
-  background: #eef1f4;
+  grid-template-rows: 64px 36px minmax(0, 1fr);
+  height: 100vh;
+  background: #e9edf2;
 }
 
 .topbar {
@@ -73,9 +73,10 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid #d7dde4;
-  background: #fbfcfd;
-  padding: 0 16px;
+  border-bottom: 1px solid #cfd6df;
+  background: #f9fafb;
+  padding: 0 18px;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 70%) inset;
 }
 
 .brand {
@@ -86,18 +87,21 @@ button:disabled {
 }
 
 .brand-title {
-  color: #121a24;
-  font-size: 16px;
-  font-weight: 750;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
 .workflow-name {
-  width: min(320px, 42vw);
-  height: 32px;
-  padding: 0 10px;
+  width: min(360px, 42vw);
+  height: 34px;
+  padding: 0 11px;
+  border-color: #bac5d1;
+  background: #ffffff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .breadcrumbs {
@@ -108,8 +112,9 @@ button:disabled {
 }
 
 .breadcrumbs button {
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 10px;
+  background: #eef3f7;
 }
 
 .breadcrumb-current {
@@ -138,44 +143,45 @@ button:disabled {
 }
 
 .workflow-picker select {
-  width: 190px;
-  height: 32px;
+  width: 210px;
+  height: 34px;
   padding: 0 9px;
   font-size: 13px;
   font-weight: 600;
 }
 
 .primary-button {
-  border-color: #315f8f;
-  background: #315f8f;
+  border-color: #1d5f88;
+  background: #1d5f88;
   color: #ffffff;
 }
 
 .primary-button:hover:not(:disabled) {
-  border-color: #254f7a;
-  background: #254f7a;
+  border-color: #174c6d;
+  background: #174c6d;
 }
 
 .message-bar {
   display: flex;
   align-items: center;
   overflow: hidden;
-  border-bottom: 1px solid #d7dde4;
-  background: #f7f9fb;
-  color: #4c5b6d;
-  padding: 0 16px;
+  border-bottom: 1px solid #cfd6df;
+  background: #fffaf1;
+  color: #5f4925;
+  padding: 0 18px;
   font-size: 13px;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 300px;
-  grid-template-rows: minmax(0, 1fr) 178px;
-  gap: 10px;
+  grid-template-columns: 260px minmax(0, 1fr) 330px;
+  grid-template-rows: minmax(0, 1fr) 210px;
+  gap: 12px;
   min-height: 0;
-  padding: 10px;
+  padding: 12px;
 }
 
 .panel,
@@ -183,9 +189,10 @@ button:disabled {
 .run-panel {
   min-width: 0;
   min-height: 0;
-  border: 1px solid #d0d7df;
+  border: 1px solid #cbd4de;
   border-radius: 6px;
   background: #fbfcfd;
+  box-shadow: 0 10px 26px rgb(28 38 52 / 8%);
 }
 
 .panel,
@@ -200,21 +207,28 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 42px;
-  border-bottom: 1px solid #e1e6eb;
-  padding: 0 12px;
+  min-height: 50px;
+  border-bottom: 1px solid #dde4eb;
+  padding: 8px 12px;
 }
 
 .panel-heading h2,
 .palette-group h3 {
   margin: 0;
-  color: #202a36;
+  color: #1d2734;
   font-size: 13px;
   font-weight: 750;
 }
 
+.panel-heading p {
+  margin: 3px 0 0;
+  color: #758397;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .panel-heading span {
-  color: #697789;
+  color: #607085;
   font-size: 12px;
   font-weight: 650;
 }
@@ -227,7 +241,7 @@ button:disabled {
 }
 
 .palette-groups {
-  padding: 10px;
+  padding: 12px;
 }
 
 .palette-group + .palette-group {
@@ -235,15 +249,14 @@ button:disabled {
 }
 
 .palette-group h3 {
-  margin-bottom: 7px;
-  color: #59677a;
+  margin-bottom: 8px;
+  color: #536174;
   font-size: 12px;
-  text-transform: capitalize;
 }
 
 .palette-list {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .palette-node {
@@ -251,10 +264,17 @@ button:disabled {
   justify-items: start;
   width: 100%;
   height: auto;
-  min-height: 46px;
-  padding: 7px 9px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-color: #d3dae3;
+  background: #ffffff;
   text-align: left;
   white-space: normal;
+}
+
+.palette-node:hover:not(:disabled) {
+  border-color: #7e9ab3;
+  background: #f2f7fa;
 }
 
 .palette-node span,
@@ -273,28 +293,98 @@ button:disabled {
 .canvas-shell {
   position: relative;
   overflow: hidden;
-  background: #f8fafc;
+  background: #f6f8fb;
+}
+
+.canvas-shell::before {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 1;
+  color: #6f7f91;
+  content: "画布";
+  font-size: 12px;
+  font-weight: 750;
+  pointer-events: none;
 }
 
 .flow-node {
   position: relative;
   width: 190px;
-  border: 1px solid #bfccd9;
+  border: 1px solid #b9c8d7;
   border-radius: 6px;
   background: #ffffff;
-  box-shadow: 0 8px 18px rgb(34 47 62 / 10%);
+  box-shadow: 0 12px 22px rgb(34 47 62 / 13%);
 }
 
 .flow-node.is-selected {
-  border-color: #315f8f;
-  box-shadow: 0 0 0 2px rgb(49 95 143 / 18%);
+  border-color: #1d5f88;
+  box-shadow: 0 0 0 2px rgb(29 95 136 / 18%), 0 12px 22px rgb(34 47 62 / 13%);
+}
+
+.flow-node.run-running {
+  border-color: #517eac;
+}
+
+.flow-node.run-succeeded {
+  border-color: #4f9b6a;
+}
+
+.flow-node.run-failed {
+  border-color: #bd5b5b;
+}
+
+.run-status-badge {
+  margin: 8px 10px 0;
+  width: fit-content;
+  border: 1px solid #d6dee7;
+  border-radius: 999px;
+  background: #f6f9fb;
+  color: #415064;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.flow-node.run-running .run-status-badge {
+  border-color: #91a9c4;
+  background: #eef5fb;
+  color: #315f8f;
+}
+
+.flow-node.run-succeeded .run-status-badge {
+  border-color: #8bb99f;
+  background: #eef8f2;
+  color: #27633f;
+}
+
+.flow-node.run-failed .run-status-badge {
+  border-color: #d59a9a;
+  background: #fff4f4;
+  color: #8b3030;
+}
+
+.react-flow__node.dragging,
+.react-flow__node.dragging .flow-node,
+.react-flow__node:active .flow-node {
+  opacity: 1;
+  visibility: visible;
+}
+
+.react-flow__node.dragging {
+  z-index: 20;
+}
+
+.react-flow__node.dragging .flow-node {
+  border-color: #1d5f88;
+  box-shadow: 0 18px 34px rgb(29 95 136 / 22%);
 }
 
 .flow-node-header {
   display: grid;
   gap: 2px;
-  border-bottom: 1px solid #e4e9ee;
-  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8ef;
+  padding: 9px 10px;
 }
 
 .flow-node p {
@@ -306,17 +396,37 @@ button:disabled {
 }
 
 .flow-handle {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border: 1px solid #ffffff;
-  background: #315f8f;
+  background: #1d5f88;
 }
 
 .selected-node {
   display: grid;
   gap: 3px;
   border-bottom: 1px solid #e7ebf0;
+  background: #f6f9fb;
   padding: 12px;
+}
+
+.config-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  border-bottom: 1px solid #e7ebf0;
+  padding: 10px 12px;
+}
+
+.config-tabs button {
+  min-height: 30px;
+  background: #eef3f7;
+}
+
+.config-tabs button[aria-selected="true"] {
+  border-color: #1d5f88;
+  background: #ffffff;
+  color: #174c6d;
 }
 
 .field-list {
@@ -332,6 +442,9 @@ button:disabled {
 
 .open-subflow-button {
   width: 100%;
+  border-color: #1d5f88;
+  background: #eef7fb;
+  color: #174c6d;
 }
 
 .field {
@@ -390,10 +503,58 @@ button:disabled {
 
 .empty-state {
   margin: 0;
-  color: #748195;
+  color: #6f7d90;
   padding: 12px;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.runtime-details {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.runtime-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.runtime-summary span,
+.runtime-block {
+  border: 1px solid #dde4eb;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.runtime-summary span {
+  padding: 5px 8px;
+}
+
+.runtime-block {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+}
+
+.runtime-block strong {
+  color: #445266;
+  font-size: 12px;
+}
+
+.runtime-block pre {
+  overflow: auto;
+  max-height: 160px;
+  margin: 0;
+  color: #1c2633;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .run-panel {
@@ -404,8 +565,9 @@ button:disabled {
   border: 1px solid #cbd3dc;
   border-radius: 999px;
   background: #ffffff;
-  padding: 3px 8px;
-  text-transform: capitalize;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .status-succeeded {
@@ -432,17 +594,39 @@ button:disabled {
 
 .run-event {
   display: grid;
-  grid-template-columns: 90px 140px 120px minmax(0, 1fr);
+  grid-template-columns: 92px 110px 150px 170px minmax(0, 1fr);
   gap: 10px;
   border-bottom: 1px solid #e7ebf0;
-  padding: 7px 12px;
+  padding: 8px 12px;
   color: #354255;
   font-size: 12px;
 }
 
+.run-event-button {
+  width: 100%;
+  min-height: auto;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+}
+
+.run-event-button:hover {
+  background: #f4f7fa;
+}
+
 .run-event time,
-.run-event span {
+.run-event span,
+.run-event em {
   color: #6f7d8e;
+}
+
+.run-event em {
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-event code {
@@ -511,6 +695,7 @@ button:disabled {
     grid-template-columns: 80px 1fr;
   }
 
+  .run-event em,
   .run-event code {
     grid-column: 1 / -1;
   }

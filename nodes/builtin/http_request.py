@@ -1,14 +1,18 @@
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
 
 
 class HttpRequestConfig(NodeConfig):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
     url: str = Field(..., title="URL")
+    headers: dict[str, str] = Field(default_factory=dict, title="Headers")
+    body: Any = Field(default=None, title="Body")
     timeout_seconds: int = Field(default=30, ge=1, le=300)
 
 
@@ -24,8 +28,8 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict):
-        headers = inputs.get("headers") or {}
-        body = inputs.get("body")
+        headers = {**self.config.headers, **(inputs.get("headers") or {})}
+        body = inputs.get("body", self.config.body)
         try:
             async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
                 response = await client.request(

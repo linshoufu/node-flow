@@ -14,11 +14,13 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createWorkflowEdge } from "../lib/workflow";
+import type { NodeRuntimeState } from "../lib/runState";
 import type { NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
 
 type FlowCanvasProps = {
   workflow: WorkflowDocument;
   nodeTypes: NodeType[];
+  nodeRunStates?: Record<string, NodeRuntimeState>;
   selectedNodeId: string | null;
   selectionResetKey?: string;
   onWorkflowChange: (workflow: WorkflowDocument) => void;
@@ -28,6 +30,7 @@ type FlowCanvasProps = {
 type EditorNodeData = {
   workflowNode: WorkflowNode;
   nodeType?: NodeType;
+  runtimeState?: NodeRuntimeState;
 };
 
 type EditorNode = Node<EditorNodeData, "workflowNode">;
@@ -39,6 +42,7 @@ const flowNodeTypes = {
 export function FlowCanvas({
   workflow,
   nodeTypes,
+  nodeRunStates = {},
   selectedNodeId,
   selectionResetKey,
   onWorkflowChange,
@@ -63,9 +67,10 @@ export function FlowCanvas({
         data: {
           workflowNode: node,
           nodeType: nodeTypeById.get(node.type),
+          runtimeState: nodeRunStates[node.id],
         },
       })),
-    [nodeTypeById, selectedNodeId, workflow.nodes]
+    [nodeRunStates, nodeTypeById, selectedNodeId, workflow.nodes]
   );
 
   const edges = useMemo<Edge[]>(
@@ -186,11 +191,10 @@ export function FlowCanvas({
   );
 
   return (
-    <section className="canvas-shell" aria-label="Canvas workspace">
+    <section className="canvas-shell" aria-label="画布工作区">
       <ReactFlow
         deleteKeyCode={["Delete", "Backspace"]}
         edges={edges}
-        fitView
         nodes={nodes}
         nodeTypes={flowNodeTypes}
         onConnect={handleConnect}
@@ -273,21 +277,38 @@ function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
 }
 
 function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
-  const { workflowNode, nodeType } = data;
+  const { workflowNode, nodeType, runtimeState } = data;
   const inputs = Object.entries(nodeType?.inputs ?? {});
   const outputs = Object.entries(nodeType?.outputs ?? {});
+  const statusClass = runtimeState ? ` run-${runtimeState.status}` : "";
 
   return (
-    <div className={selected ? "flow-node is-selected" : "flow-node"}>
+    <div className={`${selected ? "flow-node is-selected" : "flow-node"}${statusClass}`}>
       <div className="flow-node-header">
         <strong>{nodeType?.name ?? workflowNode.type}</strong>
-        <small>{workflowNode.id}</small>
+        <small>{nodeType?.id ?? workflowNode.type}</small>
       </div>
+      {runtimeState && runtimeState.status !== "pending" ? (
+        <div className="run-status-badge">{runStatusLabel(runtimeState.status)}</div>
+      ) : null}
       {nodeType?.description ? <p>{nodeType.description}</p> : null}
       <PortHandles ports={inputs} side="input" />
       <PortHandles ports={outputs} side="output" />
     </div>
   );
+}
+
+function runStatusLabel(status: NodeRuntimeState["status"]) {
+  switch (status) {
+    case "running":
+      return "运行中";
+    case "succeeded":
+      return "成功";
+    case "failed":
+      return "失败";
+    case "pending":
+      return "等待";
+  }
 }
 
 type PortHandlesProps = {

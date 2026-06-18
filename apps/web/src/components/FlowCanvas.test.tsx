@@ -66,6 +66,12 @@ const workflow: WorkflowDocument = {
   edges: [],
 };
 
+const emptyWorkflow: WorkflowDocument = {
+  ...workflow,
+  nodes: [],
+  edges: [],
+};
+
 const workflowWithEdge: WorkflowDocument = {
   ...workflow,
   nodes: [
@@ -110,6 +116,48 @@ describe("FlowCanvas", () => {
     expect(nodes[0]).toHaveProperty("selected", true);
     expect(reactFlowProps.current?.deleteKeyCode).toEqual(["Delete", "Backspace"]);
     expect(reactFlowProps.current?.onSelectionChange).toBeUndefined();
+  });
+
+  it("passes runtime state into controlled React Flow nodes", () => {
+    render(
+      <FlowCanvas
+        nodeRunStates={{
+          node_manual: {
+            nodeId: "node_manual",
+            status: "succeeded",
+            outputs: { success: {} },
+            durationMs: 3,
+            scopes: [[]],
+          },
+        }}
+        nodeTypes={[manualTriggerType]}
+        selectedNodeId="node_manual"
+        workflow={workflow}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      />
+    );
+
+    const nodes = reactFlowProps.current?.nodes as Array<{ data: Record<string, unknown> }>;
+    expect(nodes[0].data.runtimeState).toMatchObject({
+      nodeId: "node_manual",
+      status: "succeeded",
+      durationMs: 3,
+    });
+  });
+
+  it("does not fit an empty canvas before nodes are added", () => {
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType]}
+        selectedNodeId={null}
+        workflow={emptyWorkflow}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      />
+    );
+
+    expect(reactFlowProps.current?.fitView).toBeUndefined();
   });
 
   it("round-trips select node changes into app selection", () => {

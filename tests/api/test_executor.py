@@ -126,6 +126,86 @@ async def test_executor_runs_linear_workflow():
 
 
 @pytest.mark.asyncio
+async def test_executor_records_debug_details_for_successful_nodes():
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_registry()
+    workflow = WorkflowDocument(
+        id="wf_observable_success",
+        name="Observable Success",
+        nodes=[
+            WorkflowNode(
+                id="start",
+                type="manual.trigger",
+                position=Position(x=0, y=0),
+                config={"payload": {"name": "Ada"}},
+            ),
+            WorkflowNode(
+                id="log",
+                type="utility.log",
+                position=Position(x=200, y=0),
+                config={"message": "created user"},
+            ),
+        ],
+        edges=[
+            WorkflowEdge(
+                id="e1",
+                source="start",
+                sourceHandle="success",
+                target="log",
+                targetHandle="input",
+            )
+        ],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    events = storage.list_events(run.id)
+    log_started = next(
+        event for event in events if event.node_id == "log" and event.type == "node_started"
+    )
+    log_succeeded = next(
+        event for event in events if event.node_id == "log" and event.type == "node_succeeded"
+    )
+    assert log_started.payload["inputs"] == {"input": {"name": "Ada"}}
+    assert log_succeeded.payload["outputs"] == {"success": {"input": {"name": "Ada"}}}
+    assert log_succeeded.payload["logs"][0]["message"] == "created user"
+    assert isinstance(log_succeeded.payload["duration_ms"], int | float)
+    assert log_succeeded.payload["duration_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_executor_records_debug_details_for_failed_nodes(tmp_path):
+    storage = Storage(":memory:")
+    storage.init_schema()
+    registry = make_temp_registry(tmp_path)
+    workflow = WorkflowDocument(
+        id="wf_observable_failure",
+        name="Observable Failure",
+        nodes=[
+            WorkflowNode(id="fail", type="test.fail", position=Position(x=0, y=0), config={}),
+        ],
+        edges=[],
+    )
+    saved = storage.save_workflow(workflow)
+    run = storage.create_run(saved)
+    executor = WorkflowExecutor(storage=storage, registry=registry)
+
+    await executor.execute(run.id, saved)
+
+    failed_event = next(
+        event for event in storage.list_events(run.id)
+        if event.node_id == "fail" and event.type == "node_failed"
+    )
+    assert failed_event.payload["error"]["message"] == "boom"
+    assert isinstance(failed_event.payload["duration_ms"], int | float)
+    assert failed_event.payload["duration_ms"] >= 0
+
+
+@pytest.mark.asyncio
 async def test_executor_routes_if_false_branch():
     storage = Storage(":memory:")
     storage.init_schema()

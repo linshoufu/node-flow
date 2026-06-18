@@ -9,10 +9,13 @@ export function NodePalette({ nodeTypes, onAddNode }: NodePaletteProps) {
   const categories = groupByCategory(nodeTypes);
 
   return (
-    <aside className="panel palette-panel" aria-label="Node palette">
+    <aside className="panel palette-panel" aria-label="节点库">
       <div className="panel-heading">
-        <h2>Nodes</h2>
-        <span>{nodeTypes.length}</span>
+        <div>
+          <h2>节点库</h2>
+          <p>点击添加到当前画布</p>
+        </div>
+        <span>{nodeTypes.length} 个</span>
       </div>
       <div className="palette-groups">
         {categories.map(([category, items]) => (
@@ -37,7 +40,7 @@ function groupByCategory(nodeTypes: NodeType[]): Array<[string, NodeType[]]> {
   const groups = new Map<string, NodeType[]>();
 
   for (const nodeType of nodeTypes) {
-    const category = nodeType.category || "Other";
+    const category = nodeType.category || "其他";
     groups.set(category, [...(groups.get(category) ?? []), nodeType]);
   }
 

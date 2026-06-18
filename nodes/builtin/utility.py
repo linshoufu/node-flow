@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from pydantic import Field
 
@@ -6,7 +7,7 @@ from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
 
 
 class TransformConfig(NodeConfig):
-    value: str = Field(..., title="Value expression")
+    value: Any = Field(default="", title="Value expression")
 
 
 @node(

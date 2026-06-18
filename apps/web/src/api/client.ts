@@ -1,6 +1,13 @@
 import type { NodeType, RunEvent, RunRecord, ValidationResult, WorkflowDocument } from "../types";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
+const DEFAULT_API_BASE_URL = getConfiguredBaseUrl();
+
+type ViteImportMeta = ImportMeta & {
+  env?: {
+    VITE_API_BASE_URL?: string;
+  };
+};
 
 type ApiClientOptions = {
   requestTimeoutMs?: number;
@@ -97,4 +104,8 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient();
+export const apiClient = new ApiClient(DEFAULT_API_BASE_URL);
+
+function getConfiguredBaseUrl() {
+  return (import.meta as ViteImportMeta).env?.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+}
