@@ -183,6 +183,29 @@ describe("buildTestReport", () => {
     });
   });
 
+  it("uses failed summary totals when there are no case events", () => {
+    const report = buildTestReport([
+      runEvent({
+        type: "node_succeeded",
+        node_id: "summary",
+        payload: {
+          node_type: "test.summary",
+          outputs: {
+            failed: {
+              summary: { total: 3, passed: 1, failed: 2, unknown: 0 },
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(report).toEqual({
+      summary: { total: 3, passed: 1, failed: 2, unknown: 0 },
+      cases: [],
+      hasCases: false,
+    });
+  });
+
   it("does not treat ordinary node outputs as test cases", () => {
     const report = buildTestReport([
       runEvent({
@@ -194,6 +217,55 @@ describe("buildTestReport", () => {
               response: { ok: true },
               status_code: 200,
               url: "https://example.test",
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(report).toEqual({
+      summary: { total: 0, passed: 0, failed: 0, unknown: 0 },
+      cases: [],
+      hasCases: false,
+    });
+  });
+
+  it("does not treat CSV outputs as test cases", () => {
+    const report = buildTestReport([
+      runEvent({
+        type: "node_succeeded",
+        node_id: "read_csv",
+        payload: {
+          outputs: {
+            success: {
+              headers: ["name", "status"],
+              columns: ["name", "status"],
+              rows: [
+                { name: "Alice", status: "active" },
+                { name: "Bob", status: "inactive" },
+              ],
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(report).toEqual({
+      summary: { total: 0, passed: 0, failed: 0, unknown: 0 },
+      cases: [],
+      hasCases: false,
+    });
+  });
+
+  it("does not treat ordinary node summary outputs as test summary", () => {
+    const report = buildTestReport([
+      runEvent({
+        type: "node_succeeded",
+        node_id: "request",
+        payload: {
+          outputs: {
+            success: {
+              summary: { total: 10, passed: 9, failed: 1, unknown: 0 },
             },
           },
         },

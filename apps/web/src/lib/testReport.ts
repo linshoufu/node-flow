@@ -104,7 +104,7 @@ function isSummaryEvent(event: RunEvent): boolean {
     return false;
   }
 
-  return readSummary(event.payload) !== undefined;
+  return nodeIdLooksLikeSummary(event.node_id) && readSummary(event.payload) !== undefined;
 }
 
 function readNodeType(event: RunEvent): string | undefined {
@@ -137,7 +137,8 @@ function readResult(payload: Record<string, unknown>): unknown {
 function readSummary(payload: Record<string, unknown>): TestReportSummary | undefined {
   const outputs = isRecord(payload.outputs) ? payload.outputs : undefined;
   const success = isRecord(outputs?.success) ? outputs.success : undefined;
-  const summary = success?.summary ?? outputs?.summary ?? payload.summary;
+  const failed = isRecord(outputs?.failed) ? outputs.failed : undefined;
+  const summary = success?.summary ?? failed?.summary ?? outputs?.summary ?? payload.summary;
 
   if (!isRecord(summary)) {
     return undefined;
@@ -218,6 +219,10 @@ function hasTestCaseField(value: Record<string, unknown>): boolean {
 
 function hasSummaryField(value: Record<string, unknown>): boolean {
   return "total" in value || "passed" in value || "failed" in value || "unknown" in value;
+}
+
+function nodeIdLooksLikeSummary(nodeId: string | null | undefined): boolean {
+  return nodeId?.toLowerCase().includes("summary") ?? false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
