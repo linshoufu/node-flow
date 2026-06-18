@@ -385,6 +385,10 @@ describe("App", () => {
       error: null,
       cancel_requested_at: null,
     };
+    const cancelRequestedRun = {
+      ...runningRun,
+      cancel_requested_at: "2026-06-18T00:00:02Z",
+    };
     const cancelledRun = {
       ...runningRun,
       status: "cancelled",
@@ -409,6 +413,9 @@ describe("App", () => {
         return jsonResponse([]);
       }
       if (url.endsWith("/api/runs/run_1/cancel") && init?.method === "POST") {
+        return jsonResponse(cancelRequestedRun);
+      }
+      if (url.endsWith("/api/runs/run_1")) {
         return jsonResponse(cancelledRun);
       }
       throw new Error(`Unexpected request: ${url}`);
@@ -428,6 +435,10 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/api/runs/run_1/cancel",
       expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/runs/run_1",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 

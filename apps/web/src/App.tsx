@@ -336,34 +336,59 @@ export default function App() {
 
     const runId = run.id;
     runTokenRef.current += 1;
+    const cancelToken = runTokenRef.current;
     runInFlightRef.current = false;
     setIsCancelling(true);
+    setIsBusy(true);
     setMessage(`正在请求取消运行 ${runId}...`);
 
     try {
-      const cancelledRun = await apiClient.cancelRun(runId);
-      if (!mountedRef.current) {
+      let currentRun = await apiClient.cancelRun(runId);
+      if (!isActiveRun(cancelToken)) {
         return;
       }
 
-      const nextEvents = await apiClient.getRunEvents(runId);
-      if (!mountedRef.current) {
+      let currentEvents = await apiClient.getRunEvents(runId);
+      if (!isActiveRun(cancelToken)) {
         return;
       }
 
-      setRun(cancelledRun);
-      setRunEvents(nextEvents);
+      setRun(currentRun);
+      setRunEvents(currentEvents);
+
+      let attempts = 0;
+      while (!TERMINAL_RUN_STATUSES.has(currentRun.status) && attempts < MAX_RUN_POLL_ATTEMPTS) {
+        if (attempts > 0) {
+          await delay(RUN_POLL_INTERVAL_MS);
+        }
+        attempts += 1;
+
+        if (!isActiveRun(cancelToken)) {
+          return;
+        }
+
+        const [nextRun, nextEvents] = await Promise.all([apiClient.getRun(runId), apiClient.getRunEvents(runId)]);
+        if (!isActiveRun(cancelToken)) {
+          return;
+        }
+
+        currentRun = nextRun;
+        currentEvents = nextEvents;
+        setRun(currentRun);
+        setRunEvents(currentEvents);
+      }
+
       setMessage(
-        TERMINAL_RUN_STATUSES.has(cancelledRun.status)
-          ? `运行 ${cancelledRun.id} ${formatRunStatus(cancelledRun.status)}。`
-          : `已请求取消运行 ${cancelledRun.id}，等待当前节点结束。`
+        TERMINAL_RUN_STATUSES.has(currentRun.status)
+          ? `运行 ${currentRun.id} ${formatRunStatus(currentRun.status)}。`
+          : `运行 ${currentRun.id} 取消后轮询超时，已尝试 ${MAX_RUN_POLL_ATTEMPTS} 次。`
       );
     } catch (error) {
-      if (mountedRef.current) {
+      if (isActiveRun(cancelToken)) {
         setMessage(`取消运行失败：${formatError(error)}`);
       }
     } finally {
-      if (mountedRef.current) {
+      if (runTokenRef.current === cancelToken && mountedRef.current) {
         setIsCancelling(false);
         setIsBusy(false);
       }
