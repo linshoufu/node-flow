@@ -56,6 +56,10 @@ export class ApiClient {
     return this.request(`/api/runs/${encodeURIComponent(runId)}`);
   }
 
+  cancelRun(runId: string): Promise<RunRecord> {
+    return this.request(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+  }
+
   getRunEvents(runId: string): Promise<RunEvent[]> {
     return this.request(`/api/runs/${encodeURIComponent(runId)}/events`);
   }

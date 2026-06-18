@@ -82,6 +82,35 @@ describe("buildNodeRunStates", () => {
     expect(states.request.scopes).toEqual([["each", "iteration:0"]]);
     expect(states.never_run.status).toBe("pending");
   });
+
+  it("marks unfinished nodes when a run is cancelled", () => {
+    const events: RunEvent[] = [
+      runEvent({
+        id: 1,
+        type: "node_started",
+        node_id: "start",
+        payload: { inputs: {} },
+      }),
+      runEvent({
+        id: 2,
+        type: "node_succeeded",
+        node_id: "start",
+        payload: { outputs: { success: {} } },
+      }),
+      runEvent({
+        id: 3,
+        type: "node_started",
+        node_id: "request",
+        payload: { inputs: {} },
+      }),
+    ];
+
+    const states = buildNodeRunStates(workflowNodes, events, "cancelled");
+
+    expect(states.start.status).toBe("succeeded");
+    expect(states.request.status).toBe("cancelled");
+    expect(states.never_run.status).toBe("skipped");
+  });
 });
 
 function runEvent(overrides: Partial<RunEvent>): RunEvent {

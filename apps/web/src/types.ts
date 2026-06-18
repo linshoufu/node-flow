@@ -62,12 +62,17 @@ export type WorkflowSubflow = {
   edges: WorkflowEdge[];
 };
 
+export type WorkflowSettings = {
+  timeout_seconds: number;
+};
+
 export type WorkflowDocument = {
   id: string;
   name: string;
   version: number;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  settings?: WorkflowSettings;
 };
 
 export type ValidationIssue = {
@@ -91,6 +96,7 @@ export type RunRecord = {
   started_at: string | null;
   completed_at: string | null;
   error: string | null;
+  cancel_requested_at?: string | null;
 };
 
 export type RunEvent = {

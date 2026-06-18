@@ -13,6 +13,9 @@ export function createEmptyWorkflow(): WorkflowDocument {
     version: 1,
     nodes: [],
     edges: [],
+    settings: {
+      timeout_seconds: 600,
+    },
   };
 }
 

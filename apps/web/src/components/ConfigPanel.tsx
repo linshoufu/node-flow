@@ -148,6 +148,10 @@ function runStatusLabel(status: NodeRuntimeState["status"]) {
       return "成功";
     case "failed":
       return "失败";
+    case "skipped":
+      return "已跳过";
+    case "cancelled":
+      return "已取消";
     case "pending":
       return "等待";
   }

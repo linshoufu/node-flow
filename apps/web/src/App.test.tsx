@@ -364,6 +364,73 @@ describe("App", () => {
     );
   });
 
+  it("cancels an in-flight run from the topbar", async () => {
+    const nodeType = {
+      id: "manual.trigger",
+      name: "Manual Trigger",
+      category: "Triggers",
+      description: "Starts a workflow manually.",
+      inputs: {},
+      outputs: { success: { description: "Initial payload" } },
+      configSchema: { type: "object", properties: {} },
+    };
+    const runningRun = {
+      id: "run_1",
+      workflow_id: "wf_1",
+      workflow_version: 2,
+      status: "running",
+      created_at: "2026-06-18T00:00:00Z",
+      started_at: "2026-06-18T00:00:01Z",
+      completed_at: null,
+      error: null,
+      cancel_requested_at: null,
+    };
+    const cancelledRun = {
+      ...runningRun,
+      status: "cancelled",
+      completed_at: "2026-06-18T00:00:02Z",
+      cancel_requested_at: "2026-06-18T00:00:02Z",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([nodeType]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        return jsonResponse({ ...(JSON.parse(String(init.body)) as object), id: "wf_1", version: 2 });
+      }
+      if (url.endsWith("/api/workflows/wf_1/runs") && init?.method === "POST") {
+        return jsonResponse(runningRun);
+      }
+      if (url.endsWith("/api/runs/run_1/events")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/runs/run_1/cancel") && init?.method === "POST") {
+        return jsonResponse(cancelledRun);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "手动触发 manual.trigger" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeEnabled());
+    const cancelButton = screen.getByRole("button", { name: "取消" });
+
+    fireEvent.click(cancelButton);
+
+    await screen.findByText("运行 run_1 已取消。");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/runs/run_1/cancel",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("selects a node from the run log and shows its runtime details", async () => {
     const nodeType = {
       id: "manual.trigger",

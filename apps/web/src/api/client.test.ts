@@ -127,6 +127,34 @@ describe("ApiClient", () => {
     );
   });
 
+  it("cancels runs with POST and an encoded run id", async () => {
+    const run = {
+      id: "run/with space",
+      workflow_id: "workflow_1",
+      workflow_version: 1,
+      status: "cancelled",
+      created_at: "2026-06-18T00:00:00Z",
+      started_at: null,
+      completed_at: "2026-06-18T00:00:01Z",
+      error: null,
+      cancel_requested_at: "2026-06-18T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(run),
+    });
+    const client = new ApiClient("http://api.test", fetchMock);
+
+    await expect(client.cancelRun("run/with space")).resolves.toEqual(run);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/runs/run%2Fwith%20space/cancel",
+      expect.objectContaining({
+        method: "POST",
+        signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
   it("rejects requests that do not settle before the configured timeout", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(() => new Promise<Response>(() => undefined));

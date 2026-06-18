@@ -161,6 +161,17 @@ button:disabled {
   background: #174c6d;
 }
 
+.danger-button {
+  border-color: #b85c5c;
+  background: #fff5f5;
+  color: #8b3030;
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: #9d4646;
+  background: #ffecec;
+}
+
 .message-bar {
   display: flex;
   align-items: center;
@@ -334,6 +345,14 @@ button:disabled {
   border-color: #bd5b5b;
 }
 
+.flow-node.run-skipped {
+  border-color: #b6c0cc;
+}
+
+.flow-node.run-cancelled {
+  border-color: #b87a5b;
+}
+
 .run-status-badge {
   margin: 8px 10px 0;
   width: fit-content;
@@ -362,6 +381,18 @@ button:disabled {
   border-color: #d59a9a;
   background: #fff4f4;
   color: #8b3030;
+}
+
+.flow-node.run-skipped .run-status-badge {
+  border-color: #c8d0da;
+  background: #f3f5f7;
+  color: #5c6877;
+}
+
+.flow-node.run-cancelled .run-status-badge {
+  border-color: #d5aa92;
+  background: #fff6f0;
+  color: #8a4526;
 }
 
 .react-flow__node.dragging,
@@ -671,7 +702,7 @@ button:disabled {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: minmax(170px, 1.6fr) repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(170px, 1.6fr) repeat(5, minmax(0, 1fr));
   }
 
   .workflow-picker {

@@ -31,6 +31,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [message, setMessage] = useState("正在加载节点类型...");
   const [isBusy, setIsBusy] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [run, setRun] = useState<RunRecord | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
   const mountedRef = useRef(true);
@@ -112,18 +113,14 @@ export default function App() {
     [displayNodeTypes, selectedNode?.type]
   );
   const nodeRunStates = useMemo(
-    () => buildNodeRunStates(editableWorkflow.nodes, runEvents),
-    [editableWorkflow.nodes, runEvents]
+    () => buildNodeRunStates(editableWorkflow.nodes, runEvents, run?.status),
+    [editableWorkflow.nodes, run?.status, runEvents]
   );
   const selectedRuntimeState = selectedNodeId ? nodeRunStates[selectedNodeId] : undefined;
+  const canCancelRun = Boolean(run && !TERMINAL_RUN_STATUSES.has(run.status));
 
-  function addNode(nodeType: NodeType) {
-    const editableNodeCount = editableWorkflow.nodes.length;
-    const nextNode = createWorkflowNode(nodeType, {
-      x: 80 + editableNodeCount * 40,
-      y: 80 + editableNodeCount * 30,
-    });
-
+  function addNodeAt(nodeType: NodeType, position: { x: number; y: number }) {
+    const nextNode = createWorkflowNode(nodeType, position);
     setWorkflow((current) => {
       const currentEditableWorkflow = getEditableWorkflow(current, editScope);
       return updateEditableWorkflow(current, editScope, {
@@ -132,6 +129,14 @@ export default function App() {
       });
     });
     setSelectedNodeId(nextNode.id);
+  }
+
+  function addNode(nodeType: NodeType) {
+    const editableNodeCount = editableWorkflow.nodes.length;
+    addNodeAt(nodeType, {
+      x: 80 + editableNodeCount * 40,
+      y: 80 + editableNodeCount * 30,
+    });
   }
 
   function updateNodeConfig(nodeId: string, key: string, value: unknown) {
@@ -324,6 +329,47 @@ export default function App() {
     }
   }
 
+  async function cancelRun() {
+    if (!run || TERMINAL_RUN_STATUSES.has(run.status) || isCancelling) {
+      return;
+    }
+
+    const runId = run.id;
+    runTokenRef.current += 1;
+    runInFlightRef.current = false;
+    setIsCancelling(true);
+    setMessage(`正在请求取消运行 ${runId}...`);
+
+    try {
+      const cancelledRun = await apiClient.cancelRun(runId);
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const nextEvents = await apiClient.getRunEvents(runId);
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setRun(cancelledRun);
+      setRunEvents(nextEvents);
+      setMessage(
+        TERMINAL_RUN_STATUSES.has(cancelledRun.status)
+          ? `运行 ${cancelledRun.id} ${formatRunStatus(cancelledRun.status)}。`
+          : `已请求取消运行 ${cancelledRun.id}，等待当前节点结束。`
+      );
+    } catch (error) {
+      if (mountedRef.current) {
+        setMessage(`取消运行失败：${formatError(error)}`);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsCancelling(false);
+        setIsBusy(false);
+      }
+    }
+  }
+
   function upsertWorkflowSummary(saved: WorkflowDocument) {
     setWorkflows((current) => {
       const summary = { id: saved.id, name: saved.name, version: saved.version };
@@ -382,6 +428,9 @@ export default function App() {
           <button className="primary-button" disabled={isBusy} type="button" onClick={runWorkflow}>
             运行
           </button>
+          <button className="danger-button" disabled={!canCancelRun || isCancelling} type="button" onClick={cancelRun}>
+            取消
+          </button>
         </div>
       </header>
 
@@ -397,6 +446,7 @@ export default function App() {
           selectedNodeId={selectedNodeId}
           selectionResetKey={editScopeKey}
           workflow={canvasWorkflow}
+          onAddNodeAt={addNodeAt}
           onSelectNode={setSelectedNodeId}
           onWorkflowChange={updateCurrentEditableWorkflow}
         />

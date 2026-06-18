@@ -86,6 +86,8 @@ const EVENT_LABELS: Record<string, string> = {
   node_failed: "节点失败",
   node_started: "节点开始",
   node_succeeded: "节点成功",
+  run_cancel_requested: "请求取消",
+  run_cancelled: "运行已取消",
   run_failed: "运行失败",
   run_succeeded: "运行成功",
   "workflow.completed": "工作流完成",

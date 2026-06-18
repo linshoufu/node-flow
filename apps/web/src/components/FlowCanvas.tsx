@@ -5,6 +5,8 @@ import {
   MarkerType,
   Position,
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -12,7 +14,7 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { createWorkflowEdge } from "../lib/workflow";
 import type { NodeRuntimeState } from "../lib/runState";
 import type { NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
@@ -23,6 +25,7 @@ type FlowCanvasProps = {
   nodeRunStates?: Record<string, NodeRuntimeState>;
   selectedNodeId: string | null;
   selectionResetKey?: string;
+  onAddNodeAt?: (nodeType: NodeType, position: WorkflowNode["position"]) => void;
   onWorkflowChange: (workflow: WorkflowDocument) => void;
   onSelectNode: (nodeId: string | null) => void;
 };
@@ -40,15 +43,27 @@ const flowNodeTypes = {
 };
 
 export function FlowCanvas({
+  ...props
+}: FlowCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <FlowCanvasInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function FlowCanvasInner({
   workflow,
   nodeTypes,
   nodeRunStates = {},
   selectedNodeId,
   selectionResetKey,
+  onAddNodeAt,
   onWorkflowChange,
   onSelectNode,
 }: FlowCanvasProps) {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(() => new Set());
+  const { screenToFlowPosition } = useReactFlow();
   const nodeTypeById = useMemo(() => new Map(nodeTypes.map((nodeType) => [nodeType.id, nodeType])), [nodeTypes]);
 
   useEffect(() => {
@@ -190,6 +205,32 @@ export function FlowCanvas({
     [onWorkflowChange, workflow]
   );
 
+  const handleDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault();
+      const nodeTypeId =
+        event.dataTransfer.getData("application/node-flow-node-type") || event.dataTransfer.getData("text/plain");
+      const nodeType = nodeTypeById.get(nodeTypeId);
+      if (!nodeType || !onAddNodeAt) {
+        return;
+      }
+
+      onAddNodeAt(
+        nodeType,
+        screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        })
+      );
+    },
+    [nodeTypeById, onAddNodeAt, screenToFlowPosition]
+  );
+
   return (
     <section className="canvas-shell" aria-label="画布工作区">
       <ReactFlow
@@ -198,6 +239,8 @@ export function FlowCanvas({
         nodes={nodes}
         nodeTypes={flowNodeTypes}
         onConnect={handleConnect}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         onEdgesChange={handleEdgesChange}
         onNodesChange={handleNodesChange}
         onPaneClick={() => {
@@ -306,6 +349,10 @@ function runStatusLabel(status: NodeRuntimeState["status"]) {
       return "成功";
     case "failed":
       return "失败";
+    case "skipped":
+      return "已跳过";
+    case "cancelled":
+      return "已取消";
     case "pending":
       return "等待";
   }

@@ -1,4 +1,5 @@
 import { act, cleanup, render } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeType, WorkflowDocument } from "../types";
 import { FlowCanvas } from "./FlowCanvas";
@@ -17,6 +18,10 @@ vi.mock("@xyflow/react", () => ({
     reactFlowProps.current = props;
     return <div aria-label="Mock React Flow" />;
   },
+  ReactFlowProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useReactFlow: () => ({
+    screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({ x: x - 10, y: y - 20 }),
+  }),
 }));
 
 const manualTriggerType: NodeType = {
@@ -300,5 +305,44 @@ describe("FlowCanvas", () => {
       ...workflowWithEdge,
       edges: [],
     });
+  });
+
+  it("adds a dragged palette node at the dropped canvas position", () => {
+    const onAddNodeAt = vi.fn();
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType]}
+        selectedNodeId={null}
+        workflow={emptyWorkflow}
+        onAddNodeAt={onAddNodeAt}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      />
+    );
+
+    const onDragOver = reactFlowProps.current?.onDragOver as (event: {
+      preventDefault: () => void;
+      dataTransfer: { dropEffect: string };
+    }) => void;
+    const preventDefault = vi.fn();
+    onDragOver({ preventDefault, dataTransfer: { dropEffect: "" } });
+    expect(preventDefault).toHaveBeenCalled();
+
+    const onDrop = reactFlowProps.current?.onDrop as (event: {
+      preventDefault: () => void;
+      clientX: number;
+      clientY: number;
+      dataTransfer: { getData: (type: string) => string };
+    }) => void;
+    onDrop({
+      preventDefault,
+      clientX: 110,
+      clientY: 220,
+      dataTransfer: {
+        getData: (type) => (type === "application/node-flow-node-type" ? "manual.trigger" : ""),
+      },
+    });
+
+    expect(onAddNodeAt).toHaveBeenCalledWith(manualTriggerType, { x: 100, y: 200 });
   });
 });

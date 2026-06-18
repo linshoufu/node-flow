@@ -1,6 +1,6 @@
-import type { RunEvent, WorkflowNode } from "../types";
+import type { RunEvent, RunStatus, WorkflowNode } from "../types";
 
-export type NodeRunStatus = "pending" | "running" | "succeeded" | "failed";
+export type NodeRunStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
 
 export type NodeRuntimeState = {
   nodeId: string;
@@ -17,7 +17,8 @@ export type NodeRuntimeState = {
 
 export function buildNodeRunStates(
   nodes: WorkflowNode[],
-  events: RunEvent[]
+  events: RunEvent[],
+  runStatus?: RunStatus | "idle" | null
 ): Record<string, NodeRuntimeState> {
   const states: Record<string, NodeRuntimeState> = Object.fromEntries(
     nodes.map((node) => [
@@ -60,6 +61,16 @@ export function buildNodeRunStates(
       state.error = event.payload.error;
       state.logs = event.payload.logs;
       state.durationMs = readDurationMs(event.payload);
+    }
+  }
+
+  if (runStatus === "cancelled") {
+    for (const state of Object.values(states)) {
+      if (state.status === "running") {
+        state.status = "cancelled";
+      } else if (state.status === "pending") {
+        state.status = "skipped";
+      }
     }
   }
 

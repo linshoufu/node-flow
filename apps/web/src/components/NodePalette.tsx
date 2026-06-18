@@ -13,7 +13,7 @@ export function NodePalette({ nodeTypes, onAddNode }: NodePaletteProps) {
       <div className="panel-heading">
         <div>
           <h2>节点库</h2>
-          <p>点击添加到当前画布</p>
+          <p>拖拽或点击添加到当前画布</p>
         </div>
         <span>{nodeTypes.length} 个</span>
       </div>
@@ -23,7 +23,18 @@ export function NodePalette({ nodeTypes, onAddNode }: NodePaletteProps) {
             <h3>{category}</h3>
             <div className="palette-list">
               {items.map((nodeType) => (
-                <button className="palette-node" key={nodeType.id} type="button" onClick={() => onAddNode(nodeType)}>
+                <button
+                  className="palette-node"
+                  draggable
+                  key={nodeType.id}
+                  type="button"
+                  onClick={() => onAddNode(nodeType)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "copy";
+                    event.dataTransfer.setData("application/node-flow-node-type", nodeType.id);
+                    event.dataTransfer.setData("text/plain", nodeType.id);
+                  }}
+                >
                   <span>{nodeType.name}</span>
                   <small>{nodeType.id}</small>
                 </button>
