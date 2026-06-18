@@ -1,5 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
 import type { RunEvent, RunRecord } from "../types";
 import { translateEventType, translateRunStatus } from "../lib/display";
+import { buildTestReport } from "../lib/testReport";
+import { TestReportView } from "./TestReportView";
 
 type RunPanelProps = {
   run: RunRecord | null;
@@ -7,32 +10,70 @@ type RunPanelProps = {
   onSelectNode?: (nodeId: string) => void;
 };
 
+type RunPanelTab = "report" | "events";
+
 export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
+  const [activeTab, setActiveTab] = useState<RunPanelTab>("report");
+  const report = useMemo(() => buildTestReport(events), [events]);
+
+  useEffect(() => {
+    setActiveTab("report");
+  }, [run?.id]);
+
   return (
-    <section className="run-panel" aria-label="运行日志">
+    <section className="run-panel" aria-label="运行结果">
       <div className="panel-heading">
         <div>
-          <h2>运行日志</h2>
-          <p>查看节点执行顺序和输出</p>
+          <h2>运行结果</h2>
+          <p>{run ? `Run ID：${run.id}` : "查看测试报告和原始运行事件"}</p>
         </div>
         <span className={run ? `status-pill status-${run.status}` : "status-pill"}>
           {translateRunStatus(run?.status ?? "idle")}
         </span>
       </div>
-      {events.length === 0 ? (
-        <p className="empty-state">还没有运行事件。</p>
-      ) : (
-        <div className="run-events">
-          {events.map((event, index) => (
-            <RunEventRow
-              event={event}
-              key={event.id ?? `${event.run_id}-${index}`}
-              onSelectNode={onSelectNode}
-            />
-          ))}
-        </div>
-      )}
+
+      <div className="run-panel-tabs" role="tablist" aria-label="运行面板视图">
+        <button
+          aria-selected={activeTab === "report"}
+          role="tab"
+          type="button"
+          onClick={() => setActiveTab("report")}
+        >
+          测试报告
+        </button>
+        <button
+          aria-selected={activeTab === "events"}
+          role="tab"
+          type="button"
+          onClick={() => setActiveTab("events")}
+        >
+          运行事件
+        </button>
+      </div>
+
+      <div className="run-panel-content">
+        {activeTab === "report" ? <TestReportView report={report} /> : <RunEventList events={events} onSelectNode={onSelectNode} />}
+      </div>
     </section>
+  );
+}
+
+type RunEventListProps = {
+  events: RunEvent[];
+  onSelectNode?: (nodeId: string) => void;
+};
+
+function RunEventList({ events, onSelectNode }: RunEventListProps) {
+  if (events.length === 0) {
+    return <p className="empty-state">还没有运行事件。</p>;
+  }
+
+  return (
+    <div className="run-events">
+      {events.map((event, index) => (
+        <RunEventRow event={event} key={event.id ?? `${event.run_id}-${index}`} onSelectNode={onSelectNode} />
+      ))}
+    </div>
   );
 }
 
