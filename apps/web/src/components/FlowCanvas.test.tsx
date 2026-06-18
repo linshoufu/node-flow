@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeType, WorkflowDocument } from "../types";
@@ -376,5 +376,38 @@ describe("FlowCanvas", () => {
     });
 
     expect(onAddNodeAt).toHaveBeenCalledWith(manualTriggerType, { x: 100, y: 200 });
+  });
+
+  it("keeps dragged palette drops working when they land on the empty overlay", () => {
+    const onAddNodeAt = vi.fn();
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType]}
+        selectedNodeId={null}
+        workflow={emptyWorkflow}
+        onAddNodeAt={onAddNodeAt}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      >
+        <div>空画布模板入口</div>
+      </FlowCanvas>
+    );
+
+    const overlay = screen.getByText("空画布模板入口").closest(".canvas-empty-overlay");
+    expect(overlay).toBeInTheDocument();
+
+    fireEvent.dragOver(overlay as Element, {
+      dataTransfer: { dropEffect: "" },
+    });
+    const dropEvent = createEvent.drop(overlay as Element, {
+      dataTransfer: {
+        getData: (type: string) => (type === "application/node-flow-node-type" ? "manual.trigger" : ""),
+      },
+    });
+    Object.defineProperty(dropEvent, "clientX", { value: 130 });
+    Object.defineProperty(dropEvent, "clientY", { value: 260 });
+    fireEvent(overlay as Element, dropEvent);
+
+    expect(onAddNodeAt).toHaveBeenCalledWith(manualTriggerType, { x: 120, y: 240 });
   });
 });

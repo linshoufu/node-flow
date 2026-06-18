@@ -327,14 +327,14 @@ button:disabled {
   align-items: center;
   justify-items: center;
   padding: 56px 28px 28px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .canvas-empty-state {
   display: grid;
   gap: 18px;
   width: min(760px, 100%);
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .canvas-empty-copy {
@@ -444,6 +444,7 @@ button:disabled {
   border-color: #1d5f88;
   background: #1d5f88;
   color: #ffffff;
+  pointer-events: auto;
 }
 
 .template-card button:hover:not(:disabled) {

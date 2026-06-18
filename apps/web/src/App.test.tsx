@@ -243,6 +243,53 @@ describe("App", () => {
     expect(screen.getByLabelText("工作流名称")).toHaveValue("单接口状态码断言");
   });
 
+  it("disables empty canvas templates while a run is in flight and restores them after it settles", async () => {
+    const saveWorkflow = deferred<Response>();
+    const run = {
+      id: "run_1",
+      workflow_id: "wf_1",
+      workflow_version: 2,
+      status: "succeeded",
+      created_at: "2026-06-18T00:00:00Z",
+      started_at: "2026-06-18T00:00:01Z",
+      completed_at: "2026-06-18T00:00:02Z",
+      error: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        return saveWorkflow.promise;
+      }
+      if (url.endsWith("/api/workflows/wf_1/runs") && init?.method === "POST") {
+        return jsonResponse(run);
+      }
+      if (url.endsWith("/api/runs/run_1/events")) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const templateCard = await screen.findByRole("article", { name: "单接口状态码断言" });
+    const templateButton = within(templateCard).getByRole("button", { name: "使用模板" });
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+
+    await waitFor(() => expect(templateButton).toBeDisabled());
+
+    saveWorkflow.resolve(jsonResponse({ id: "wf_1", name: "未命名工作流", version: 2, nodes: [], edges: [] }));
+
+    await screen.findByText("运行 run_1 成功。");
+    await waitFor(() => expect(templateButton).toBeEnabled());
+  });
+
   it("loads the saved workflow list on startup", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -773,4 +820,15 @@ function workflowDocument(overrides: Partial<import("./types").WorkflowDocument>
     edges: [],
     ...overrides,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, reject, resolve };
 }

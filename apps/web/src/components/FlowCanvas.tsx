@@ -255,7 +255,11 @@ function FlowCanvasInner({
         <Background />
         <Controls />
       </ReactFlow>
-      {workflow.nodes.length === 0 && children ? <div className="canvas-empty-overlay">{children}</div> : null}
+      {workflow.nodes.length === 0 && children ? (
+        <div className="canvas-empty-overlay" onDragOver={handleDragOver} onDrop={handleDrop}>
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }

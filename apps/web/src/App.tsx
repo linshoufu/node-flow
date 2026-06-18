@@ -507,7 +507,11 @@ export default function App() {
           onSelectNode={setSelectedNodeId}
           onWorkflowChange={updateCurrentEditableWorkflow}
         >
-          <CanvasEmptyState templates={templateCards} onApplyTemplate={applyTemplate} />
+          <CanvasEmptyState
+            actionsDisabled={isBusy || isCancelling}
+            templates={templateCards}
+            onApplyTemplate={applyTemplate}
+          />
         </FlowCanvas>
         <ConfigPanel
           node={selectedNode}

@@ -10,10 +10,11 @@ export type CanvasTemplateCard = {
 
 type CanvasEmptyStateProps = {
   templates: readonly CanvasTemplateCard[];
+  actionsDisabled?: boolean;
   onApplyTemplate: (templateId: string) => void;
 };
 
-export function CanvasEmptyState({ templates, onApplyTemplate }: CanvasEmptyStateProps) {
+export function CanvasEmptyState({ templates, actionsDisabled = false, onApplyTemplate }: CanvasEmptyStateProps) {
   return (
     <div className="canvas-empty-state">
       <div className="canvas-empty-copy">
@@ -42,7 +43,7 @@ export function CanvasEmptyState({ templates, onApplyTemplate }: CanvasEmptyStat
                   ))}
                 </div>
                 <button
-                  disabled={!template.available}
+                  disabled={actionsDisabled || !template.available}
                   title={template.available ? undefined : template.unavailableReason}
                   type="button"
                   onClick={() => onApplyTemplate(template.id)}
