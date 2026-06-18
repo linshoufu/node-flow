@@ -1,4 +1,4 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeType, WorkflowDocument } from "../types";
@@ -163,6 +163,38 @@ describe("FlowCanvas", () => {
     );
 
     expect(reactFlowProps.current?.fitView).toBeUndefined();
+  });
+
+  it("renders children as an overlay on an empty canvas", () => {
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType]}
+        selectedNodeId={null}
+        workflow={emptyWorkflow}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      >
+        <button type="button">使用模板</button>
+      </FlowCanvas>
+    );
+
+    expect(screen.getByRole("button", { name: "使用模板" })).toBeInTheDocument();
+  });
+
+  it("hides children when the editable workflow has nodes", () => {
+    render(
+      <FlowCanvas
+        nodeTypes={[manualTriggerType]}
+        selectedNodeId={null}
+        workflow={workflow}
+        onSelectNode={vi.fn()}
+        onWorkflowChange={vi.fn()}
+      >
+        <button type="button">使用模板</button>
+      </FlowCanvas>
+    );
+
+    expect(screen.queryByRole("button", { name: "使用模板" })).not.toBeInTheDocument();
   });
 
   it("round-trips select node changes into app selection", () => {

@@ -164,6 +164,85 @@ describe("App", () => {
     expect(within(canvas).queryByText(/^node_/)).not.toBeInTheDocument();
   });
 
+  it("applies the single API status code template from the empty canvas", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "control.start",
+            name: "Start",
+            category: "Control",
+            description: "Start the workflow.",
+            inputs: {},
+            outputs: { success: { description: "Started" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "http.request",
+            name: "HTTP Request",
+            category: "Network",
+            description: "Send an HTTP request.",
+            inputs: { body: { description: "Request body" } },
+            outputs: { success: { description: "Response" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "assert.status_code",
+            name: "Assert Status Code",
+            category: "Assertions",
+            description: "Assert an HTTP status code.",
+            inputs: { input: { description: "Response" } },
+            outputs: { passed: { description: "Passed" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "test.record_result",
+            name: "Record Test Result",
+            category: "Testing",
+            description: "Record an assertion result.",
+            inputs: { input: { description: "Result" } },
+            outputs: { success: { description: "Recorded" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "test.summary",
+            name: "Test Summary",
+            category: "Testing",
+            description: "Summarize test results.",
+            inputs: { input: { description: "Results" } },
+            outputs: { success: { description: "Summary" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "test.write_report",
+            name: "Write Test Report",
+            category: "Testing",
+            description: "Write a test report.",
+            inputs: { input: { description: "Report" } },
+            outputs: { success: { description: "Written" } },
+            configSchema: { type: "object", properties: {} },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const templateCard = await screen.findByRole("article", { name: "单接口状态码断言" });
+    fireEvent.click(within(templateCard).getByRole("button", { name: "使用模板" }));
+
+    const canvas = screen.getByLabelText("画布工作区");
+    expect(within(canvas).getByText("HTTP 请求")).toBeInTheDocument();
+    expect(within(canvas).getByText("状态码断言")).toBeInTheDocument();
+    expect(screen.getByLabelText("工作流名称")).toHaveValue("单接口状态码断言");
+  });
+
   it("loads the saved workflow list on startup", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

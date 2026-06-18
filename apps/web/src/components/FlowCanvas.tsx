@@ -14,7 +14,7 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { createWorkflowEdge } from "../lib/workflow";
 import type { NodeRuntimeState } from "../lib/runState";
 import type { NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
@@ -25,6 +25,7 @@ type FlowCanvasProps = {
   nodeRunStates?: Record<string, NodeRuntimeState>;
   selectedNodeId: string | null;
   selectionResetKey?: string;
+  children?: ReactNode;
   onAddNodeAt?: (nodeType: NodeType, position: WorkflowNode["position"]) => void;
   onWorkflowChange: (workflow: WorkflowDocument) => void;
   onSelectNode: (nodeId: string | null) => void;
@@ -58,6 +59,7 @@ function FlowCanvasInner({
   nodeRunStates = {},
   selectedNodeId,
   selectionResetKey,
+  children,
   onAddNodeAt,
   onWorkflowChange,
   onSelectNode,
@@ -253,6 +255,7 @@ function FlowCanvasInner({
         <Background />
         <Controls />
       </ReactFlow>
+      {workflow.nodes.length === 0 && children ? <div className="canvas-empty-overlay">{children}</div> : null}
     </section>
   );
 }

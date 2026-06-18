@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
+import { CanvasEmptyState, type CanvasTemplateCard } from "./components/CanvasEmptyState";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { NodePalette } from "./components/NodePalette";
@@ -15,6 +16,7 @@ import {
 } from "./lib/workflow";
 import { localizeNodeType } from "./lib/display";
 import { buildNodeRunStates } from "./lib/runState";
+import { API_TESTING_TEMPLATES, createWorkflowFromTemplate, templateAvailability } from "./lib/workflowTemplates";
 import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from "./types";
 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
@@ -93,6 +95,22 @@ export default function App() {
   }, []);
 
   const displayNodeTypes = useMemo(() => nodeTypes.map(localizeNodeType), [nodeTypes]);
+  const templateCards = useMemo<CanvasTemplateCard[]>(
+    () =>
+      API_TESTING_TEMPLATES.map((template) => {
+        const availability = templateAvailability(template);
+        return {
+          id: template.id,
+          name: template.name,
+          description: template.description,
+          tags: template.tags,
+          nodeCount: template.nodeCount,
+          available: availability.available,
+          unavailableReason: availability.reason,
+        };
+      }),
+    []
+  );
   const editableWorkflow = useMemo(() => getEditableWorkflow(workflow, editScope), [editScope, workflow]);
   const editScopeKey = useMemo(() => scopeKey(editScope), [editScope]);
   const editScopeLabel = useMemo(
@@ -193,6 +211,20 @@ export default function App() {
     setEditScope(undefined);
     setSelectedNodeId(null);
     setMessage("已新建工作流。");
+  }
+
+  function applyTemplate(templateId: string) {
+    try {
+      const nextWorkflow = createWorkflowFromTemplate(templateId);
+      resetRunState();
+      setWorkflow(nextWorkflow);
+      setSelectedWorkflowId("");
+      setEditScope(undefined);
+      setSelectedNodeId(null);
+      setMessage(`已应用模板：${nextWorkflow.name}。`);
+    } catch (error) {
+      setMessage(`模板应用失败：${formatError(error)}`);
+    }
   }
 
   async function loadWorkflow(workflowId: string) {
@@ -474,7 +506,9 @@ export default function App() {
           onAddNodeAt={addNodeAt}
           onSelectNode={setSelectedNodeId}
           onWorkflowChange={updateCurrentEditableWorkflow}
-        />
+        >
+          <CanvasEmptyState templates={templateCards} onApplyTemplate={applyTemplate} />
+        </FlowCanvas>
         <ConfigPanel
           node={selectedNode}
           nodeType={selectedNodeType}
