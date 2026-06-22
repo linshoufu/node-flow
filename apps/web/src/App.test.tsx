@@ -399,6 +399,134 @@ describe("App", () => {
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringMatching(/\/runs$/), expect.anything());
   });
 
+  it("removes pre-run issues after the missing HTTP URL is filled", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "http.request",
+            name: "HTTP Request",
+            category: "Network",
+            description: "Send an HTTP request.",
+            inputs: {},
+            outputs: { success: { description: "Response" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                method: { title: "Method", type: "string", default: "GET" },
+                url: { title: "URL", type: "string" },
+              },
+            },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "HTTP 请求 http.request" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+
+    expect(await screen.findByRole("button", { name: /HTTP 请求缺少 URL。/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "https://api.example.com/health" } });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "运行前检查" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows a message when selecting a pre-run issue inside an unopened subflow", async () => {
+    const nestedWorkflow = workflowDocument({
+      id: "wf_nested",
+      name: "Nested HTTP check",
+      nodes: [
+        {
+          id: "each_row",
+          type: "control.foreach",
+          position: { x: 80, y: 80 },
+          config: { items_expression: "{{ rows }}" },
+          subflows: {
+            body: {
+              nodes: [
+                {
+                  id: "request",
+                  type: "http.request",
+                  position: { x: 80, y: 80 },
+                  config: { method: "GET", url: "" },
+                },
+              ],
+              edges: [],
+            },
+          },
+        },
+      ],
+      edges: [],
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "control.foreach",
+            name: "For Each",
+            category: "Control",
+            description: "Runs body nodes for each item.",
+            inputs: {},
+            outputs: { done: { description: "Done" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                items_expression: { title: "Items Expression", type: "string" },
+              },
+            },
+          },
+          {
+            id: "http.request",
+            name: "HTTP Request",
+            category: "Network",
+            description: "Send an HTTP request.",
+            inputs: {},
+            outputs: { success: { description: "Response" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                method: { title: "Method", type: "string", default: "GET" },
+                url: { title: "URL", type: "string" },
+              },
+            },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([{ id: "wf_nested", name: "Nested HTTP check", version: 1 }]);
+      }
+      if (url.endsWith("/api/workflows/wf_nested")) {
+        return jsonResponse(nestedWorkflow);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        throw new Error("saveWorkflow should not be called");
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("已保存工作流"), { target: { value: "wf_nested" } });
+    await screen.findByText("已加载 Nested HTTP check v1。");
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+    fireEvent.click(await screen.findByRole("button", { name: /HTTP 请求缺少 URL。/ }));
+
+    expect(screen.getByText("这个运行前问题属于未打开的子流程，请先进入对应循环体查看。")).toBeInTheDocument();
+  });
+
   it("disables empty canvas templates while a run is in flight and restores them after it settles", async () => {
     const saveWorkflow = deferred<Response>();
     const run = {

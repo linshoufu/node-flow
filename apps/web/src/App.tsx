@@ -38,7 +38,7 @@ export default function App() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [run, setRun] = useState<RunRecord | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
-  const [preRunIssues, setPreRunIssues] = useState<PreRunIssue[]>([]);
+  const [showPreRunIssues, setShowPreRunIssues] = useState(false);
   const mountedRef = useRef(true);
   const runInFlightRef = useRef(false);
   const runTokenRef = useRef(0);
@@ -137,6 +137,8 @@ export default function App() {
     () => buildNodeRunStates(editableWorkflow.nodes, runEvents, run?.status),
     [editableWorkflow.nodes, run?.status, runEvents]
   );
+  const currentPreRunIssues = useMemo(() => buildPreRunIssues(workflow), [workflow]);
+  const visiblePreRunIssues = showPreRunIssues ? currentPreRunIssues : [];
   const selectedRuntimeState = selectedNodeId ? nodeRunStates[selectedNodeId] : undefined;
   const canCancelRun = Boolean(run && !TERMINAL_RUN_STATUSES.has(run.status));
 
@@ -200,6 +202,15 @@ export default function App() {
     setMessage("这个运行事件属于未打开的子流程，请先进入对应循环体查看。");
   }
 
+  function selectPreRunIssue(issue: PreRunIssue) {
+    if (editableWorkflow.nodes.some((node) => node.id === issue.nodeId)) {
+      setSelectedNodeId(issue.nodeId);
+      return;
+    }
+
+    setMessage("这个运行前问题属于未打开的子流程，请先进入对应循环体查看。");
+  }
+
   function resetRunState() {
     runTokenRef.current += 1;
     runInFlightRef.current = false;
@@ -209,7 +220,7 @@ export default function App() {
 
   function startNewWorkflow() {
     resetRunState();
-    setPreRunIssues([]);
+    setShowPreRunIssues(false);
     setWorkflow(createEmptyWorkflow());
     setSelectedWorkflowId("");
     setEditScope(undefined);
@@ -221,7 +232,7 @@ export default function App() {
     try {
       const nextWorkflow = createWorkflowFromTemplate(templateId);
       resetRunState();
-      setPreRunIssues([]);
+      setShowPreRunIssues(false);
       setWorkflow(nextWorkflow);
       setSelectedWorkflowId("");
       setEditScope(undefined);
@@ -234,7 +245,7 @@ export default function App() {
 
   async function loadWorkflow(workflowId: string) {
     setSelectedWorkflowId(workflowId);
-    setPreRunIssues([]);
+    setShowPreRunIssues(false);
     if (!workflowId) {
       return;
     }
@@ -280,7 +291,7 @@ export default function App() {
       setWorkflow(saved);
       setSelectedWorkflowId(saved.id);
       upsertWorkflowSummary(saved);
-      setPreRunIssues([]);
+      setShowPreRunIssues(false);
       setMessage(`已保存 v${saved.version}。`);
       return saved;
     } catch (error) {
@@ -300,10 +311,12 @@ export default function App() {
       return;
     }
 
-    const issues = buildPreRunIssues(workflow);
+    const issues = currentPreRunIssues;
     if (issues.length > 0) {
-      setPreRunIssues(issues);
-      setSelectedNodeId(issues[0].nodeId);
+      setShowPreRunIssues(true);
+      if (editableWorkflow.nodes.some((node) => node.id === issues[0].nodeId)) {
+        setSelectedNodeId(issues[0].nodeId);
+      }
       setMessage(`运行前检查发现 ${issues.length} 个问题，请先补齐配置。`);
       return;
     }
@@ -312,7 +325,7 @@ export default function App() {
     runTokenRef.current = runToken;
     runInFlightRef.current = true;
     setIsBusy(true);
-    setPreRunIssues([]);
+    setShowPreRunIssues(false);
     setRunEvents([]);
     try {
       const saved = await apiClient.saveWorkflow(workflow);
@@ -511,7 +524,7 @@ export default function App() {
         {message}
       </div>
 
-      <PreRunIssueList issues={preRunIssues} onSelectNode={setSelectedNodeId} />
+      <PreRunIssueList issues={visiblePreRunIssues} onSelectIssue={selectPreRunIssue} />
 
       <main className="workspace-grid">
         <NodePalette nodeTypes={displayNodeTypes} onAddNode={addNode} />

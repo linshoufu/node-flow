@@ -2,10 +2,10 @@ import type { PreRunIssue } from "../lib/preRunChecks";
 
 type PreRunIssueListProps = {
   issues: PreRunIssue[];
-  onSelectNode: (nodeId: string) => void;
+  onSelectIssue: (issue: PreRunIssue) => void;
 };
 
-export function PreRunIssueList({ issues, onSelectNode }: PreRunIssueListProps) {
+export function PreRunIssueList({ issues, onSelectIssue }: PreRunIssueListProps) {
   if (issues.length === 0) {
     return null;
   }
@@ -18,7 +18,7 @@ export function PreRunIssueList({ issues, onSelectNode }: PreRunIssueListProps) 
       </div>
       <div className="pre-run-issue-list">
         {issues.map((issue) => (
-          <button key={issue.id} className="pre-run-issue" type="button" onClick={() => onSelectNode(issue.nodeId)}>
+          <button key={issue.id} className="pre-run-issue" type="button" onClick={() => onSelectIssue(issue)}>
             <strong>{issue.title}</strong>
             <span>{issue.message}</span>
           </button>

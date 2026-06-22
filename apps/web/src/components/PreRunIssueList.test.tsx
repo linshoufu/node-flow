@@ -4,8 +4,8 @@ import { PreRunIssueList } from "./PreRunIssueList";
 import type { PreRunIssue } from "../lib/preRunChecks";
 
 describe("PreRunIssueList", () => {
-  it("renders Chinese issue details and selects the issue node", () => {
-    const onSelectNode = vi.fn();
+  it("renders Chinese issue details and selects the issue", () => {
+    const onSelectIssue = vi.fn();
     const issues: PreRunIssue[] = [
       {
         id: "root/request:url",
@@ -29,18 +29,18 @@ describe("PreRunIssueList", () => {
       },
     ];
 
-    render(<PreRunIssueList issues={issues} onSelectNode={onSelectNode} />);
+    render(<PreRunIssueList issues={issues} onSelectIssue={onSelectIssue} />);
 
     expect(screen.getByRole("heading", { name: "运行前检查" })).toBeInTheDocument();
     expect(screen.getByText("2 个问题")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /HTTP 请求缺少 URL。/ }));
 
-    expect(onSelectNode).toHaveBeenCalledWith("request");
+    expect(onSelectIssue).toHaveBeenCalledWith(issues[0]);
   });
 
   it("renders nothing when there are no issues", () => {
-    const { container } = render(<PreRunIssueList issues={[]} onSelectNode={vi.fn()} />);
+    const { container } = render(<PreRunIssueList issues={[]} onSelectIssue={vi.fn()} />);
 
     expect(container).toBeEmptyDOMElement();
   });
