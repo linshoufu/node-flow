@@ -5,7 +5,7 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { NodePalette } from "./components/NodePalette";
 import { PreRunIssueList } from "./components/PreRunIssueList";
-import { RunPanel } from "./components/RunPanel";
+import { RunPanel, type NodeSelectionTarget } from "./components/RunPanel";
 import {
   createEmptyWorkflow,
   createWorkflowNode,
@@ -193,9 +193,12 @@ export default function App() {
     setSelectedNodeId(null);
   }
 
-  function selectRunEventNode(nodeId: string) {
-    if (editableWorkflow.nodes.some((node) => node.id === nodeId)) {
-      setSelectedNodeId(nodeId);
+  function selectRunEventNode(target: NodeSelectionTarget) {
+    if (
+      isRunSelectionInCurrentEditScope(target, editScope) &&
+      editableWorkflow.nodes.some((node) => node.id === target.nodeId)
+    ) {
+      setSelectedNodeId(target.nodeId);
       return;
     }
 
@@ -600,13 +603,24 @@ function defaultSelectedTemplateNodeId(templateId: string): string | null {
 function isIssueInCurrentEditScope(issue: PreRunIssue, editScope: EditScope): boolean {
   const issueScope = editScopeFromIssuePath(issue.path);
   const currentScope = editScope ?? [];
-  if (issueScope.length !== currentScope.length) {
+
+  return areEditScopesEqual(issueScope, currentScope);
+}
+
+function isRunSelectionInCurrentEditScope(target: NodeSelectionTarget, editScope: EditScope): boolean {
+  const targetScope = editScopeFromRunEventScope(target.scope);
+  const currentScope = editScope ?? [];
+
+  return areEditScopesEqual(targetScope, currentScope);
+}
+
+function areEditScopesEqual(left: NonNullable<EditScope>, right: NonNullable<EditScope>): boolean {
+  if (left.length !== right.length) {
     return false;
   }
 
-  return issueScope.every(
-    (step, index) =>
-      step.nodeId === currentScope[index].nodeId && step.subflowName === currentScope[index].subflowName
+  return left.every(
+    (step, index) => step.nodeId === right[index].nodeId && step.subflowName === right[index].subflowName
   );
 }
 
@@ -626,4 +640,13 @@ function editScopeFromIssuePath(path: string[] | undefined): NonNullable<EditSco
   }
 
   return scope;
+}
+
+function editScopeFromRunEventScope(scope: string[] | undefined): NonNullable<EditScope> {
+  return (scope ?? [])
+    .filter((part) => !part.startsWith("iteration:"))
+    .map((nodeId) => ({
+      nodeId,
+      subflowName: "body",
+    }));
 }

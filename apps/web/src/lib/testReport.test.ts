@@ -16,6 +16,7 @@ describe("buildTestReport", () => {
       runEvent({
         type: "node_succeeded",
         node_id: "record-login",
+        scope: ["each_row", "iteration:0"],
         payload: {
           node_type: "test.record_result",
           outputs: {
@@ -43,6 +44,7 @@ describe("buildTestReport", () => {
           message: "ok",
           durationMs: 12,
           sourceNodeId: "record-login",
+          sourceScope: ["each_row", "iteration:0"],
         },
       ],
       hasCases: true,

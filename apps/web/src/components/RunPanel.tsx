@@ -4,10 +4,15 @@ import { translateEventType, translateRunStatus } from "../lib/display";
 import { buildTestReport } from "../lib/testReport";
 import { TestReportView } from "./TestReportView";
 
+export type NodeSelectionTarget = {
+  nodeId: string;
+  scope?: string[];
+};
+
 type RunPanelProps = {
   run: RunRecord | null;
   events: RunEvent[];
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (target: NodeSelectionTarget) => void;
 };
 
 type RunPanelTab = "report" | "events";
@@ -70,7 +75,7 @@ export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
 
 type RunEventListProps = {
   events: RunEvent[];
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (target: NodeSelectionTarget) => void;
 };
 
 function RunEventList({ events, onSelectNode }: RunEventListProps) {
@@ -89,7 +94,7 @@ function RunEventList({ events, onSelectNode }: RunEventListProps) {
 
 type RunEventRowProps = {
   event: RunEvent;
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (target: NodeSelectionTarget) => void;
 };
 
 function RunEventRow({ event, onSelectNode }: RunEventRowProps) {
@@ -111,7 +116,7 @@ function RunEventRow({ event, onSelectNode }: RunEventRowProps) {
         aria-label={`${eventLabel} ${nodeLabel}`}
         className="run-event run-event-button"
         type="button"
-        onClick={() => onSelectNode(event.node_id as string)}
+        onClick={() => onSelectNode({ nodeId: event.node_id as string, scope: event.scope })}
       >
         {content}
       </button>

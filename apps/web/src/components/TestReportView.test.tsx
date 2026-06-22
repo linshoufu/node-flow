@@ -142,6 +142,7 @@ describe("TestReportView", () => {
       hasCases: true,
       cases: [
         { id: "case-source", name: "带来源用例", status: "failed", sourceNodeId: "record_result" },
+        { id: "case-scoped", name: "循环体用例", status: "passed", sourceNodeId: "record_result", sourceScope: ["each_row", "iteration:0"] },
         { id: "case-static", name: "无来源用例", status: "passed" },
       ],
     };
@@ -149,9 +150,11 @@ describe("TestReportView", () => {
     render(<TestReportView report={report} onSelectNode={onSelectNode} />);
 
     fireEvent.click(screen.getByRole("button", { name: /带来源用例/ }));
+    fireEvent.click(screen.getByRole("button", { name: /循环体用例/ }));
 
-    expect(onSelectNode).toHaveBeenCalledWith("record_result");
-    expect(screen.getByText("来源：record_result")).toBeInTheDocument();
+    expect(onSelectNode).toHaveBeenNthCalledWith(1, { nodeId: "record_result", scope: [] });
+    expect(onSelectNode).toHaveBeenNthCalledWith(2, { nodeId: "record_result", scope: ["each_row", "iteration:0"] });
+    expect(screen.getAllByText("来源：record_result")).toHaveLength(2);
     expect(screen.getByText("无来源用例").closest("button")).toBeNull();
   });
 });

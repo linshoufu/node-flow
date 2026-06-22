@@ -616,6 +616,134 @@ describe("App", () => {
     expect(within(screen.getByLabelText("配置面板")).getByText("选择一个节点后，在这里编辑它的参数。")).toBeInTheDocument();
   });
 
+  it("does not select a root node with the same id as an unopened subflow report case", async () => {
+    const duplicateIdWorkflow = workflowDocument({
+      id: "wf_report_duplicate",
+      name: "Report duplicate ids",
+      nodes: [
+        {
+          id: "record_result",
+          type: "test.record_result",
+          position: { x: 80, y: 80 },
+          config: { name: "Root record" },
+        },
+        {
+          id: "each_row",
+          type: "control.foreach",
+          position: { x: 320, y: 80 },
+          config: { items_expression: "{{ rows }}" },
+          subflows: {
+            body: {
+              nodes: [
+                {
+                  id: "record_result",
+                  type: "test.record_result",
+                  position: { x: 80, y: 80 },
+                  config: { name: "Subflow record" },
+                },
+              ],
+              edges: [],
+            },
+          },
+        },
+      ],
+      edges: [],
+    });
+    const run = {
+      id: "run_1",
+      workflow_id: "wf_report_duplicate",
+      workflow_version: 1,
+      status: "succeeded",
+      created_at: "2026-06-18T00:00:00Z",
+      started_at: "2026-06-18T00:00:01Z",
+      completed_at: "2026-06-18T00:00:02Z",
+      error: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "control.foreach",
+            name: "For Each",
+            category: "Control",
+            description: "Runs body nodes for each item.",
+            inputs: {},
+            outputs: { done: { description: "Done" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                items_expression: { title: "Items Expression", type: "string" },
+              },
+            },
+          },
+          {
+            id: "test.record_result",
+            name: "Record Result",
+            category: "Testing",
+            description: "Records a test result.",
+            inputs: { input: { description: "Assertion" } },
+            outputs: { success: { description: "Recorded" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                name: { title: "Name", type: "string", default: "Assertion" },
+              },
+            },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([{ id: "wf_report_duplicate", name: "Report duplicate ids", version: 1 }]);
+      }
+      if (url.endsWith("/api/workflows/wf_report_duplicate")) {
+        return jsonResponse(duplicateIdWorkflow);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        return jsonResponse({ ...duplicateIdWorkflow, version: 1 });
+      }
+      if (url.endsWith("/api/workflows/wf_report_duplicate/runs") && init?.method === "POST") {
+        return jsonResponse(run);
+      }
+      if (url.endsWith("/api/runs/run_1/events")) {
+        return jsonResponse([
+          {
+            id: 1,
+            run_id: "run_1",
+            type: "node_succeeded",
+            timestamp: "2026-06-18T00:00:02Z",
+            node_id: "record_result",
+            scope: ["each_row", "iteration:0"],
+            payload: {
+              node_type: "test.record_result",
+              outputs: {
+                success: {
+                  case: {
+                    name: "Subflow report case",
+                    status: "passed",
+                  },
+                },
+              },
+            },
+          },
+        ]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("已保存工作流"), { target: { value: "wf_report_duplicate" } });
+    await screen.findByText("已加载 Report duplicate ids v1。");
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+    await screen.findByText("运行 run_1 成功。");
+    fireEvent.click(await screen.findByRole("button", { name: /Subflow report case/ }));
+
+    expect(screen.getByText("这个运行事件属于未打开的子流程，请先进入对应循环体查看。")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("配置面板")).getByText("选择一个节点后，在这里编辑它的参数。")).toBeInTheDocument();
+  });
+
   it("disables empty canvas templates while a run is in flight and restores them after it settles", async () => {
     const saveWorkflow = deferred<Response>();
     const run = {
@@ -1006,7 +1134,10 @@ describe("App", () => {
 
     await screen.findByText("运行 run_1 成功。");
     fireEvent.click(screen.getByRole("tab", { name: "运行事件" }));
-    fireEvent.click(await screen.findByRole("button", { name: /节点成功/ }));
+    const eventNodeLabel = await screen.findByText(savedNodeId);
+    const eventButton = eventNodeLabel.closest("button");
+    expect(eventButton).not.toBeNull();
+    fireEvent.click(eventButton as HTMLElement);
     fireEvent.click(screen.getByRole("tab", { name: "运行详情" }));
 
     expect(screen.getByText("状态：成功")).toBeInTheDocument();

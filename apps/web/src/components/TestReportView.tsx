@@ -5,7 +5,7 @@ import { buildTestReport, type TestCaseReport, type TestReport } from "../lib/te
 type TestReportViewProps = {
   events?: RunEvent[];
   report?: TestReport;
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (target: { nodeId: string; scope?: string[] }) => void;
 };
 
 const STATUS_LABELS: Record<TestCaseReport["status"], string> = {
@@ -100,7 +100,7 @@ function SummaryItem({ label, value, tone }: SummaryItemProps) {
 
 type TestCaseRowProps = {
   testCase: TestCaseReport;
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (target: { nodeId: string; scope?: string[] }) => void;
 };
 
 function TestCaseRow({ testCase, onSelectNode }: TestCaseRowProps) {
@@ -127,7 +127,7 @@ function TestCaseRow({ testCase, onSelectNode }: TestCaseRowProps) {
         aria-label={`${testCase.name} ${SOURCE_PREFIX}${testCase.sourceNodeId}`}
         className="test-case-row test-case-button"
         type="button"
-        onClick={() => onSelectNode(testCase.sourceNodeId as string)}
+        onClick={() => onSelectNode({ nodeId: testCase.sourceNodeId as string, scope: testCase.sourceScope ?? [] })}
       >
         {content}
       </button>

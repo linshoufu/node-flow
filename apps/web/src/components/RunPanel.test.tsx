@@ -38,7 +38,7 @@ describe("RunPanel", () => {
     fireEvent.click(screen.getByRole("tab", { name: "运行事件" }));
     fireEvent.click(screen.getByRole("button", { name: /request/ }));
 
-    expect(onSelectNode).toHaveBeenCalledWith("request");
+    expect(onSelectNode).toHaveBeenCalledWith({ nodeId: "request", scope: ["each", "iteration:0"] });
     expect(screen.getByText("each / iteration:0")).toBeInTheDocument();
   });
 
@@ -55,7 +55,7 @@ describe("RunPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /保存结果/ }));
 
-    expect(onSelectNode).toHaveBeenCalledWith("record_result");
+    expect(onSelectNode).toHaveBeenCalledWith({ nodeId: "record_result", scope: [] });
   });
 
   it("updates report data when events change", () => {

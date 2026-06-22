@@ -7,6 +7,7 @@ export type TestCaseReport = {
   message?: string;
   durationMs?: number;
   sourceNodeId?: string;
+  sourceScope?: string[];
 };
 
 export type TestReportSummary = {
@@ -55,6 +56,7 @@ function buildCaseReport(event: RunEvent, index: number): TestCaseReport | undef
   const result = readResult(event.payload);
   const source = isRecord(result) ? result : {};
   const sourceNodeId = event.node_id ?? undefined;
+  const sourceScope = event.scope.length > 0 ? [...event.scope] : undefined;
   const errorMessage = readErrorMessage(event.payload.error);
   const status = readStatus(source, event.type);
   const id = readString(source.id) ?? sourceNodeId ?? `case-${index + 1}`;
@@ -69,6 +71,7 @@ function buildCaseReport(event: RunEvent, index: number): TestCaseReport | undef
     ...(message ? { message } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
     ...(sourceNodeId ? { sourceNodeId } : {}),
+    ...(sourceNodeId && sourceScope ? { sourceScope } : {}),
   };
 }
 
