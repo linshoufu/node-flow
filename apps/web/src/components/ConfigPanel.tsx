@@ -197,6 +197,10 @@ function buildForEachRuntimeInsight(outputs: unknown): string[] {
       continue;
     }
 
+    if (Array.isArray(output.iterations)) {
+      return [`迭代次数：${output.iterations.length}`];
+    }
+
     for (const countKey of ["iteration_count", "iterations", "count", "total_items"]) {
       const value = output[countKey];
       if (typeof value === "number" && Number.isFinite(value)) {

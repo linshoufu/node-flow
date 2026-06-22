@@ -321,8 +321,8 @@ describe("ConfigPanel", () => {
   });
 
   it.each([
-    [{ success: { iteration_count: 3 } }, 3, "success.iteration_count"],
-    [{ done: { iterations: 4 } }, 4, "done.iterations"],
+    [{ done: { iterations: [{ index: 0, item: { name: "Alice" } }, { index: 1, item: { name: "Bob" } }] } }, 2, "done.iterations"],
+    [{ success: { iteration_count: 3 } }, 3, "success.iteration_count fallback"],
   ])("summarizes ForEach iteration count from %s", (outputs, expectedCount) => {
     render(
       <ConfigPanel
