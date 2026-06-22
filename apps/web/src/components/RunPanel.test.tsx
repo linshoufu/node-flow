@@ -103,6 +103,32 @@ describe("RunPanel", () => {
     expect(screen.getByRole("tab", { name: "测试报告" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("资料接口")).toBeInTheDocument();
   });
+
+  it("resets the test report filter when the run id changes", () => {
+    const failedFilter = "\u5931\u8d25";
+    const allFilter = "\u5168\u90e8";
+    const failedCase = "\u5931\u8d25\u7528\u4f8b";
+    const passedCase = "\u901a\u8fc7\u7528\u4f8b";
+    const { rerender } = render(
+      <RunPanel
+        events={[recordResultEvent("record-failed", { name: failedCase, status: "failed" })]}
+        run={runRecord({ id: "run_1" })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: failedFilter }));
+    expect(screen.getByRole("button", { name: failedFilter })).toHaveAttribute("aria-pressed", "true");
+
+    rerender(
+      <RunPanel
+        events={[recordResultEvent("record-passed", { name: passedCase, status: "passed" })]}
+        run={runRecord({ id: "run_2" })}
+      />
+    );
+
+    expect(screen.getByText(passedCase)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: allFilter })).toHaveAttribute("aria-pressed", "true");
+  });
 });
 
 function recordResultEvent(nodeId: string, result: Record<string, unknown>): RunEvent {
