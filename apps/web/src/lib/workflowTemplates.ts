@@ -115,7 +115,6 @@ const API_TESTING_TEMPLATE_SOURCE: WorkflowTemplate[] = [
         }),
       ],
       edges: [
-        edge("start_csv", "start", "success", "csv", "input"),
         edge("csv_each_row", "csv", "success", "each_row", "input"),
         edge("each_row_summary", "each_row", "done", "summary", "input"),
         edge("summary_write_report", "summary", "success", "write_report", "input"),

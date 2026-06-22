@@ -100,7 +100,7 @@ describe("workflow templates", () => {
 
     expect(workflow.name).toBe("CSV 参数化接口测试");
     expect(workflow.nodes.map((node) => node.id)).toEqual(["start", "csv", "each_row", "summary", "write_report"]);
-    expect(edgePairs(workflow)).toEqual(["start->csv", "csv->each_row", "each_row->summary", "summary->write_report"]);
+    expect(edgePairs(workflow)).toEqual(["csv->each_row", "each_row->summary", "summary->write_report"]);
     expect(eachRow).toMatchObject({
       type: "control.foreach",
       config: {
