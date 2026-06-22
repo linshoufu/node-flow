@@ -12,22 +12,24 @@ describe("buildPreRunIssues", () => {
 
     expect(issues).toEqual([
       {
-        id: "request:method",
+        id: "root/request:method",
         nodeId: "request",
         nodeType: "http.request",
         severity: "error",
         title: "HTTP 请求配置不完整",
         message: "HTTP 请求缺少请求方法。",
         field: "method",
+        path: ["root", "request"],
       },
       {
-        id: "request:url",
+        id: "root/request:url",
         nodeId: "request",
         nodeType: "http.request",
         severity: "error",
         title: "HTTP 请求配置不完整",
         message: "HTTP 请求缺少 URL。",
         field: "url",
+        path: ["root", "request"],
       },
     ]);
   });
@@ -41,69 +43,54 @@ describe("buildPreRunIssues", () => {
       )
     ).toEqual([
       {
-        id: "csv:path",
+        id: "root/csv:path",
         nodeId: "csv",
         nodeType: "data.csv_read",
         severity: "error",
         title: "CSV 读取配置不完整",
         message: "读取 CSV 缺少文件路径。",
         field: "path",
+        path: ["root", "csv"],
       },
     ]);
   });
 
-  it("reports missing status code actual source and expected value", () => {
+  it("does not require an actual source for status code assertions", () => {
     expect(
       buildPreRunIssues(
         workflow({
-          nodes: [
-            node({
-              id: "assert",
-              type: "assert.status_code",
-              config: {
-                actual: "",
-                actual_expression: " ",
-                status_code: null,
-                status_expression: undefined,
-                expected: "",
-              },
-            }),
-          ],
+          nodes: [node({ id: "assert", type: "assert.status_code", config: { expected: 200 } })],
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it.each(["", " ", null])("reports explicitly empty status code expected value: %s", (expected) => {
+    expect(
+      buildPreRunIssues(
+        workflow({
+          nodes: [node({ id: "assert", type: "assert.status_code", config: { expected } })],
         })
       )
     ).toEqual([
       {
-        id: "assert:actual",
-        nodeId: "assert",
-        nodeType: "assert.status_code",
-        severity: "error",
-        title: "状态码断言配置不完整",
-        message: "状态码断言缺少实际状态码来源。",
-        field: "actual",
-      },
-      {
-        id: "assert:expected",
+        id: "root/assert:expected",
         nodeId: "assert",
         nodeType: "assert.status_code",
         severity: "error",
         title: "状态码断言配置不完整",
         message: "状态码断言缺少期望状态码。",
         field: "expected",
+        path: ["root", "assert"],
       },
     ]);
   });
 
-  it("treats expected zero as configured for status code assertions", () => {
+  it("does not report missing status code expected when the backend default applies", () => {
     expect(
       buildPreRunIssues(
         workflow({
-          nodes: [
-            node({
-              id: "assert",
-              type: "assert.status_code",
-              config: { actual: 200, expected: 0 },
-            }),
-          ],
+          nodes: [node({ id: "assert", type: "assert.status_code", config: {} })],
         })
       )
     ).toEqual([]);
@@ -118,13 +105,14 @@ describe("buildPreRunIssues", () => {
       )
     ).toEqual([
       {
-        id: "report:path",
+        id: "root/report:path",
         nodeId: "report",
         nodeType: "test.write_report",
         severity: "error",
         title: "测试报告配置不完整",
         message: "写入测试报告缺少输出路径。",
         field: "path",
+        path: ["root", "report"],
       },
     ]);
   });
@@ -138,15 +126,73 @@ describe("buildPreRunIssues", () => {
       )
     ).toEqual([
       {
-        id: "each:items_expression",
+        id: "root/each:items_expression",
         nodeId: "each",
         nodeType: "control.foreach",
         severity: "error",
         title: "遍历循环配置不完整",
         message: "遍历循环缺少循环数据来源。",
         field: "items_expression",
+        path: ["root", "each"],
       },
     ]);
+  });
+
+  it("checks nodes inside subflows", () => {
+    expect(
+      buildPreRunIssues(
+        workflow({
+          nodes: [
+            node({
+              id: "each",
+              type: "control.foreach",
+              config: { items_expression: "$.rows" },
+              subflows: {
+                body: {
+                  nodes: [node({ id: "request", type: "http.request", config: { method: "GET", url: "" } })],
+                  edges: [],
+                },
+              },
+            }),
+          ],
+        })
+      )
+    ).toEqual([
+      {
+        id: "root/each/body/request:url",
+        nodeId: "request",
+        nodeType: "http.request",
+        severity: "error",
+        title: "HTTP 请求配置不完整",
+        message: "HTTP 请求缺少 URL。",
+        field: "url",
+        path: ["root", "each", "body", "request"],
+      },
+    ]);
+  });
+
+  it("uses scoped issue ids when node ids repeat across root and subflows", () => {
+    const issues = buildPreRunIssues(
+      workflow({
+        nodes: [
+          node({ id: "request", type: "http.request", config: { method: "GET", url: "" } }),
+          node({
+            id: "each",
+            type: "control.foreach",
+            config: { items_expression: "$.rows" },
+            subflows: {
+              body: {
+                nodes: [node({ id: "request", type: "http.request", config: { method: "GET", url: "" } })],
+                edges: [],
+              },
+            },
+          }),
+        ],
+      })
+    );
+
+    expect(issues.map((issue) => issue.id)).toEqual(["root/request:url", "root/each/body/request:url"]);
+    expect(new Set(issues.map((issue) => issue.id)).size).toBe(2);
   });
 
   it("returns no issues when checked node configuration is complete", () => {
@@ -156,7 +202,7 @@ describe("buildPreRunIssues", () => {
           nodes: [
             node({ id: "request", type: "http.request", config: { method: "GET", url: "https://example.com" } }),
             node({ id: "csv", type: "data.csv_read", config: { path: "./data.csv" } }),
-            node({ id: "assert", type: "assert.status_code", config: { status_expression: "$.status", expected: 200 } }),
+            node({ id: "assert", type: "assert.status_code", config: { expected: 200 } }),
             node({ id: "report", type: "test.write_report", config: { path: "./report.json" } }),
             node({ id: "each", type: "control.foreach", config: { items_expression: "$.rows" } }),
           ],
@@ -177,7 +223,19 @@ describe("buildPreRunIssues", () => {
 
   it("does not modify the input workflow", () => {
     const input = workflow({
-      nodes: [node({ id: "request", type: "http.request", config: { method: "", url: "" } })],
+      nodes: [
+        node({
+          id: "each",
+          type: "control.foreach",
+          config: { items_expression: "$.rows" },
+          subflows: {
+            body: {
+              nodes: [node({ id: "request", type: "http.request", config: { method: "", url: "" } })],
+              edges: [],
+            },
+          },
+        }),
+      ],
     });
     const before = structuredClone(input);
 
