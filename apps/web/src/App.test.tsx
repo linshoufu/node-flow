@@ -344,7 +344,7 @@ describe("App", () => {
 
     expect(screen.getByLabelText("工作流名称")).toHaveValue("CSV 参数化接口测试");
     expect(within(screen.getByLabelText("配置面板")).getByText("读取 CSV")).toBeInTheDocument();
-    expect(screen.getByText("填写 CSV 文件路径，确认分隔符和表头设置。")).toBeInTheDocument();
+    expect(screen.getByText("填写 CSV 文件路径，确认分隔符和表头设置。运行后可在运行详情查看表头和行数。")).toBeInTheDocument();
   });
 
   it("blocks an incomplete HTTP workflow before creating a run and selects the issue node", async () => {
