@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TestReport } from "../lib/testReport";
 import { TestReportView } from "./TestReportView";
@@ -97,4 +97,73 @@ describe("TestReportView", () => {
 
     consoleError.mockRestore();
   });
+
+  it("filters cases by status", () => {
+    render(<TestReportView report={mixedStatusReport()} />);
+
+    expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("通过用例")).toBeInTheDocument();
+    expect(screen.getByText("失败用例")).toBeInTheDocument();
+    expect(screen.getByText("未知用例")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "失败" }));
+
+    expect(screen.getByRole("button", { name: "失败" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("通过用例")).not.toBeInTheDocument();
+    expect(screen.getByText("失败用例")).toBeInTheDocument();
+    expect(screen.queryByText("未知用例")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "未知" }));
+
+    expect(screen.queryByText("通过用例")).not.toBeInTheDocument();
+    expect(screen.queryByText("失败用例")).not.toBeInTheDocument();
+    expect(screen.getByText("未知用例")).toBeInTheDocument();
+  });
+
+  it("renders an empty state when the selected status has no matching cases", () => {
+    const report: TestReport = {
+      summary: { total: 1, passed: 1, failed: 0, unknown: 0 },
+      hasCases: true,
+      cases: [{ id: "case-pass", name: "通过用例", status: "passed" }],
+    };
+
+    render(<TestReportView report={report} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "失败" }));
+
+    expect(screen.getByText("没有匹配的用例")).toBeInTheDocument();
+    expect(screen.queryByText("通过用例")).not.toBeInTheDocument();
+  });
+
+  it("selects source nodes from interactive report cases only", () => {
+    const onSelectNode = vi.fn();
+    const report: TestReport = {
+      summary: { total: 2, passed: 1, failed: 1, unknown: 0 },
+      hasCases: true,
+      cases: [
+        { id: "case-source", name: "带来源用例", status: "failed", sourceNodeId: "record_result" },
+        { id: "case-static", name: "无来源用例", status: "passed" },
+      ],
+    };
+
+    render(<TestReportView report={report} onSelectNode={onSelectNode} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /带来源用例/ }));
+
+    expect(onSelectNode).toHaveBeenCalledWith("record_result");
+    expect(screen.getByText("来源：record_result")).toBeInTheDocument();
+    expect(screen.getByText("无来源用例").closest("button")).toBeNull();
+  });
 });
+
+function mixedStatusReport(): TestReport {
+  return {
+    summary: { total: 3, passed: 1, failed: 1, unknown: 1 },
+    hasCases: true,
+    cases: [
+      { id: "case-pass", name: "通过用例", status: "passed" },
+      { id: "case-fail", name: "失败用例", status: "failed" },
+      { id: "case-unknown", name: "未知用例", status: "unknown" },
+    ],
+  };
+}

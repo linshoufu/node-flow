@@ -42,6 +42,22 @@ describe("RunPanel", () => {
     expect(screen.getByText("each / iteration:0")).toBeInTheDocument();
   });
 
+  it("selects source nodes from report cases on the default tab", () => {
+    const onSelectNode = vi.fn();
+
+    render(
+      <RunPanel
+        events={[recordResultEvent("record_result", { name: "保存结果", status: "failed" })]}
+        run={null}
+        onSelectNode={onSelectNode}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /保存结果/ }));
+
+    expect(onSelectNode).toHaveBeenCalledWith("record_result");
+  });
+
   it("updates report data when events change", () => {
     const { rerender } = render(
       <RunPanel events={[recordResultEvent("record-login", { name: "登录接口", status: "passed" })]} run={null} />

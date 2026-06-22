@@ -58,7 +58,11 @@ export function RunPanel({ run, events, onSelectNode }: RunPanelProps) {
       </div>
 
       <div aria-labelledby={activeTabId} className="run-panel-content" id={activePanelId} role="tabpanel">
-        {activeTab === "report" ? <TestReportView report={report} /> : <RunEventList events={events} onSelectNode={onSelectNode} />}
+        {activeTab === "report" ? (
+          <TestReportView report={report} onSelectNode={onSelectNode} />
+        ) : (
+          <RunEventList events={events} onSelectNode={onSelectNode} />
+        )}
       </div>
     </section>
   );
