@@ -14,7 +14,8 @@ const LOOP_NODE_TYPES = new Set(["control.foreach", "control.while"]);
 
 const CONFIG_GUIDANCE_BY_NODE_TYPE: Record<string, string> = {
   "http.request": "填写请求方法和 URL。",
-  "data.csv_read": "填写 CSV 文件路径，确认分隔符和表头设置。",
+  "data.csv_read": "填写 CSV 文件路径，确认分隔符和表头设置。运行后可在运行详情查看表头和行数。",
+  "control.foreach": "填写循环数据来源。循环体内可以用 {{ loop.item.column_name }} 引用当前 CSV 行字段。",
   "assert.status_code": "填写期望状态码。",
   "test.write_report": "填写测试报告输出路径。",
 };
@@ -74,7 +75,7 @@ export function ConfigPanel({ node, nodeType, runtimeState, onConfigChange, onOp
           {activeTab === "config" && configGuidance ? <p className="config-guidance">{configGuidance}</p> : null}
 
           {activeTab === "runtime" && runtimeState ? (
-            <RuntimeDetails runtimeState={runtimeState} />
+            <RuntimeDetails nodeTypeId={nodeType.id} runtimeState={runtimeState} />
           ) : entries.length === 0 ? (
             <p className="empty-state">这个节点没有可配置字段。</p>
           ) : (
@@ -113,16 +114,29 @@ export function ConfigPanel({ node, nodeType, runtimeState, onConfigChange, onOp
 }
 
 type RuntimeDetailsProps = {
+  nodeTypeId: string;
   runtimeState: NodeRuntimeState;
 };
 
-function RuntimeDetails({ runtimeState }: RuntimeDetailsProps) {
+function RuntimeDetails({ nodeTypeId, runtimeState }: RuntimeDetailsProps) {
+  const insightLines = buildRuntimeInsight(nodeTypeId, runtimeState.outputs);
+
   return (
     <div className="runtime-details">
       <div className="runtime-summary">
         <span>状态：{runStatusLabel(runtimeState.status)}</span>
         {typeof runtimeState.durationMs === "number" ? <span>耗时：{runtimeState.durationMs} ms</span> : null}
       </div>
+      {insightLines.length > 0 ? (
+        <div className="runtime-insight" aria-label="运行摘要">
+          <strong>摘要</strong>
+          <div>
+            {insightLines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <RuntimeBlock title="输入" value={runtimeState.inputs} />
       <RuntimeBlock title="输出" value={runtimeState.outputs} />
       <RuntimeBlock title="日志" value={runtimeState.logs} />
@@ -135,6 +149,63 @@ function RuntimeDetails({ runtimeState }: RuntimeDetailsProps) {
       ) : null}
     </div>
   );
+}
+
+function buildRuntimeInsight(nodeTypeId: string, outputs: unknown): string[] {
+  if (nodeTypeId === "data.csv_read") {
+    return buildCsvRuntimeInsight(outputs);
+  }
+
+  if (nodeTypeId === "control.foreach") {
+    return buildForEachRuntimeInsight(outputs);
+  }
+
+  return [];
+}
+
+function buildCsvRuntimeInsight(outputs: unknown): string[] {
+  if (!isPlainObject(outputs) || !isPlainObject(outputs.success)) {
+    return [];
+  }
+
+  const lines: string[] = [];
+  const { headers, rows, columns } = outputs.success;
+
+  if (Array.isArray(headers)) {
+    lines.push(`表头：${headers.map(String).join(", ")}`);
+  }
+
+  if (Array.isArray(rows)) {
+    lines.push(`行数：${rows.length}`);
+  }
+
+  if (isPlainObject(columns)) {
+    lines.push(`列：${Object.keys(columns).join(", ")}`);
+  }
+
+  return lines;
+}
+
+function buildForEachRuntimeInsight(outputs: unknown): string[] {
+  if (!isPlainObject(outputs)) {
+    return [];
+  }
+
+  for (const outputName of ["success", "done", "error"]) {
+    const output = outputs[outputName];
+    if (!isPlainObject(output)) {
+      continue;
+    }
+
+    for (const countKey of ["iteration_count", "iterations", "count", "total_items"]) {
+      const value = output[countKey];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return [`迭代次数：${value}`];
+      }
+    }
+  }
+
+  return [];
 }
 
 function RuntimeBlock({ title, value }: { title: string; value: unknown }) {

@@ -114,7 +114,8 @@ const forEachNode: WorkflowNode = {
 
 const guidanceNodeTypes = [
   ["http.request", "填写请求方法和 URL。"],
-  ["data.csv_read", "填写 CSV 文件路径，确认分隔符和表头设置。"],
+  ["data.csv_read", "填写 CSV 文件路径，确认分隔符和表头设置。运行后可在运行详情查看表头和行数。"],
+  ["control.foreach", "填写循环数据来源。循环体内可以用 {{ loop.item.column_name }} 引用当前 CSV 行字段。"],
   ["assert.status_code", "填写期望状态码。"],
   ["test.write_report", "填写测试报告输出路径。"],
 ] as const;
@@ -283,5 +284,85 @@ describe("ConfigPanel", () => {
     expect(screen.getByText("耗时：12.25 ms")).toBeInTheDocument();
     expect(screen.getByText(/Alice/)).toBeInTheDocument();
     expect(screen.getByText(/done/)).toBeInTheDocument();
+  });
+
+  it("summarizes CSV headers, row count, and columns in runtime details", () => {
+    render(
+      <ConfigPanel
+        node={createNode("data.csv_read")}
+        nodeType={createNodeType("data.csv_read")}
+        runtimeState={{
+          nodeId: "node_data_csv_read",
+          status: "succeeded",
+          outputs: {
+            success: {
+              headers: ["name", "age"],
+              rows: [
+                { name: "Alice", age: "30" },
+                { name: "Bob", age: "31" },
+              ],
+              columns: {
+                name: ["Alice", "Bob"],
+                age: ["30", "31"],
+              },
+            },
+          },
+          scopes: [[]],
+        }}
+        onConfigChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行详情" }));
+
+    expect(screen.getByText("表头：name, age")).toBeInTheDocument();
+    expect(screen.getByText("行数：2")).toBeInTheDocument();
+    expect(screen.getByText("列：name, age")).toBeInTheDocument();
+  });
+
+  it.each([
+    [{ success: { iteration_count: 3 } }, 3, "success.iteration_count"],
+    [{ done: { iterations: 4 } }, 4, "done.iterations"],
+  ])("summarizes ForEach iteration count from %s", (outputs, expectedCount) => {
+    render(
+      <ConfigPanel
+        node={forEachNode}
+        nodeType={forEachType}
+        runtimeState={{
+          nodeId: "node_loop",
+          status: "succeeded",
+          outputs,
+          scopes: [[]],
+        }}
+        onConfigChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行详情" }));
+
+    expect(screen.getByText(`迭代次数：${expectedCount}`)).toBeInTheDocument();
+  });
+
+  it("does not show a runtime insight card when summary data is missing", () => {
+    const { container } = render(
+      <ConfigPanel
+        node={createNode("data.csv_read")}
+        nodeType={createNodeType("data.csv_read")}
+        runtimeState={{
+          nodeId: "node_data_csv_read",
+          status: "succeeded",
+          outputs: { success: { ok: true } },
+          scopes: [[]],
+        }}
+        onConfigChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行详情" }));
+
+    expect(container.querySelector(".runtime-insight")).toBeNull();
+    expect(screen.queryByText(/^表头：/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^行数：/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^列：/)).not.toBeInTheDocument();
   });
 });

@@ -82,9 +82,22 @@ pnpm dev:web
 CSV 参数化接口测试：
 
 1. 准备 CSV 文件，例如 `data/users.csv`，首行写列名，后续每行是一组测试数据。
+
+   ```csv
+   name,url,expected_status
+   health,https://api.example.com/health,200
+   profile,https://api.example.com/profile,200
+   ```
+
 2. 选择“CSV 参数化接口测试”模板，或手动连接 `读取 CSV -> 遍历循环`，并在循环体里连接 `HTTP 请求 -> 断言 -> 记录测试结果`。
 3. 点击 `读取 CSV` 节点，填写 CSV 文件路径，确认分隔符和表头设置。
 4. 点击 `遍历循环` 节点，把循环输入指向 CSV 读取结果；循环体中的 HTTP 请求可以通过 `{{ loop.item.column_name }}` 引用当前行字段。
+
+   ```text
+   {{ loop.item.url }}
+   {{ loop.item.expected_status }}
+   ```
+
 5. 循环结束后连接 `测试汇总 -> 写入测试报告`，运行完成后在底部“测试报告”查看用例通过、失败和未知结果。
 
 运行与排查：

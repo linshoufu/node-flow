@@ -769,6 +769,7 @@ button:disabled {
 }
 
 .runtime-summary span,
+.runtime-insight,
 .runtime-block {
   border: 1px solid #dde4eb;
   border-radius: 5px;
@@ -777,6 +778,32 @@ button:disabled {
 
 .runtime-summary span {
   padding: 5px 8px;
+}
+
+.runtime-insight {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.runtime-insight strong {
+  color: #26506f;
+  font-size: 12px;
+}
+
+.runtime-insight div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.runtime-insight p {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #1c2633;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .runtime-block {
