@@ -63,7 +63,7 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-rows: 64px 36px minmax(0, 1fr);
+  grid-template-rows: 64px 36px auto minmax(0, 1fr);
   height: 100vh;
   background: #e9edf2;
 }
@@ -186,7 +186,70 @@ button:disabled {
   white-space: nowrap;
 }
 
+.pre-run-issues {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid #e2c4c4;
+  background: #fff7f7;
+  padding: 10px 18px;
+}
+
+.pre-run-issues-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pre-run-issues-heading h2 {
+  margin: 0;
+  color: #7a2b2b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pre-run-issues-heading span {
+  color: #8b3030;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.pre-run-issue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pre-run-issue {
+  display: grid;
+  justify-items: start;
+  min-height: 42px;
+  border-color: #d9a0a0;
+  background: #ffffff;
+  color: #6f2525;
+  padding: 7px 10px;
+  text-align: left;
+  white-space: normal;
+}
+
+.pre-run-issue:hover:not(:disabled) {
+  border-color: #bd5b5b;
+  background: #fffafa;
+}
+
+.pre-run-issue strong,
+.pre-run-issue span {
+  overflow-wrap: anywhere;
+}
+
+.pre-run-issue span {
+  color: #8b3030;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .workspace-grid {
+  grid-row: 4;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr) 330px;
   grid-template-rows: minmax(0, 1fr) 210px;
@@ -973,7 +1036,7 @@ button:disabled {
   }
 
   .app-shell {
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
   }
 
   .topbar {

@@ -4,6 +4,7 @@ import { CanvasEmptyState, type CanvasTemplateCard } from "./components/CanvasEm
 import { ConfigPanel } from "./components/ConfigPanel";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { NodePalette } from "./components/NodePalette";
+import { PreRunIssueList } from "./components/PreRunIssueList";
 import { RunPanel } from "./components/RunPanel";
 import {
   createEmptyWorkflow,
@@ -15,6 +16,7 @@ import {
   type EditScope,
 } from "./lib/workflow";
 import { localizeNodeType } from "./lib/display";
+import { buildPreRunIssues, type PreRunIssue } from "./lib/preRunChecks";
 import { buildNodeRunStates } from "./lib/runState";
 import { API_TESTING_TEMPLATES, createWorkflowFromTemplate, templateAvailability } from "./lib/workflowTemplates";
 import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from "./types";
@@ -36,6 +38,7 @@ export default function App() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [run, setRun] = useState<RunRecord | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
+  const [preRunIssues, setPreRunIssues] = useState<PreRunIssue[]>([]);
   const mountedRef = useRef(true);
   const runInFlightRef = useRef(false);
   const runTokenRef = useRef(0);
@@ -206,6 +209,7 @@ export default function App() {
 
   function startNewWorkflow() {
     resetRunState();
+    setPreRunIssues([]);
     setWorkflow(createEmptyWorkflow());
     setSelectedWorkflowId("");
     setEditScope(undefined);
@@ -217,10 +221,11 @@ export default function App() {
     try {
       const nextWorkflow = createWorkflowFromTemplate(templateId);
       resetRunState();
+      setPreRunIssues([]);
       setWorkflow(nextWorkflow);
       setSelectedWorkflowId("");
       setEditScope(undefined);
-      setSelectedNodeId(null);
+      setSelectedNodeId(defaultSelectedTemplateNodeId(templateId));
       setMessage(`已应用模板：${nextWorkflow.name}。`);
     } catch (error) {
       setMessage(`模板应用失败：${formatError(error)}`);
@@ -229,6 +234,7 @@ export default function App() {
 
   async function loadWorkflow(workflowId: string) {
     setSelectedWorkflowId(workflowId);
+    setPreRunIssues([]);
     if (!workflowId) {
       return;
     }
@@ -274,6 +280,7 @@ export default function App() {
       setWorkflow(saved);
       setSelectedWorkflowId(saved.id);
       upsertWorkflowSummary(saved);
+      setPreRunIssues([]);
       setMessage(`已保存 v${saved.version}。`);
       return saved;
     } catch (error) {
@@ -293,10 +300,19 @@ export default function App() {
       return;
     }
 
+    const issues = buildPreRunIssues(workflow);
+    if (issues.length > 0) {
+      setPreRunIssues(issues);
+      setSelectedNodeId(issues[0].nodeId);
+      setMessage(`运行前检查发现 ${issues.length} 个问题，请先补齐配置。`);
+      return;
+    }
+
     const runToken = runTokenRef.current + 1;
     runTokenRef.current = runToken;
     runInFlightRef.current = true;
     setIsBusy(true);
+    setPreRunIssues([]);
     setRunEvents([]);
     try {
       const saved = await apiClient.saveWorkflow(workflow);
@@ -495,6 +511,8 @@ export default function App() {
         {message}
       </div>
 
+      <PreRunIssueList issues={preRunIssues} onSelectNode={setSelectedNodeId} />
+
       <main className="workspace-grid">
         <NodePalette nodeTypes={displayNodeTypes} onAddNode={addNode} />
         <FlowCanvas
@@ -546,5 +564,16 @@ function formatRunStatus(status: RunStatus): string {
       return "运行中";
     case "queued":
       return "排队中";
+  }
+}
+
+function defaultSelectedTemplateNodeId(templateId: string): string | null {
+  switch (templateId) {
+    case "single-api-status-code":
+      return "request";
+    case "csv-parameterized-api":
+      return "csv";
+    default:
+      return null;
   }
 }

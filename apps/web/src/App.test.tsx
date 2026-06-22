@@ -241,6 +241,162 @@ describe("App", () => {
     expect(within(canvas).getByText("HTTP 请求")).toBeInTheDocument();
     expect(within(canvas).getByText("状态码断言")).toBeInTheDocument();
     expect(screen.getByLabelText("工作流名称")).toHaveValue("单接口状态码断言");
+    expect(screen.getByText("填写请求方法和 URL。")).toBeInTheDocument();
+  });
+
+  it("applies the CSV parameterized API template and selects the CSV node", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "manual.trigger",
+            name: "Manual Trigger",
+            category: "Triggers",
+            description: "Starts a workflow manually.",
+            inputs: {},
+            outputs: { success: { description: "Started" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "data.csv_read",
+            name: "Read CSV",
+            category: "Data",
+            description: "Read CSV rows for data-driven tests.",
+            inputs: {},
+            outputs: { success: { description: "CSV rows" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                path: { title: "CSV file path", type: "string" },
+                delimiter: { title: "Delimiter", type: "string", default: "," },
+                has_header: { title: "Has Header", type: "boolean", default: true },
+              },
+            },
+          },
+          {
+            id: "control.foreach",
+            name: "For Each",
+            category: "Control",
+            description: "Runs body nodes for each item.",
+            inputs: { input: { description: "Rows" } },
+            outputs: { done: { description: "Done" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "http.request",
+            name: "HTTP Request",
+            category: "Network",
+            description: "Send an HTTP request.",
+            inputs: { body: { description: "Request body" } },
+            outputs: { success: { description: "Response" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "assert.status_code",
+            name: "Assert Status Code",
+            category: "Assertions",
+            description: "Assert an HTTP status code.",
+            inputs: { input: { description: "Response" } },
+            outputs: { passed: { description: "Passed" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "test.record_result",
+            name: "Record Test Result",
+            category: "Testing",
+            description: "Record an assertion result.",
+            inputs: { input: { description: "Result" } },
+            outputs: { success: { description: "Recorded" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "test.summary",
+            name: "Test Summary",
+            category: "Testing",
+            description: "Summarize test results.",
+            inputs: { input: { description: "Results" } },
+            outputs: { success: { description: "Summary" } },
+            configSchema: { type: "object", properties: {} },
+          },
+          {
+            id: "test.write_report",
+            name: "Write Test Report",
+            category: "Testing",
+            description: "Write a test report.",
+            inputs: { input: { description: "Report" } },
+            outputs: { success: { description: "Written" } },
+            configSchema: { type: "object", properties: {} },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const templateCard = await screen.findByRole("article", { name: "CSV 参数化接口测试" });
+    fireEvent.click(within(templateCard).getByRole("button", { name: "使用模板" }));
+
+    expect(screen.getByLabelText("工作流名称")).toHaveValue("CSV 参数化接口测试");
+    expect(within(screen.getByLabelText("配置面板")).getByText("读取 CSV")).toBeInTheDocument();
+    expect(screen.getByText("填写 CSV 文件路径，确认分隔符和表头设置。")).toBeInTheDocument();
+  });
+
+  it("blocks an incomplete HTTP workflow before creating a run and selects the issue node", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "http.request",
+            name: "HTTP Request",
+            category: "Network",
+            description: "Send an HTTP request.",
+            inputs: {},
+            outputs: { success: { description: "Response" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                method: { title: "Method", type: "string", default: "GET" },
+                url: { title: "URL", type: "string" },
+              },
+            },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/api/workflows") && init?.method === "POST") {
+        throw new Error("saveWorkflow should not be called");
+      }
+      if (url.includes("/runs")) {
+        throw new Error("createRun should not be called");
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "HTTP 请求 http.request" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+
+    expect(await screen.findByText("运行前检查发现 1 个问题，请先补齐配置。")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "运行前检查" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /HTTP 请求缺少 URL。/ }));
+
+    expect(screen.getByText("填写请求方法和 URL。")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/workflows",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringMatching(/\/runs$/), expect.anything());
   });
 
   it("disables empty canvas templates while a run is in flight and restores them after it settles", async () => {
