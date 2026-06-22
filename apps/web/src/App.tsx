@@ -203,7 +203,10 @@ export default function App() {
   }
 
   function selectPreRunIssue(issue: PreRunIssue) {
-    if (editableWorkflow.nodes.some((node) => node.id === issue.nodeId)) {
+    if (
+      isIssueInCurrentEditScope(issue, editScope) &&
+      editableWorkflow.nodes.some((node) => node.id === issue.nodeId)
+    ) {
       setSelectedNodeId(issue.nodeId);
       return;
     }
@@ -314,7 +317,10 @@ export default function App() {
     const issues = currentPreRunIssues;
     if (issues.length > 0) {
       setShowPreRunIssues(true);
-      if (editableWorkflow.nodes.some((node) => node.id === issues[0].nodeId)) {
+      if (
+        isIssueInCurrentEditScope(issues[0], editScope) &&
+        editableWorkflow.nodes.some((node) => node.id === issues[0].nodeId)
+      ) {
         setSelectedNodeId(issues[0].nodeId);
       }
       setMessage(`运行前检查发现 ${issues.length} 个问题，请先补齐配置。`);
@@ -589,4 +595,35 @@ function defaultSelectedTemplateNodeId(templateId: string): string | null {
     default:
       return null;
   }
+}
+
+function isIssueInCurrentEditScope(issue: PreRunIssue, editScope: EditScope): boolean {
+  const issueScope = editScopeFromIssuePath(issue.path);
+  const currentScope = editScope ?? [];
+  if (issueScope.length !== currentScope.length) {
+    return false;
+  }
+
+  return issueScope.every(
+    (step, index) =>
+      step.nodeId === currentScope[index].nodeId && step.subflowName === currentScope[index].subflowName
+  );
+}
+
+function editScopeFromIssuePath(path: string[] | undefined): NonNullable<EditScope> {
+  if (!path || path[0] !== "root") {
+    return [];
+  }
+
+  const scope: NonNullable<EditScope> = [];
+  for (let index = 1; index < path.length - 1; index += 2) {
+    const nodeId = path[index];
+    const subflowName = path[index + 1];
+    if (!nodeId || !subflowName) {
+      break;
+    }
+    scope.push({ nodeId, subflowName });
+  }
+
+  return scope;
 }

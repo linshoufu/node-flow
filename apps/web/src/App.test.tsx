@@ -527,6 +527,95 @@ describe("App", () => {
     expect(screen.getByText("这个运行前问题属于未打开的子流程，请先进入对应循环体查看。")).toBeInTheDocument();
   });
 
+  it("does not select a root node with the same id as an unopened subflow pre-run issue", async () => {
+    const duplicateIdWorkflow = workflowDocument({
+      id: "wf_duplicate",
+      name: "Duplicate ids",
+      nodes: [
+        {
+          id: "request",
+          type: "http.request",
+          position: { x: 80, y: 80 },
+          config: { method: "GET", url: "https://api.example.com/root" },
+        },
+        {
+          id: "each_row",
+          type: "control.foreach",
+          position: { x: 320, y: 80 },
+          config: { items_expression: "{{ rows }}" },
+          subflows: {
+            body: {
+              nodes: [
+                {
+                  id: "request",
+                  type: "http.request",
+                  position: { x: 80, y: 80 },
+                  config: { method: "GET", url: "" },
+                },
+              ],
+              edges: [],
+            },
+          },
+        },
+      ],
+      edges: [],
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse([
+          {
+            id: "control.foreach",
+            name: "For Each",
+            category: "Control",
+            description: "Runs body nodes for each item.",
+            inputs: {},
+            outputs: { done: { description: "Done" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                items_expression: { title: "Items Expression", type: "string" },
+              },
+            },
+          },
+          {
+            id: "http.request",
+            name: "HTTP Request",
+            category: "Network",
+            description: "Send an HTTP request.",
+            inputs: {},
+            outputs: { success: { description: "Response" } },
+            configSchema: {
+              type: "object",
+              properties: {
+                method: { title: "Method", type: "string", default: "GET" },
+                url: { title: "URL", type: "string" },
+              },
+            },
+          },
+        ]);
+      }
+      if (url.endsWith("/api/workflows")) {
+        return jsonResponse([{ id: "wf_duplicate", name: "Duplicate ids", version: 1 }]);
+      }
+      if (url.endsWith("/api/workflows/wf_duplicate")) {
+        return jsonResponse(duplicateIdWorkflow);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("已保存工作流"), { target: { value: "wf_duplicate" } });
+    await screen.findByText("已加载 Duplicate ids v1。");
+    fireEvent.click(screen.getByRole("button", { name: "运行" }));
+    fireEvent.click(await screen.findByRole("button", { name: /HTTP 请求缺少 URL。/ }));
+
+    expect(screen.getByText("这个运行前问题属于未打开的子流程，请先进入对应循环体查看。")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("配置面板")).getByText("选择一个节点后，在这里编辑它的参数。")).toBeInTheDocument();
+  });
+
   it("disables empty canvas templates while a run is in flight and restores them after it settles", async () => {
     const saveWorkflow = deferred<Response>();
     const run = {
