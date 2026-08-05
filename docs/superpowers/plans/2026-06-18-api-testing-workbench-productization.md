@@ -1651,7 +1651,7 @@ Start-Process -FilePath $pnpm -ArgumentList 'dev:web' -WorkingDirectory 'D:\lear
 Open:
 
 ```text
-http://127.0.0.1:5173
+http://127.0.0.1:5273
 ```
 
 Smoke checklist:
@@ -1668,11 +1668,11 @@ Smoke checklist:
 Run:
 
 ```powershell
-$owners = Get-NetTCPConnection -LocalPort 8000,5173 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+$owners = Get-NetTCPConnection -LocalPort 8150,5273 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
 foreach ($id in $owners) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
 ```
 
-Expected: no listeners remain on ports 8000 or 5173.
+Expected: no listeners remain on ports 8150 or 5273.
 
 - [ ] **Step 6: Check working tree**
 

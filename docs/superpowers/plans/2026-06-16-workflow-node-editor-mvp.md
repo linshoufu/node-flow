@@ -118,7 +118,7 @@ Create `package.json`:
     "dev:web": "pnpm --filter @node-flow/web dev",
     "build:web": "pnpm --filter @node-flow/web build",
     "test:web": "pnpm --filter @node-flow/web test",
-    "dev:api": "uvicorn apps.api.nodeflow_api.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:api": "uvicorn apps.api.nodeflow_api.main:app --reload --host 127.0.0.1 --port 8150",
     "test:api": "pytest tests/api -q",
     "test": "pnpm test:web && pytest tests/api -q"
   },
@@ -1195,7 +1195,7 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
     app = FastAPI(title="Node Flow API")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=["http://localhost:5273", "http://127.0.0.1:5273"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -1462,7 +1462,7 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
     app = FastAPI(title="Node Flow API")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=["http://localhost:5273", "http://127.0.0.1:5273"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -1839,7 +1839,7 @@ def create_app(database_path: str = "node-flow.sqlite3") -> FastAPI:
     app = FastAPI(title="Node Flow API")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=["http://localhost:5273", "http://127.0.0.1:5273"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -2225,7 +2225,7 @@ Create `apps/web/package.json`:
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev": "vite --host 127.0.0.1 --port 5273 --strictPort",
     "build": "tsc && vite build",
     "test": "vitest run"
   },
@@ -2641,7 +2641,7 @@ import type { NodeType, RunEvent, RunRecord, ValidationResult, WorkflowDocument 
 
 export class ApiClient {
   constructor(
-    private readonly baseUrl = "http://127.0.0.1:8000",
+    private readonly baseUrl = "http://127.0.0.1:8150",
     private readonly fetchImpl: typeof fetch = fetch
   ) {}
 
@@ -3669,7 +3669,7 @@ Append to `README.md`:
 
 1. Start the API with `pnpm dev:api`.
 2. Start the web editor with `pnpm dev:web`.
-3. Open `http://127.0.0.1:5173`.
+3. Open `http://127.0.0.1:5273`.
 4. Add `Manual Trigger` and `Log` nodes.
 5. Connect `Manual Trigger.success` to `Log.input`.
 6. Click `Validate`.

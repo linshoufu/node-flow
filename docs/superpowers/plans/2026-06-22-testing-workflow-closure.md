@@ -10,6 +10,25 @@
 
 ---
 
+## Current Implementation Reconciliation
+
+Status as of 2026-07-03:
+
+- Task 1 is implemented with broader coverage than the original plan. `buildPreRunIssues(workflow, nodeTypes)` now checks common test-node configuration, nested subflows, invalid connections, required input ports, and schema-level field issues.
+- Task 2 is implemented through the unified `WorkflowIssuePanel` / `WorkflowIssueList` problem center. `PreRunIssueList` remains as a compatibility wrapper, but App intentionally renders the unified issue panel instead of a separate pre-run-only list.
+- Task 3 is implemented. Test report cases can be filtered by status and clicked to open node runtime details through the shared runtime-navigation target.
+- Task 4 is implemented. CSV and loop guidance is shown in the config panel, while CSV/ForEach runtime summaries live in `runtimeDisplay.ts` and are rendered by `NodeRuntimePanel`.
+- The original status-code assertion pre-run design has been reconciled with the current backend node model: `assert.status_code.actual` is not a config field. The actual status code comes from the required `input` port, and `expected` defaults to `200`.
+- The single-API template now includes a local smoke URL (`http://127.0.0.1:8150/api/health`). Browser smoke should clear that URL before verifying the missing-URL pre-run issue.
+- Verification evidence from this pass:
+  - `pnpm --filter @node-flow/web test -- src/lib/preRunChecks.test.ts src/components/PreRunIssueList.test.tsx src/components/WorkflowIssuePanel.test.tsx src/components/TestReportView.test.tsx src/components/RunPanel.test.tsx src/components/ConfigPanel.test.tsx src/lib/runtimeDisplay.test.ts`: 7 files / 100 tests passed.
+  - `pytest tests/api -q`: 139 tests passed, 1 external deprecation warning.
+  - Browser smoke on `http://127.0.0.1:5273/`: applying the single API template selects HTTP Request; clearing URL via keyboard and clicking Run shows the Chinese pre-run issue and does not enter the running state.
+
+The detailed checkbox plan below is preserved as the original implementation script. Some commit-only steps remain unchecked because this workspace currently contains multiple uncommitted phase changes and this pass did not create commits.
+
+---
+
 ## File Structure
 
 - Create `apps/web/src/lib/preRunChecks.ts`
@@ -750,7 +769,7 @@ Use the local app and verify:
 
 1. Apply single API template.
 2. Confirm HTTP request node is selected.
-3. Click Run without URL.
+3. Clear the template URL, then click Run.
 4. Confirm Chinese pre-run issue appears and run API is not created.
 5. Apply CSV template.
 6. Confirm CSV node is selected.
@@ -774,4 +793,3 @@ If no fixes were required, do not create an empty commit.
 - Spec coverage: pre-run checks, template guidance, report filtering/location, CSV runtime details, README update, and verification are each mapped to a task.
 - Placeholder scan: no `TBD`, `TODO`, or unspecified implementation steps remain.
 - Type consistency: `PreRunIssue`, `buildPreRunIssues`, `PreRunIssueList`, `onSelectNode`, and `TestReportView` props are named consistently across tasks.
-
