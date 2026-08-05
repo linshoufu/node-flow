@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { nodePortContractSummary } from "../lib/nodePortSummary";
 import type { NodeType } from "../types";
 import { NodeTypeIcon } from "./NodeTypeIcon";
@@ -87,11 +88,11 @@ export function NodePalette({
         </div>
       </div>
       <label className="palette-search">
-        <span>搜索节点</span>
+        <Search aria-hidden="true" className="palette-search-icon" size={14} strokeWidth={2.2} />
         <input
           aria-label="搜索节点"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="按名称、类型、说明搜索"
+          placeholder="搜索节点名称、类型、说明"
           type="search"
           value={query}
         />
@@ -123,7 +124,7 @@ export function NodePalette({
           <p className="palette-empty">没有匹配的节点。</p>
         ) : (
           categories.map(([category, items]) => (
-            <section className="palette-group" key={category}>
+            <section className="palette-group" data-category={category} key={category}>
               <h3>{category}</h3>
               <div className="palette-list">
                 {items.map((nodeType) => {
@@ -132,6 +133,7 @@ export function NodePalette({
                     <button
                       aria-label={nodeAccessibleName(nodeType)}
                       className="palette-node"
+                      data-category={nodeType.category || "其他"}
                       disabled={disabled}
                       draggable={!disabled}
                       key={nodeType.id}

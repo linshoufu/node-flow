@@ -1,5 +1,5 @@
 import type { ReactNode, Ref } from "react";
-import { Redo2, Search, SlidersHorizontal, Undo2 } from "lucide-react";
+import { Redo2, Search, SlidersHorizontal, Undo2, Workflow } from "lucide-react";
 import type { WorkflowReleaseActionState } from "../lib/workflowRelease";
 import type { WorkflowSaveActionState } from "../lib/saveState";
 import type { WorkflowPublicationStatus } from "../types";
@@ -73,6 +73,9 @@ export function WorkflowTopbar({
   return (
     <header className="topbar">
       <div className="brand">
+        <span aria-hidden="true" className="brand-mark">
+          <Workflow size={16} strokeWidth={2.2} />
+        </span>
         <span className="brand-title">节点流</span>
         <input
           aria-label="工作流名称"

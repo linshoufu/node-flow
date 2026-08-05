@@ -1140,7 +1140,10 @@ function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
   const canvasNode = buildCanvasNodeData({ issues, node: workflowNode, nodeType, runDetail, runtimeState });
 
   return (
-    <div className={`${selected ? "flow-node is-selected" : "flow-node"}${canvasNode.isDisabled ? " is-disabled" : ""}${statusClass}`}>
+    <div
+      className={`${selected ? "flow-node is-selected" : "flow-node"}${canvasNode.isDisabled ? " is-disabled" : ""}${statusClass}`}
+      data-category={nodeType?.category || "其他"}
+    >
       <div className="flow-node-header">
         <NodeTypeIcon className="flow-node-icon" icon={nodeType?.icon} size={15} />
         <span className="flow-node-title">
