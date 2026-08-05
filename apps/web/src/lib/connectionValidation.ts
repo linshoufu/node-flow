@@ -12,6 +12,7 @@ export type ConnectionCandidate = {
 
 export type ConnectionValidationCode =
   | "incomplete_endpoint"
+  | "wrong_port_direction"
   | "self_connection"
   | "unknown_source_node"
   | "unknown_target_node"
@@ -54,10 +55,6 @@ export function validateConnection(
     return invalid("incomplete_endpoint", "请从输出端口拖到输入端口。");
   }
 
-  if (source === target) {
-    return invalid("self_connection", "不能把节点连接到自己。");
-  }
-
   const sourceNode = workflow.nodes.find((node) => node.id === source);
   const targetNode = workflow.nodes.find((node) => node.id === target);
   if (!sourceNode) {
@@ -77,8 +74,36 @@ export function validateConnection(
     return invalid("unknown_target_type", "目标节点类型未加载，不能连接。");
   }
 
-  const sourcePort = resolveNodeOutputPorts(sourceNode, sourceType)[sourceHandle];
-  const targetPort = resolveNodeInputPorts(targetNode, targetType)[targetHandle];
+  const sourceOutputPorts = resolveNodeOutputPorts(sourceNode, sourceType);
+  const sourceInputPorts = resolveNodeInputPorts(sourceNode, sourceType);
+  const targetInputPorts = resolveNodeInputPorts(targetNode, targetType);
+  const targetOutputPorts = resolveNodeOutputPorts(targetNode, targetType);
+
+  const targetDroppedPort = targetInputPorts[targetHandle] ? undefined : targetOutputPorts[targetHandle];
+  if (targetDroppedPort) {
+    return {
+      valid: false,
+      code: "wrong_port_direction",
+      message: `端口方向不对：${portDisplayName(targetHandle, targetDroppedPort)} 是输出端口，连线只能从输出端口拖到输入端口。`,
+      targetPort: targetHandle,
+    };
+  }
+  const sourceStartPort = sourceOutputPorts[sourceHandle] ? undefined : sourceInputPorts[sourceHandle];
+  if (sourceStartPort) {
+    return {
+      valid: false,
+      code: "wrong_port_direction",
+      message: `端口方向不对：${portDisplayName(sourceHandle, sourceStartPort)} 是输入端口，连线应从输出端口开始。`,
+      sourcePort: sourceHandle,
+    };
+  }
+
+  if (source === target) {
+    return invalid("self_connection", "不能把节点连接到自己。");
+  }
+
+  const sourcePort = sourceOutputPorts[sourceHandle];
+  const targetPort = targetInputPorts[targetHandle];
 
   if (!sourcePort) {
     return invalid("unknown_source_port", `源节点没有输出端口 ${sourceHandle}。`);

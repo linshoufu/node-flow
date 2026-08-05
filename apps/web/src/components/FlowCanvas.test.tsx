@@ -666,7 +666,7 @@ describe("FlowCanvas", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "复制所选节点" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "克隆所选节点" })).toBeDisabled();
 
     rerender(
       <FlowCanvas
@@ -678,7 +678,7 @@ describe("FlowCanvas", () => {
         onWorkflowChange={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "复制所选节点" }));
+    fireEvent.click(screen.getByRole("button", { name: "克隆所选节点" }));
 
     expect(onDuplicateNodes).toHaveBeenCalledWith(["node_manual"]);
   });
@@ -697,7 +697,7 @@ describe("FlowCanvas", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "复制所选节点" }));
+    fireEvent.click(screen.getByRole("button", { name: "克隆所选节点" }));
 
     expect(onDuplicateNodes).toHaveBeenCalledWith(["node_manual", "node_log"]);
   });

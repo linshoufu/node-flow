@@ -70,7 +70,7 @@ describe("validateConnection", () => {
     ).toEqual({ valid: false, code: "incomplete_endpoint", message: "请从输出端口拖到输入端口。" });
   });
 
-  it("rejects self connections", () => {
+  it("reports a direction error when an output port is dropped onto another output port", () => {
     expect(
       validateConnection(
         {
@@ -81,6 +81,86 @@ describe("validateConnection", () => {
         },
         workflow,
         [sourceType, targetType]
+      )
+    ).toEqual({
+      valid: false,
+      code: "wrong_port_direction",
+      message: "端口方向不对：成功 是输出端口，连线只能从输出端口拖到输入端口。",
+      targetPort: "success",
+    });
+
+    expect(
+      validateConnection(
+        {
+          source: "source",
+          sourceHandle: "success",
+          target: "source_2",
+          targetHandle: "success",
+        },
+        {
+          ...workflow,
+          nodes: [
+            ...workflow.nodes,
+            { id: "source_2", type: "source.node", position: { x: 0, y: 200 }, config: {} },
+          ],
+        },
+        [sourceType, targetType]
+      )
+    ).toEqual({
+      valid: false,
+      code: "wrong_port_direction",
+      message: "端口方向不对：成功 是输出端口，连线只能从输出端口拖到输入端口。",
+      targetPort: "success",
+    });
+  });
+
+  it("reports a direction error when a connection starts from an input port", () => {
+    expect(
+      validateConnection(
+        {
+          source: "target",
+          sourceHandle: "input",
+          target: "target_2",
+          targetHandle: "input",
+        },
+        {
+          ...workflow,
+          nodes: [
+            ...workflow.nodes,
+            { id: "target_2", type: "target.node", position: { x: 400, y: 0 }, config: {} },
+          ],
+        },
+        [sourceType, targetType]
+      )
+    ).toEqual({
+      valid: false,
+      code: "wrong_port_direction",
+      message: "端口方向不对：输入 是输入端口，连线应从输出端口开始。",
+      sourcePort: "input",
+    });
+  });
+
+  it("rejects self connections between a node's own output and input", () => {
+    const passthroughType: NodeType = {
+      ...sourceType,
+      id: "passthrough.node",
+      inputs: { input: {} },
+    };
+    const passthroughWorkflow: WorkflowDocument = {
+      ...workflow,
+      nodes: [{ id: "passthrough", type: "passthrough.node", position: { x: 0, y: 0 }, config: {} }],
+    };
+
+    expect(
+      validateConnection(
+        {
+          source: "passthrough",
+          sourceHandle: "success",
+          target: "passthrough",
+          targetHandle: "input",
+        },
+        passthroughWorkflow,
+        [passthroughType]
       )
     ).toEqual({ valid: false, code: "self_connection", message: "不能把节点连接到自己。" });
   });

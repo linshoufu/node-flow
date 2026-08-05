@@ -6641,7 +6641,13 @@ button.node-issue-badge:focus-visible {
   .brand {
     align-items: flex-start;
     flex-direction: column;
+    flex-wrap: nowrap;
     gap: 6px;
+  }
+
+  .breadcrumbs {
+    flex: 0 0 auto;
+    width: 100%;
   }
 
   .workflow-name {

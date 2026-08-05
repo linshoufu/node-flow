@@ -637,9 +637,9 @@ function FlowCanvasInner({
           ) : null}
           {onDuplicateNodes ? (
             <button
-              aria-label="复制所选节点"
+              aria-label="克隆所选节点"
               disabled={disabled || selectedWorkflowNodeIds.size === 0}
-              title="复制所选节点"
+              title="克隆所选节点 (Ctrl/Cmd + D)"
               type="button"
               onClick={() => onDuplicateNodes([...selectedWorkflowNodeIds])}
             >
