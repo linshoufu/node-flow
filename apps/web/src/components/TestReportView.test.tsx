@@ -152,8 +152,12 @@ describe("TestReportView", () => {
     fireEvent.click(screen.getByRole("button", { name: /带来源用例/ }));
     fireEvent.click(screen.getByRole("button", { name: /循环体用例/ }));
 
-    expect(onSelectNode).toHaveBeenNthCalledWith(1, { nodeId: "record_result", scope: [] });
-    expect(onSelectNode).toHaveBeenNthCalledWith(2, { nodeId: "record_result", scope: ["each_row", "iteration:0"] });
+    expect(onSelectNode).toHaveBeenNthCalledWith(1, { nodeId: "record_result", scope: [], source: "test_report" });
+    expect(onSelectNode).toHaveBeenNthCalledWith(2, {
+      nodeId: "record_result",
+      scope: ["each_row", "iteration:0"],
+      source: "test_report",
+    });
     expect(screen.getAllByText("来源：record_result")).toHaveLength(2);
     expect(screen.getByText("无来源用例").closest("button")).toBeNull();
   });

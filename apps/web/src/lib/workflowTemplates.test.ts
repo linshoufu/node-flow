@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { LOCAL_SMOKE_HEALTH_URL } from "./projectConfig";
 import {
-  API_TESTING_TEMPLATES,
+  WORKFLOW_TEMPLATES,
   createWorkflowFromTemplate,
   templateAvailability,
   type WorkflowTemplate,
@@ -23,32 +24,123 @@ function countNodes(nodes: WorkflowNode[]): number {
 }
 
 describe("workflow templates", () => {
-  it("lists the two API testing templates as available", () => {
-    expect(API_TESTING_TEMPLATES.map((template) => template.id)).toEqual([
+  it("lists generic and testing templates as available", () => {
+    expect(WORKFLOW_TEMPLATES.map((template) => template.id)).toEqual([
+      "webhook-echo",
+      "manual-data-flow",
+      "manual-approval-branch",
+      "manual-value-route",
       "single-api-status-code",
       "csv-parameterized-api",
     ]);
 
-    for (const template of API_TESTING_TEMPLATES) {
+    expect(WORKFLOW_TEMPLATES.map((template) => template.category)).toEqual([
+      "general",
+      "general",
+      "general",
+      "general",
+      "testing",
+      "testing",
+    ]);
+
+    for (const template of WORKFLOW_TEMPLATES) {
       expect(template.name).toEqual(expect.any(String));
       expect(template.description).toEqual(expect.any(String));
       expect(template.nodeCount).toBe(countNodes(template.workflow.nodes));
       expect(template.tags.length).toBeGreaterThan(0);
       expect(templateAvailability(template)).toEqual({ available: true });
-      expect(template.workflow.nodes.find((node) => node.id === "start")?.type).toBe("manual.trigger");
     }
   });
 
-  it("exports frozen template definitions so callers cannot pollute the source workflows", () => {
-    const template = API_TESTING_TEMPLATES[0];
-    const requestNode = template.workflow.nodes.find((node) => node.id === "request");
+  it("creates a generic Webhook echo workflow with a matching response boundary", () => {
+    const workflow = createWorkflowFromTemplate("webhook-echo");
 
-    expect(Object.isFrozen(API_TESTING_TEMPLATES)).toBe(true);
+    expect(workflow.active).toBe(false);
+    expect(workflow.nodes.map((node) => node.type)).toEqual(["webhook.trigger", "webhook.respond"]);
+    expect(edgePairs(workflow)).toEqual(["webhook->respond"]);
+    expect(workflow.nodes.find((node) => node.id === "webhook")?.config).toMatchObject({
+      method: "POST",
+      path: "hooks/echo",
+    });
+    expect(workflow.nodes.find((node) => node.id === "respond")?.config).toMatchObject({
+      status_code: 200,
+    });
+  });
+
+  it("创建不依赖测试节点的手动数据流模板", () => {
+    const workflow = createWorkflowFromTemplate("manual-data-flow");
+
+    expect(workflow.name).toBe("手动处理数据");
+    expect(workflow.nodes.map((node) => node.type)).toEqual(["manual.trigger", "utility.log"]);
+    expect(edgePairs(workflow)).toEqual(["start->log"]);
+    expect(workflow.nodes.find((node) => node.id === "start")?.config).toEqual({
+      payload: { message: "你好，工作流" },
+    });
+  });
+
+  it("创建带真假输出端口的通用条件分支模板", () => {
+    const workflow = createWorkflowFromTemplate("manual-approval-branch");
+
+    expect(workflow.name).toBe("条件分支路由");
+    expect(workflow.nodes.map((node) => node.type)).toEqual([
+      "manual.trigger",
+      "logic.if",
+      "utility.log",
+      "utility.log",
+    ]);
+    expect(edgePairs(workflow)).toEqual(["start->condition", "condition->approved", "condition->review"]);
+    expect(workflow.nodes.find((node) => node.id === "condition")?.config).toEqual({
+      condition: "{{ inputs.input.approved }}",
+    });
+    expect(workflow.edges.find((edge) => edge.id === "condition_approved")).toMatchObject({
+      sourceHandle: "true",
+      targetHandle: "input",
+    });
+    expect(workflow.edges.find((edge) => edge.id === "condition_review")).toMatchObject({
+      sourceHandle: "false",
+      targetHandle: "input",
+    });
+  });
+
+  it("创建使用动态输出端口的多分支值路由模板", () => {
+    const workflow = createWorkflowFromTemplate("manual-value-route");
+
+    expect(workflow.name).toBe("多分支值路由");
+    expect(workflow.nodes.map((node) => node.type)).toEqual([
+      "manual.trigger",
+      "utility.transform",
+      "logic.switch",
+      "utility.log",
+      "utility.log",
+      "utility.log",
+    ]);
+    expect(edgePairs(workflow)).toEqual([
+      "start->status",
+      "status->route",
+      "route->approved_log",
+      "route->pending_log",
+      "route->fallback_log",
+    ]);
+    expect(workflow.nodes.find((node) => node.id === "route")?.config).toEqual({
+      rules: [
+        { id: "approved", label: "已批准", value: "approved" },
+        { id: "pending", label: "待处理", value: "pending" },
+      ],
+    });
+    expect(workflow.edges.find((edge) => edge.id === "route_approved")?.sourceHandle).toBe("approved");
+    expect(workflow.edges.find((edge) => edge.id === "route_pending")?.sourceHandle).toBe("pending");
+  });
+
+  it("exports frozen template definitions so callers cannot pollute the source workflows", () => {
+    const template = WORKFLOW_TEMPLATES[0];
+    const responseNode = template.workflow.nodes.find((node) => node.id === "respond");
+
+    expect(Object.isFrozen(WORKFLOW_TEMPLATES)).toBe(true);
     expect(Object.isFrozen(template)).toBe(true);
     expect(Object.isFrozen(template.tags)).toBe(true);
     expect(Object.isFrozen(template.workflow)).toBe(true);
     expect(Object.isFrozen(template.workflow.nodes)).toBe(true);
-    expect(Object.isFrozen(requestNode?.config)).toBe(true);
+    expect(Object.isFrozen(responseNode?.config)).toBe(true);
   });
 
   it("throws a clear error for an unknown template id", () => {
@@ -86,14 +178,14 @@ describe("workflow templates", () => {
     ]);
     expect(workflow.nodes.find((node) => node.id === "request")?.config).toMatchObject({
       method: "GET",
-      url: expect.any(String),
+      url: LOCAL_SMOKE_HEALTH_URL,
     });
     expect(workflow.nodes.find((node) => node.id === "assert_status")?.config).toMatchObject({
       expected: 200,
     });
   });
 
-  it("creates the CSV parameterized workflow with a foreach body subflow", () => {
+  it("creates the CSV parameterized workflow with an item-loop body subflow", () => {
     const workflow = createWorkflowFromTemplate("csv-parameterized-api");
     const eachRow = workflow.nodes.find((node) => node.id === "each_row");
     const body = eachRow?.subflows?.body;
@@ -102,10 +194,12 @@ describe("workflow templates", () => {
     expect(workflow.nodes.map((node) => node.id)).toEqual(["start", "csv", "each_row", "summary", "write_report"]);
     expect(edgePairs(workflow)).toEqual(["csv->each_row", "each_row->summary", "summary->write_report"]);
     expect(eachRow).toMatchObject({
-      type: "control.foreach",
-      config: {
-        items_expression: "{{ nodes.csv.outputs.success.rows }}",
-      },
+      type: "control.each_item",
+      config: { max_items: 100, continue_on_error: false, timeout_seconds: 300 },
+    });
+    expect(workflow.edges.find((edge) => edge.id === "csv_each_row")).toMatchObject({
+      sourceHandle: "items",
+      targetHandle: "items",
     });
     expect(body?.nodes.map((node) => node.id)).toEqual(["request", "assert_status", "record_result"]);
     expect(body?.edges.map((edge) => `${edge.source}->${edge.target}`)).toEqual([

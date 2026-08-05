@@ -1,108 +1,356 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
 import { CanvasEmptyState, type CanvasTemplateCard } from "./components/CanvasEmptyState";
+import { CommandPalette } from "./components/CommandPalette";
 import { ConfigPanel } from "./components/ConfigPanel";
+import { CredentialManager } from "./components/CredentialManager";
+import { DialogBackdrop } from "./components/DialogBackdrop";
+import { EnvironmentManager } from "./components/EnvironmentManager";
 import { FlowCanvas } from "./components/FlowCanvas";
+import { ManualRunDialog } from "./components/ManualRunDialog";
+import {
+  NodePackageAttentionNotice,
+  NodePackageManager,
+} from "./components/NodePackageManager";
+import { nodePackageAttentionCount } from "./lib/nodePackageDisplay";
 import { NodePalette } from "./components/NodePalette";
-import { PreRunIssueList } from "./components/PreRunIssueList";
-import { RunPanel, type NodeSelectionTarget } from "./components/RunPanel";
+import { ProjectVariableManager } from "./components/ProjectVariableManager";
+import { RunDrawer } from "./components/RunDrawer";
+import { RunPanel } from "./components/RunPanel";
+import { WorkflowIssuePanel } from "./components/WorkflowIssuePanel";
+import { WorkflowConflictDialog } from "./components/WorkflowConflictDialog";
+import { WorkflowManager } from "./components/WorkflowManager";
+import { WorkflowSettingsMenu } from "./components/WorkflowSettingsMenu";
+import { WorkflowTopbar } from "./components/WorkflowTopbar";
+import { WorkflowWorkbenchLayout } from "./components/WorkflowWorkbenchLayout";
+import {
+  WorkspaceResourceMenu,
+} from "./components/WorkspaceResourceMenu";
+import { useWorkspaceResources } from "./hooks/useWorkspaceResources";
+import { useCommandPaletteController } from "./hooks/useCommandPaletteController";
+import { useWorkflowCatalogController } from "./hooks/useWorkflowCatalogController";
+import { useCanvasOperations } from "./hooks/useCanvasOperations";
+import { useNodeCatalogController } from "./hooks/useNodeCatalogController";
+import { useRunInspectorController } from "./hooks/useRunInspectorController";
+import { useHistoricalRunActions } from "./hooks/useHistoricalRunActions";
+import { useWorkflowSettingsController } from "./hooks/useWorkflowSettingsController";
+import { useWorkflowVersionActions } from "./hooks/useWorkflowVersionActions";
+import { useWorkflowAutoSaveController } from "./hooks/useWorkflowAutoSaveController";
+import { useWorkflowDocumentController } from "./hooks/useWorkflowDocumentController";
+import { useWorkflowExecutionController } from "./hooks/useWorkflowExecutionController";
+import { useWorkflowLifecycleController } from "./hooks/useWorkflowLifecycleController";
+import { useWorkflowMutationController } from "./hooks/useWorkflowMutationController";
+import {
+  useWorkflowNavigationActions,
+  type WorkflowNavigationActions,
+  type WorkflowNavigationDocumentRequest,
+} from "./hooks/useWorkflowNavigationActions";
+import { useWorkflowPersistenceActions } from "./hooks/useWorkflowPersistenceActions";
+import { useWorkflowConflictController } from "./hooks/useWorkflowConflictController";
+import { useWorkflowConflictRecoveryActions } from "./hooks/useWorkflowConflictRecoveryActions";
+import { useWebhookTestListenerController } from "./hooks/useWebhookTestListenerController";
+import { useWorkflowValidationController } from "./hooks/useWorkflowValidationController";
+import { useWorkflowTransferActions } from "./hooks/useWorkflowTransferActions";
+import { useWorkbenchNavigationController } from "./hooks/useWorkbenchNavigationController";
+import { useWorkflowRouteController } from "./hooks/useWorkflowRouteController";
+import { useWorkflowRunHistory } from "./hooks/useWorkflowRunHistory";
+import { useWorkflowReleaseActions } from "./hooks/useWorkflowReleaseActions";
+import { useWorkflowRunActions } from "./hooks/useWorkflowRunActions";
+import { formatApiError as formatError } from "./lib/apiError";
+import { buildWorkspaceCommands } from "./lib/workspaceCommands";
 import {
   createEmptyWorkflow,
-  createWorkflowNode,
   getEditableWorkflow,
   scopeKey,
   scopeLabel,
-  updateEditableWorkflow,
+  workflowErrorWorkflowId,
+  workflowEnvironmentId,
+  workflowTimeoutSeconds,
+  workflowVariables,
   type EditScope,
 } from "./lib/workflow";
 import { localizeNodeType } from "./lib/display";
-import { buildPreRunIssues, type PreRunIssue } from "./lib/preRunChecks";
-import { buildNodeRunStates } from "./lib/runState";
-import { API_TESTING_TEMPLATES, createWorkflowFromTemplate, templateAvailability } from "./lib/workflowTemplates";
-import type { NodeType, RunEvent, RunRecord, RunStatus, WorkflowDocument } from "./types";
+import { buildExpressionReferences } from "./lib/expressionReferences";
+import { buildEdgeRepairCandidates } from "./lib/edgeRepairCandidates";
+import { buildNodeDisplayNames } from "./lib/nodeDisplayNames";
+import {
+  nodeRuntimeSourceLabel,
+  type NodeRuntimeNavigationSource,
+  type NodeRuntimeNavigationTarget,
+} from "./lib/nodeRuntimeNavigation";
+import { buildPreRunIssues, isSettingsPreRunIssue } from "./lib/preRunChecks";
+import { buildRunInspector } from "./lib/runInspector";
+import {
+  canCancelRunView,
+  isHistoricalRunView,
+} from "./lib/runView";
+import { buildWorkflowSaveActionState } from "./lib/saveState";
+import { buildWorkflowReleaseActionStates } from "./lib/workflowRelease";
+import { buildWorkflowVariableIssues } from "./lib/workflowVariables";
+import {
+  MAX_WORKFLOW_TIMEOUT_SECONDS,
+  MIN_WORKFLOW_TIMEOUT_SECONDS,
+} from "./lib/workflowSettings";
+import { WORKFLOW_TEMPLATES, createWorkflowFromTemplate, templateAvailability } from "./lib/workflowTemplates";
+import { formatNodeUpgradeDetails, formatNodeUpgradeSummary } from "./lib/nodeVersionUpgrades";
+import { initialRunDrawerState, reduceRunDrawer } from "./lib/workbenchLayout";
+import { manualRunUnavailableReason } from "./lib/manualRun";
+import type { WorkflowHistoryEntry } from "./lib/workflowHistory";
+import {
+  preRunIssuesToWorkflowIssues,
+  validationIssuesToWorkflowIssues,
+  type WorkflowIssueItem,
+} from "./lib/workflowIssues";
+import type {
+  WorkflowDocument,
+  WorkflowEdge,
+  WorkflowNode,
+} from "./types";
 
-const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
 const RUN_POLL_INTERVAL_MS = 1000;
 const MAX_RUN_POLL_ATTEMPTS = 120;
-type WorkflowSummary = { id: string; name: string; version: number };
+const AUTO_SAVE_STORAGE_KEY = "node-flow:auto-save-enabled";
 
+type VisiblePreRunIssueMode = "none" | "all" | "settings";
+type WorkflowSettingsFocusRequest = {
+  field?: string;
+  key: number;
+};
 export default function App() {
-  const [nodeTypes, setNodeTypes] = useState<NodeType[]>([]);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
-  const [workflow, setWorkflow] = useState<WorkflowDocument>(() => createEmptyWorkflow());
-  const [editScope, setEditScope] = useState<EditScope>(undefined);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [message, setMessage] = useState("正在加载节点类型...");
-  const [isBusy, setIsBusy] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [run, setRun] = useState<RunRecord | null>(null);
-  const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
-  const [showPreRunIssues, setShowPreRunIssues] = useState(false);
+  const {
+    activateNodePackageRevision,
+    installNodePackage,
+    isInstallingNodePackage,
+    isNodeTypesReloading,
+    loadNodePackageRevisions,
+    loadingNodePackageRevisionId,
+    nodePackageRevisions,
+    nodePackageScan,
+    nodeTypes,
+    reloadNodeTypes,
+    uninstallNodePackage,
+    updateNodePackageSettings,
+    updatingNodePackageId,
+  } = useNodeCatalogController({ onMessage: setMessage });
+  const {
+    catalogError: workflowCatalogError,
+    isSelectedWorkflowCurrent: isSelectedWorkflowStillCurrent,
+    publication: workflowPublication,
+    refreshCatalog: refreshWorkflowCatalog,
+    selectedWorkflowId,
+    selectWorkflow: updateSelectedWorkflowId,
+    upsertWorkflowSummary,
+    workflows,
+  } = useWorkflowCatalogController();
+  const [initialWorkflow] = useState<WorkflowDocument>(() => createEmptyWorkflow());
+  const {
+    acceptSavedWorkflow,
+    canRedo: hasRedoWorkflowChange,
+    canUndo: hasUndoWorkflowChange,
+    commitChange: commitDocumentChange,
+    redo: redoDocumentChange,
+    replaceWorkflow,
+    revision: workflowRevision,
+    saveState: workflowSaveState,
+    setHistoryGroupActive: setWorkflowHistoryGroupActive,
+    undo: undoDocumentChange,
+    workflow,
+  } = useWorkflowDocumentController({ initialWorkflow, selectedWorkflowId });
+  const {
+    clearVersionDiff: clearWorkflowVersionDiff,
+    compareVersion: loadWorkflowVersionDiff,
+    isTriggersLoading: isWorkflowTriggersLoading,
+    isTriggersOpen: isWorkflowTriggersOpen,
+    isVersionDiffLoading: isWorkflowVersionDiffLoading,
+    isVersionsLoading: isWorkflowVersionsLoading,
+    isVersionsOpen: isWorkflowVersionsOpen,
+    refreshVersions: loadWorkflowVersions,
+    rollbackTargetVersion,
+    setRollbackTargetVersion,
+    toggleTriggers: toggleWorkflowTriggersPanel,
+    toggleVersions: toggleWorkflowVersionsPanel,
+    triggers: workflowTriggers,
+    triggersError: workflowTriggersError,
+    versionDiff: workflowVersionDiff,
+    versionDiffError: workflowVersionDiffError,
+    versions: workflowVersions,
+    versionsError: workflowVersionsError,
+  } = useWorkflowLifecycleController({
+    currentWorkflow: workflow,
+    workflowId: selectedWorkflowId,
+  });
+  const {
+    activeOperation: workflowMutationOperation,
+    activeSaveMode: workflowSaveMode,
+    applyNodeUpgrades: applyNodeUpgradePreview,
+    dismissUpgradePreview: dismissNodeUpgradePreview,
+    isMutating: isWorkflowMutating,
+    previewNodeUpgrades: loadNodeUpgradePreview,
+    restoreVersion: restoreWorkflowDocumentVersion,
+    rollbackVersion: rollbackWorkflowDocumentVersion,
+    saveWorkflow: commitWorkflowSave,
+    updateActivation: mutateWorkflowActivation,
+    upgradePreview: nodeUpgradePreview,
+  } = useWorkflowMutationController({ documentId: workflow.id });
+  const {
+    clearEdgeFocus,
+    configPanelTabRequest,
+    edgeFocusRequest,
+    editScope,
+    enterSubflow,
+    fitRequestKey,
+    focusEdge,
+    openRuntimeSelection,
+    requestCanvasFit,
+    resetForDocument: resetWorkbenchForDocument,
+    restoreHistorySelection,
+    returnToMain,
+    runtimeNavigationScope,
+    runtimeNavigationSource,
+    selectedNodeId,
+    selectedNodeIds,
+    selectNodeForPanel,
+  } = useWorkbenchNavigationController();
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(readAutoSavePreference);
+  const {
+    activeResourceManager,
+    closeResource,
+    credentialTypes,
+    credentials,
+    createCredential,
+    createProjectEnvironment,
+    createProjectVariable,
+    deleteCredential,
+    deleteProjectEnvironment,
+    deleteProjectVariable,
+    isCredentialManagerLoading,
+    isEnvironmentManagerLoading,
+    isProjectVariableManagerLoading,
+    openResource: openWorkspaceResource,
+    projectEnvironments,
+    projectVariables,
+    updateCredential,
+    updateProjectEnvironment,
+    updateProjectVariable,
+  } = useWorkspaceResources({ onMessage: setMessage });
+  const [isPageBusy, setIsBusy] = useState(false);
+  const isAutoSavingMutation =
+    workflowMutationOperation === "save" && workflowSaveMode === "auto";
+  const [isManualRunDialogOpen, setIsManualRunDialogOpen] = useState(false);
+  const isApplyingNodeUpgrades = workflowMutationOperation === "apply_upgrades";
+  const {
+    beginCancelOperation,
+    beginRunOperation,
+    finishOperation,
+    hasActiveOperation,
+    isCancelling,
+    isOperationActive: isActiveRun,
+    queueStatus: runQueueStatus,
+    resetRunState: resetExecutionState,
+    runView,
+    showHistoricalRun,
+    trackCurrentRun,
+  } = useWorkflowExecutionController({
+    maxPollAttempts: MAX_RUN_POLL_ATTEMPTS,
+    pollIntervalMs: RUN_POLL_INTERVAL_MS,
+  });
+  const [runDrawerState, setRunDrawerState] = useState(() => initialRunDrawerState);
+  const {
+    changeStatusFilter: changeRunHistoryStatusFilter,
+    error: workflowRunHistoryError,
+    hasMore: hasMoreWorkflowRuns,
+    isLoading: isWorkflowRunHistoryLoading,
+    loadMore: loadMoreWorkflowRunHistory,
+    refresh: refreshWorkflowRunHistory,
+    retry: retryWorkflowRunHistory,
+    runs: selectedWorkflowRuns,
+    statusFilter: runHistoryStatusFilter,
+  } = useWorkflowRunHistory({ workflowId: selectedWorkflowId });
+  const {
+    clearHistoricalRunWorkflow,
+    comparisonError,
+    comparisonEvents,
+    comparisonRun,
+    historicalRunWorkflow,
+    isComparisonLoading,
+    isHistoricalRunLoading,
+    loadComparisonRun,
+    loadHistoricalRun,
+    resetRunInspector,
+  } = useRunInspectorController({
+    currentWorkflow: workflow,
+    recentRuns: selectedWorkflowRuns,
+  });
+  const isBusy = isPageBusy || isWorkflowMutating || isHistoricalRunLoading;
+  const [visiblePreRunIssueMode, setVisiblePreRunIssueMode] = useState<VisiblePreRunIssueMode>("none");
+  const {
+    clearValidationIssues,
+    issueItems: validationIssueItems,
+    validateWorkflow,
+  } = useWorkflowValidationController({
+    blocked: isBusy,
+    documentKey: `${workflow.id}:${workflowRevision}`,
+    onBusyChange: setIsBusy,
+    onMessage: setMessage,
+    workflow,
+  });
+  const [isWorkflowSettingsOpen, setIsWorkflowSettingsOpen] = useState(false);
+  const closeWorkflowSettingsForCommandPalette = useCallback(() => {
+    setIsWorkflowSettingsOpen(false);
+  }, []);
+  const {
+    closeCommandPalette,
+    isCommandPaletteOpen,
+    openCommandPalette,
+  } = useCommandPaletteController({
+    blocked: Boolean(activeResourceManager) || isManualRunDialogOpen,
+    onBeforeOpen: closeWorkflowSettingsForCommandPalette,
+  });
+  const [workflowSettingsFocusRequest, setWorkflowSettingsFocusRequest] =
+    useState<WorkflowSettingsFocusRequest | null>(null);
+  const isRollingBackWorkflowVersion = workflowMutationOperation === "rollback";
   const mountedRef = useRef(true);
-  const runInFlightRef = useRef(false);
-  const runTokenRef = useRef(0);
+  const workflowTimeoutInputRef = useRef<HTMLInputElement>(null);
+  const workflowConcurrencyInputRef = useRef<HTMLInputElement>(null);
+  const workflowVariableNameRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const workflowNavigationActionsRef = useRef<WorkflowNavigationActions | null>(null);
+  const workflowRouteController = useWorkflowRouteController({
+    onRouteRequested: (route, source) =>
+      workflowNavigationActionsRef.current?.handleRouteRequest(route, source) ?? null,
+  });
+  const {
+    clearWorkflowConflict,
+    closeWorkflowConflict,
+    conflict: workflowConflict,
+    isOpen: isWorkflowConflictOpen,
+    openWorkflowConflict,
+    reopenWorkflowConflict,
+  } = useWorkflowConflictController({
+    documentId: workflow.id,
+    onMessage: setMessage,
+  });
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
-      runTokenRef.current += 1;
     };
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    apiClient
-      .listNodeTypes()
-      .then((types) => {
-        if (cancelled) {
-          return;
-        }
-        setNodeTypes(types);
-        setMessage(types.length === 0 ? "没有可用节点。" : `已加载 ${types.length} 个节点类型。`);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setMessage(`节点类型加载失败：${formatError(error)}`);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    apiClient
-      .listWorkflows()
-      .then((savedWorkflows) => {
-        if (cancelled) {
-          return;
-        }
-        setWorkflows(savedWorkflows);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setMessage(`工作流列表加载失败：${formatError(error)}`);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+    if (workflowCatalogError) {
+      setMessage(workflowCatalogError);
+    }
+  }, [workflowCatalogError]);
   const displayNodeTypes = useMemo(() => nodeTypes.map(localizeNodeType), [nodeTypes]);
   const templateCards = useMemo<CanvasTemplateCard[]>(
     () =>
-      API_TESTING_TEMPLATES.map((template) => {
+      WORKFLOW_TEMPLATES.map((template) => {
         const availability = templateAvailability(template);
         return {
+          category: template.category,
           id: template.id,
           name: template.name,
           description: template.description,
@@ -125,468 +373,1336 @@ export default function App() {
       ...workflow,
       nodes: editableWorkflow.nodes,
       edges: editableWorkflow.edges,
+      annotations: editableWorkflow.annotations ?? [],
     }),
-    [editableWorkflow.edges, editableWorkflow.nodes, workflow]
+    [editableWorkflow.annotations, editableWorkflow.edges, editableWorkflow.nodes, workflow]
   );
+  const runDisplayWorkflow = useMemo(
+    () =>
+      isHistoricalRunView(runView) && historicalRunWorkflow
+        ? getEditableWorkflow(historicalRunWorkflow, editScope)
+        : editableWorkflow,
+    [editScope, editableWorkflow, historicalRunWorkflow, runView]
+  );
+  const nodeDisplayNames = useMemo(
+    () => buildNodeDisplayNames(runDisplayWorkflow, displayNodeTypes),
+    [displayNodeTypes, runDisplayWorkflow]
+  );
+  const nodeTypesByRunNodeId = useMemo(() => {
+    const nodeTypesByTypeId = new Map(displayNodeTypes.map((nodeType) => [nodeType.id, nodeType]));
+
+    return Object.fromEntries(
+      runDisplayWorkflow.nodes.flatMap((node) => {
+        const nodeType = nodeTypesByTypeId.get(node.type);
+        return nodeType ? [[node.id, nodeType] as const] : [];
+      })
+    );
+  }, [displayNodeTypes, runDisplayWorkflow.nodes]);
   const selectedNode = editableWorkflow.nodes.find((node) => node.id === selectedNodeId);
   const selectedNodeType = useMemo(
     () => displayNodeTypes.find((nodeType) => nodeType.id === selectedNode?.type),
     [displayNodeTypes, selectedNode?.type]
   );
-  const nodeRunStates = useMemo(
-    () => buildNodeRunStates(editableWorkflow.nodes, runEvents, run?.status),
-    [editableWorkflow.nodes, run?.status, runEvents]
+  const selectedNodeConnectedOutputHandles = useMemo(
+    () =>
+      selectedNode
+        ? [...new Set(editableWorkflow.edges.filter((edge) => edge.source === selectedNode.id).map((edge) => edge.sourceHandle))]
+        : [],
+    [editableWorkflow.edges, selectedNode]
   );
-  const currentPreRunIssues = useMemo(() => buildPreRunIssues(workflow), [workflow]);
-  const visiblePreRunIssues = showPreRunIssues ? currentPreRunIssues : [];
-  const selectedRuntimeState = selectedNodeId ? nodeRunStates[selectedNodeId] : undefined;
-  const canCancelRun = Boolean(run && !TERMINAL_RUN_STATUSES.has(run.status));
+  const selectedNodeConnectedInputHandles = useMemo(
+    () =>
+      selectedNode
+        ? [...new Set(editableWorkflow.edges.filter((edge) => edge.target === selectedNode.id).map((edge) => edge.targetHandle))]
+        : [],
+    [editableWorkflow.edges, selectedNode]
+  );
+  const runFromNodeUnavailableReason = useMemo(
+    () => (editScope?.length ? undefined : manualRunUnavailableReason(selectedNode, selectedNodeType, editableWorkflow)),
+    [editScope, editableWorkflow, selectedNode, selectedNodeType]
+  );
+  const run = runView.run;
+  const runEvents = runView.events;
 
-  function addNodeAt(nodeType: NodeType, position: { x: number; y: number }) {
-    const nextNode = createWorkflowNode(nodeType, position);
-    setWorkflow((current) => {
-      const currentEditableWorkflow = getEditableWorkflow(current, editScope);
-      return updateEditableWorkflow(current, editScope, {
-        nodes: [...currentEditableWorkflow.nodes, nextNode],
-        edges: currentEditableWorkflow.edges,
-      });
-    });
-    setSelectedNodeId(nextNode.id);
-  }
-
-  function addNode(nodeType: NodeType) {
-    const editableNodeCount = editableWorkflow.nodes.length;
-    addNodeAt(nodeType, {
-      x: 80 + editableNodeCount * 40,
-      y: 80 + editableNodeCount * 30,
-    });
-  }
-
-  function updateNodeConfig(nodeId: string, key: string, value: unknown) {
-    setWorkflow((current) => {
-      const currentEditableWorkflow = getEditableWorkflow(current, editScope);
-      return updateEditableWorkflow(current, editScope, {
-        nodes: currentEditableWorkflow.nodes.map((node) =>
-          node.id === nodeId ? { ...node, config: { ...node.config, [key]: value } } : node
-        ),
-        edges: currentEditableWorkflow.edges,
-      });
-    });
-  }
-
-  function updateCurrentEditableWorkflow(nextWorkflow: WorkflowDocument) {
-    setWorkflow((current) =>
-      updateEditableWorkflow(current, editScope, {
-        nodes: nextWorkflow.nodes,
-        edges: nextWorkflow.edges,
+  useEffect(() => {
+    setRunDrawerState((currentState) =>
+      reduceRunDrawer(currentState, {
+        type: "run-updated",
+        status: run?.status ?? null,
+        hasError: Boolean(run?.error),
       })
     );
+  }, [run?.error, run?.status]);
+  const runDisplayNodeIdsKey = runDisplayWorkflow.nodes.map((node) => node.id).join("\u0000");
+  const runDisplayNodeIds = useMemo(
+    () => (runDisplayNodeIdsKey ? runDisplayNodeIdsKey.split("\u0000") : []),
+    [runDisplayNodeIdsKey]
+  );
+  const isHistoricalRun = isHistoricalRunView(runView);
+  const runInspector = useMemo(
+    () =>
+      buildRunInspector({
+        run,
+        events: runEvents,
+        isHistoricalRun,
+        nodeIds: runDisplayNodeIds,
+        selectedNodeId,
+      }),
+    [isHistoricalRun, run, runDisplayNodeIds, runEvents, selectedNodeId]
+  );
+  const nodeRunStates = runInspector.nodeRunStates;
+  const selectedRuntimeState = runInspector.selectedRuntimeState;
+  const selectedRunDetail = runInspector.selectedNodeRunDetail ?? undefined;
+  const nodeRunDetails = runInspector.nodeRunDetails;
+  const currentPreRunIssues = useMemo(() => buildPreRunIssues(workflow, displayNodeTypes), [displayNodeTypes, workflow]);
+  const nodeUpgradeReviewItems = useMemo(
+    () =>
+      (nodeUpgradePreview?.upgrades ?? []).map((upgrade) => ({
+        details: formatNodeUpgradeDetails(upgrade),
+        path: upgrade.path,
+        summary: formatNodeUpgradeSummary([upgrade], displayNodeTypes)[0],
+      })),
+    [displayNodeTypes, nodeUpgradePreview]
+  );
+  const visiblePreRunIssues = useMemo(() => {
+    if (visiblePreRunIssueMode === "all") {
+      return currentPreRunIssues;
+    }
+    if (visiblePreRunIssueMode === "settings") {
+      return currentPreRunIssues.filter(isSettingsPreRunIssue);
+    }
+    return [];
+  }, [currentPreRunIssues, visiblePreRunIssueMode]);
+  const visiblePreRunWorkflowIssues = useMemo(
+    () => preRunIssuesToWorkflowIssues(visiblePreRunIssues),
+    [visiblePreRunIssues]
+  );
+  const validationWorkflowIssues = useMemo(
+    () => validationIssuesToWorkflowIssues(validationIssueItems),
+    [validationIssueItems]
+  );
+  const workflowIssues = useMemo(
+    () => [...validationWorkflowIssues, ...visiblePreRunWorkflowIssues],
+    [validationWorkflowIssues, visiblePreRunWorkflowIssues]
+  );
+  const nodeIssuesByEditableNodeId = useMemo(
+    () => buildNodeIssuesByNodeId(workflowIssues, editableWorkflow.nodes, editScope),
+    [editScope, editableWorkflow.nodes, workflowIssues]
+  );
+  const edgeIssuesByEditableEdgeId = useMemo(
+    () => buildEdgeIssuesByEdgeId(workflowIssues, editableWorkflow.edges, editScope),
+    [editScope, editableWorkflow.edges, workflowIssues]
+  );
+  const edgeRepairCandidatesByEditableEdgeId = useMemo(
+    () =>
+      Object.fromEntries(
+        editableWorkflow.edges
+          .filter((edge) => edgeIssuesByEditableEdgeId[edge.id]?.length)
+          .map((edge) => [edge.id, buildEdgeRepairCandidates(edge, canvasWorkflow, displayNodeTypes)] as const)
+      ),
+    [canvasWorkflow, displayNodeTypes, edgeIssuesByEditableEdgeId, editableWorkflow.edges]
+  );
+  const expressionReferences = useMemo(
+    () =>
+      buildExpressionReferences({
+        workflow,
+        nodeTypes: displayNodeTypes,
+        editScope,
+        runEvents,
+        nodeRunStates,
+        projectVariables: Object.fromEntries(projectVariables.map((variable) => [variable.name, variable.value])),
+      }),
+    [displayNodeTypes, editScope, nodeRunStates, projectVariables, runEvents, workflow]
+  );
+  const canCancelRun = canCancelRunView(runView);
+  const workflowVariableIssues = useMemo(() => buildWorkflowVariableIssues(workflowVariables(workflow)), [workflow]);
+  const hasWorkflowVariableIssues = workflowVariableIssues.length > 0;
+  const isWorkflowDirty = workflowSaveState.isDirty;
+  const isEditorLocked =
+    isPageBusy
+    || isHistoricalRunLoading
+    || isCancelling
+    || (isWorkflowMutating && !isAutoSavingMutation);
+  const {
+    isChanging: isWebhookTestListenerChanging,
+    listener: webhookTestListener,
+    startListening: startWebhookTestListener,
+    stopListening: stopWebhookTestListener,
+  } = useWebhookTestListenerController({
+    isEditorLocked,
+    onMessage: setMessage,
+    pollIntervalMs: RUN_POLL_INTERVAL_MS,
+    workflowId: selectedWorkflowId,
+  });
+  const workflowReleaseActionStates = useMemo(() => buildWorkflowReleaseActionStates({
+    isApplyingNodeUpgrades,
+    isEditorLocked,
+    isWorkflowDirty,
+    publication: workflowPublication,
+    selectedWorkflowId,
+  }), [
+    isApplyingNodeUpgrades,
+    isEditorLocked,
+    isWorkflowDirty,
+    selectedWorkflowId,
+    workflowPublication,
+  ]);
+  const clearWorkflowIssues = useCallback(() => {
+    setVisiblePreRunIssueMode("none");
+    clearValidationIssues();
+  }, [clearValidationIssues]);
+  const commitWorkflowChange = useCallback((
+    updater: (current: WorkflowDocument) => WorkflowDocument,
+  ) => {
+    if (isEditorLocked) {
+      return;
+    }
+    commitDocumentChange(updater, { editScope, selectedNodeId });
+  }, [commitDocumentChange, editScope, isEditorLocked, selectedNodeId]);
+  const {
+    addWorkflowTag,
+    addWorkflowVariable,
+    removeWorkflowTag,
+    removeWorkflowVariable,
+    renameWorkflowVariable,
+    setWorkflowTagInput,
+    updateErrorWorkflow,
+    updateWorkflowDescription,
+    updateWorkflowEnvironment,
+    updateWorkflowMaxConcurrentRuns,
+    updateWorkflowName,
+    updateWorkflowTimeoutSeconds,
+    updateWorkflowVariableValue,
+    workflowTagInput,
+  } = useWorkflowSettingsController({
+    commitWorkflowChange,
+    isEditorLocked,
+    workflowId: workflow.id,
+  });
+  const {
+    compareWorkflowVersion,
+    restoreWorkflowVersion,
+    rollbackWorkflowVersion,
+    toggleWorkflowTriggers,
+    toggleWorkflowVersions,
+  } = useWorkflowVersionActions({
+    clearVersionDiff: clearWorkflowVersionDiff,
+    compareVersion: loadWorkflowVersionDiff,
+    currentWorkflow: workflow,
+    isEditorLocked,
+    isRollingBack: isRollingBackWorkflowVersion,
+    isWorkflowCurrent: isSelectedWorkflowStillCurrent,
+    isWorkflowDirty,
+    onConflict: openWorkflowConflict,
+    onMessage: setMessage,
+    refreshVersions: loadWorkflowVersions,
+    replaceWorkflow,
+    restoreVersion: restoreWorkflowDocumentVersion,
+    rollbackVersion: rollbackWorkflowDocumentVersion,
+    selectedWorkflowId,
+    selectWorkflow: updateSelectedWorkflowId,
+    setRollbackTargetVersion,
+    toggleTriggersPanel: toggleWorkflowTriggersPanel,
+    toggleVersionsPanel: toggleWorkflowVersionsPanel,
+    upsertWorkflowSummary,
+  });
+  const {
+    applyWorkflowNodeUpgrades: applyNodeUpgrades,
+    previewWorkflowNodeUpgrades: previewNodeUpgrades,
+    updateWorkflowActivation,
+  } = useWorkflowReleaseActions({
+    acceptSavedWorkflow,
+    applyNodeUpgrades: applyNodeUpgradePreview,
+    clearWorkflowIssues,
+    currentWorkflow: workflow,
+    isEditorLocked,
+    isWorkflowCurrent: isSelectedWorkflowStillCurrent,
+    isWorkflowDirty,
+    nodeUpgradePreview,
+    onConflict: openWorkflowConflict,
+    onMessage: setMessage,
+    previewNodeUpgrades: loadNodeUpgradePreview,
+    publication: workflowPublication,
+    replaceWorkflow,
+    selectedWorkflowId,
+    selectWorkflow: updateSelectedWorkflowId,
+    updateActivation: mutateWorkflowActivation,
+    upsertWorkflowSummary,
+  });
+  const {
+    addCanvasAnnotation,
+    addNode,
+    addNodeAt,
+    canUndoDeletedEdges,
+    clearDeletedEdgesUndo,
+    copySelectedNodes,
+    duplicateSelectedNodes,
+    hasNodeClipboard,
+    pasteCopiedNodes,
+    removeNodeConfig,
+    removeWorkflowEdge,
+    removeWorkflowEdges,
+    repairWorkflowEdgeTarget,
+    undoDeletedEdges,
+    updateCurrentEditableWorkflow,
+    updateNodeConfig,
+    updateNodeDisabled,
+    updateNodeFailurePolicy,
+    updateNodeLabel,
+    updateNodeNotes,
+    updateNodePinnedData,
+  } = useCanvasOperations({
+    clearValidationIssues,
+    commitWorkflowChange,
+    documentKey: `${workflow.id}:${workflowRevision}:${editScopeKey}`,
+    editableWorkflow,
+    editScope,
+    isEditorLocked,
+    onMessage: setMessage,
+    selectNode: selectNodeForPanel,
+  });
+  const navigateToSavedWorkflow = useCallback((workflowId: string) => {
+    workflowRouteController.navigate({ kind: "workflow", workflowId });
+  }, [workflowRouteController.navigate]);
+  const showSettingsSaveIssues = useCallback(() => {
+    setVisiblePreRunIssueMode("settings");
+  }, []);
+  const { saveWorkflow, saveWorkflowAutomatically } = useWorkflowPersistenceActions({
+    acceptSavedWorkflow,
+    commitWorkflowSave,
+    currentPreRunIssues,
+    isWorkflowDirty,
+    onClearIssues: clearWorkflowIssues,
+    onConflict: openWorkflowConflict,
+    onMessage: setMessage,
+    onNavigateToWorkflow: navigateToSavedWorkflow,
+    onShowSettingsIssues: showSettingsSaveIssues,
+    selectedWorkflowId,
+    selectWorkflow: updateSelectedWorkflowId,
+    upsertWorkflowSummary,
+    workflow,
+    workflowRevision,
+  });
+  const {
+    clearHistoricalRunView,
+    openHistoricalRun,
+    openParentRun,
+    selectHistoricalRunForComparison,
+  } = useHistoricalRunActions({
+    currentWorkflow: workflow,
+    editScopeActive: Boolean(editScope?.length),
+    loadComparisonRun,
+    loadHistoricalRun,
+    navigate: workflowRouteController.navigate,
+    onClearPreRunIssues: () => setVisiblePreRunIssueMode("none"),
+    onExpandRunDrawer: (manuallyPinned) =>
+      setRunDrawerState({ expanded: true, manuallyPinned }),
+    onMessage: setMessage,
+    onResetRunState: resetRunState,
+    onSelectNode: (nodeId, tab) => selectNodeForPanel(nodeId, tab),
+    selectedNodeId,
+    selectedWorkflowId,
+    showHistoricalRun,
+  });
+  const { cancelRun, retryHistoricalRun, runWorkflow } = useWorkflowRunActions({
+    beginCancelOperation,
+    beginRunOperation,
+    currentPreRunIssues,
+    currentRun: run,
+    editableWorkflow,
+    finishOperation,
+    isBusy,
+    isCancelling,
+    isIssueInCurrentScope: (path) => isIssuePathInCurrentEditScope(path, editScope),
+    isOperationActive: isActiveRun,
+    maxPollAttempts: MAX_RUN_POLL_ATTEMPTS,
+    navigate: workflowRouteController.navigate,
+    onClearHistoricalRunWorkflow: clearHistoricalRunWorkflow,
+    onExpandRunDrawer: () =>
+      setRunDrawerState({ expanded: true, manuallyPinned: false }),
+    onMessage: setMessage,
+    onPageBusyChange: setIsBusy,
+    onSelectIssueNode: (nodeId) => selectNodeForPanel(nodeId, "config"),
+    onShowPreRunIssues: () => setVisiblePreRunIssueMode("all"),
+    refreshWorkflowRunHistory,
+    runView,
+    saveWorkflow,
+    shouldSaveBeforeRun: workflowSaveState.shouldSaveBeforeRun,
+    trackCurrentRun,
+    workflow,
+  });
+  const workflowNavigationActions = useWorkflowNavigationActions({
+    createWorkflowFromTemplate,
+    hasActiveOperation,
+    isBusy,
+    isCancelling,
+    isWorkflowDirty,
+    navigate: workflowRouteController.navigate,
+    onApplyDocument: applyWorkflowNavigationDocument,
+    onBusyChange: setIsBusy,
+    onMessage: setMessage,
+    openHistoricalRun,
+    refreshWorkflowCatalog,
+    selectedWorkflowId,
+    selectTemplateNode: defaultSelectedTemplateNodeId,
+  });
+  workflowNavigationActionsRef.current = workflowNavigationActions;
+  const {
+    applyTemplate,
+    confirmDiscardUnsavedChanges,
+    deleteWorkflow,
+    loadWorkflow,
+    resetEditorForNewWorkflow,
+    startNewWorkflow,
+  } = workflowNavigationActions;
+  const {
+    duplicateWorkflow,
+    exportWorkflow,
+    importWorkflow,
+  } = useWorkflowTransferActions({
+    blocked: isBusy,
+    confirmDiscardUnsavedChanges,
+    currentWorkflow: workflow,
+    documentId: workflow.id,
+    navigateToNew: () => workflowRouteController.navigate({ kind: "new" }),
+    onBusyChange: setIsBusy,
+    onMessage: setMessage,
+    onOpenDraft: (draft, message) => applyWorkflowNavigationDocument({
+      baseline: "dirty",
+      message,
+      selectedNodeId: null,
+      selectedWorkflowId: "",
+      workflow: draft,
+    }),
+  });
+  const autoSaveCanSave =
+    !hasWorkflowVariableIssues && !currentPreRunIssues.some(isSettingsPreRunIssue);
+  const autoSaveController = useWorkflowAutoSaveController({
+    blocked:
+      isPageBusy
+      || isHistoricalRunLoading
+      || isWorkflowMutating
+      || isCancelling
+      || hasActiveOperation(),
+    canSave: autoSaveCanSave,
+    dirty: isWorkflowDirty,
+    documentKey: workflow.id,
+    enabled: autoSaveEnabled,
+    onSave: saveWorkflowAutomatically,
+    revision: workflowRevision,
+  });
+  const {
+    reloadWorkflowAfterConflict,
+    saveWorkflowConflictAsCopy,
+  } = useWorkflowConflictRecoveryActions({
+    clearConflict: clearWorkflowConflict,
+    commitWorkflowSave,
+    conflict: workflowConflict,
+    currentWorkflow: workflow,
+    isPageBusy,
+    isWorkflowMutating,
+    navigate: workflowRouteController.navigate,
+    onBusyChange: setIsBusy,
+    onClearIssues: clearWorkflowIssues,
+    onMessage: setMessage,
+    onResetAutoSave: autoSaveController.reset,
+    onResetEditor: () => resetWorkbenchForDocument(null),
+    replaceWorkflow,
+    selectedWorkflowId,
+    selectWorkflow: updateSelectedWorkflowId,
+    upsertWorkflowSummary,
+  });
+  const workflowSavePresentation = buildWorkflowSavePresentation({
+    autoSaveStatus: autoSaveController.status,
+    baseClassName: workflowSaveState.className,
+    baseLabel: workflowSaveState.label,
+    hasConflict: workflowConflict !== null,
+    isSaving: workflowMutationOperation === "save",
+    saveMode: workflowSaveMode,
+  });
+  const canRedoWorkflowChange = !isEditorLocked && hasRedoWorkflowChange;
+  const canUndoWorkflowChange = !isEditorLocked && hasUndoWorkflowChange;
+  const workflowSaveActionState = useMemo(
+    () => {
+      const actionState = buildWorkflowSaveActionState(workflowSaveState, isBusy);
+      if (!actionState.disabled && hasWorkflowVariableIssues) {
+        return {
+          disabled: true,
+          title: "请先修正工作流变量名",
+        };
+      }
+      return actionState;
+    },
+    [hasWorkflowVariableIssues, isBusy, workflowSaveState]
+  );
+  const commandPaletteCommands = buildWorkspaceCommands(
+    {
+      canCancelRun,
+      canRedo: canRedoWorkflowChange,
+      canUndo: canUndoWorkflowChange,
+      isBusy,
+      isCancelling,
+      isEditorLocked,
+      isNodeTypesReloading,
+      saveAction: workflowSaveActionState,
+    },
+    {
+      cancelRun: () => void cancelRun(),
+      fitCanvas: requestCanvasFit,
+      newWorkflow: startNewWorkflow,
+      openResource: (kind) => void openWorkspaceResource(kind),
+      openWorkflowSettings: () => setIsWorkflowSettingsOpen(true),
+      redo: redoWorkflowChange,
+      reloadNodeTypes: () => void reloadNodeTypes(),
+      runWorkflow: () => void runWorkflow(),
+      saveWorkflow: () => void saveWorkflow(),
+      undo: undoWorkflowChange,
+      validateWorkflow: () => void validateWorkflow(),
+    },
+  );
+
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!isWorkflowDirty) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isWorkflowDirty]);
+
+  useEffect(() => {
+    if (run) {
+      const routeNodeId = !editScope?.length && selectedNodeId
+        && runDisplayWorkflow.nodes.some((node) => node.id === selectedNodeId)
+        ? selectedNodeId
+        : undefined;
+      workflowRouteController.navigate(
+        {
+          kind: "execution",
+          workflowId: run.workflow_id,
+          executionId: run.id,
+          ...(routeNodeId ? { nodeId: routeNodeId } : {}),
+        },
+        { replace: true },
+      );
+      return;
+    }
+    if (!selectedWorkflowId) {
+      return;
+    }
+    const routeNodeId = !editScope?.length && selectedNodeId
+      && workflow.nodes.some((node) => node.id === selectedNodeId)
+      ? selectedNodeId
+      : undefined;
+    workflowRouteController.navigate(
+      {
+        kind: "workflow",
+        workflowId: selectedWorkflowId,
+        ...(routeNodeId ? { nodeId: routeNodeId } : {}),
+      },
+      { replace: true },
+    );
+  }, [editScope, run, runDisplayWorkflow.nodes, selectedNodeId, selectedWorkflowId, workflow.nodes]);
+
+  useEffect(() => {
+    function handleSaveShortcut(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") {
+        return;
+      }
+
+      event.preventDefault();
+      if (!isBusy) {
+        void saveWorkflow();
+      }
+    }
+
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [isBusy, workflow]);
+
+  useEffect(() => {
+    function handleHistoryShortcut(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || isEditableTextTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "d") {
+        event.preventDefault();
+        duplicateSelectedNodes(selectedNodeIds);
+        return;
+      }
+
+      if (key === "c") {
+        event.preventDefault();
+        copySelectedNodes(selectedNodeIds);
+        return;
+      }
+
+      if (key === "v") {
+        event.preventDefault();
+        void pasteCopiedNodes();
+        return;
+      }
+
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoWorkflowChange();
+        } else {
+          undoWorkflowChange();
+        }
+        return;
+      }
+
+      if (key === "y") {
+        event.preventDefault();
+        redoWorkflowChange();
+      }
+    }
+
+    window.addEventListener("keydown", handleHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleHistoryShortcut);
+  }, [
+    canRedoWorkflowChange,
+    canUndoWorkflowChange,
+    editableWorkflow.nodes,
+    editScope,
+    isEditorLocked,
+    selectedNodeIds,
+  ]);
+
+  function restoreWorkflowHistoryEntry(entry: WorkflowHistoryEntry) {
+    restoreHistorySelection(entry.editScope, entry.selectedNodeId);
+    clearValidationIssues();
+    clearDeletedEdgesUndo();
   }
+
+  function undoWorkflowChange() {
+    if (isEditorLocked) {
+      return;
+    }
+
+    const entry = undoDocumentChange({ editScope, selectedNodeId });
+    if (!entry) {
+      return;
+    }
+    restoreWorkflowHistoryEntry(entry);
+    setMessage("已撤销上一步编辑。");
+  }
+
+  function redoWorkflowChange() {
+    if (isEditorLocked) {
+      return;
+    }
+
+    const entry = redoDocumentChange({ editScope, selectedNodeId });
+    if (!entry) {
+      return;
+    }
+    restoreWorkflowHistoryEntry(entry);
+    setMessage("已重做上一步编辑。");
+  }
+
+  useEffect(() => {
+    if (!selectedNodeId) {
+      return;
+    }
+
+    const selectedNodeStillExists = editableWorkflow.nodes.some((node) => node.id === selectedNodeId);
+    if (!selectedNodeStillExists) {
+      selectNodeForPanel(null);
+    }
+  }, [editableWorkflow.nodes, selectedNodeId, selectNodeForPanel]);
+
+  useEffect(() => {
+    if (!edgeFocusRequest) {
+      return;
+    }
+
+    const focusedEdgeStillExists = editableWorkflow.edges.some((edge) => edge.id === edgeFocusRequest.edgeId);
+    if (!focusedEdgeStillExists) {
+      clearEdgeFocus();
+    }
+  }, [clearEdgeFocus, edgeFocusRequest, editableWorkflow.edges]);
+
+  const openNodeRuntime = useCallback(
+    (target: NodeRuntimeNavigationTarget) => {
+      openRuntimeSelection(target);
+      setMessage(`已从${nodeRuntimeSourceLabel(target.source)}打开节点运行详情。`);
+    },
+    [openRuntimeSelection]
+  );
 
   function openSubflow(nodeId: string, subflowName: string) {
-    setEditScope((currentScope) => [...(currentScope ?? []), { nodeId, subflowName }]);
-    setSelectedNodeId(null);
+    if (isEditorLocked) {
+      return;
+    }
+
+    enterSubflow(nodeId, subflowName);
   }
 
-  function returnToMain() {
-    setEditScope(undefined);
-    setSelectedNodeId(null);
-  }
-
-  function selectRunEventNode(target: NodeSelectionTarget) {
+  function selectRunEventNode(target: NodeRuntimeNavigationTarget) {
     if (
       isRunSelectionInCurrentEditScope(target, editScope) &&
       editableWorkflow.nodes.some((node) => node.id === target.nodeId)
     ) {
-      setSelectedNodeId(target.nodeId);
+      openRuntimeSelection(target);
+      setMessage(`已从${nodeRuntimeSourceLabel(target.source)}打开节点运行详情。`);
       return;
     }
 
     setMessage("这个运行事件属于未打开的子流程，请先进入对应循环体查看。");
   }
 
-  function selectPreRunIssue(issue: PreRunIssue) {
-    if (
-      isIssueInCurrentEditScope(issue, editScope) &&
-      editableWorkflow.nodes.some((node) => node.id === issue.nodeId)
-    ) {
-      setSelectedNodeId(issue.nodeId);
+  function selectWorkflowIssue(issue: WorkflowIssueItem) {
+    const target = issue.target;
+    if (target.kind === "node") {
+      const isInCurrentScope =
+        issue.source === "pre_run" ? isIssuePathInCurrentEditScope(target.path, editScope) : true;
+      if (isInCurrentScope && editableWorkflow.nodes.some((node) => node.id === target.nodeId)) {
+        selectNodeForPanel(target.nodeId, "config", target.field);
+        return;
+      }
+
+      setMessage(
+        issue.source === "pre_run"
+          ? "这个运行前问题属于未打开的子流程，请先进入对应循环体查看。"
+          : "这个验证问题属于未打开的子流程，请先进入对应循环体查看。"
+      );
       return;
     }
 
-    setMessage("这个运行前问题属于未打开的子流程，请先进入对应循环体查看。");
+    if (target.kind === "settings") {
+      clearEdgeFocus();
+      setIsWorkflowSettingsOpen(true);
+      setWorkflowSettingsFocusRequest((current) => ({
+        field: target.field,
+        key: (current?.key ?? 0) + 1,
+      }));
+      setMessage("已打开工作流设置，请修正对应配置。");
+      return;
+    }
+
+    if (target.kind === "edge") {
+      const isInCurrentScope =
+        issue.source === "pre_run" ? isIssuePathInCurrentEditScope(target.path, editScope) : true;
+      if (isInCurrentScope && editableWorkflow.edges.some((edge) => edge.id === target.edgeId)) {
+        focusEdge(target.edgeId);
+        setMessage(`已在画布中选中连线 ${target.edgeId}，可直接删除或重新连接。`);
+        return;
+      }
+
+      setMessage(
+        issue.source === "pre_run"
+          ? "这个运行前连线问题属于未打开的子流程，请先进入对应循环体查看。"
+          : "这个验证连线问题属于未打开的子流程，请先进入对应循环体查看。"
+      );
+      return;
+    }
+
+    clearEdgeFocus();
+    setMessage("请根据提示检查对应连线或工作流配置。");
   }
 
   function resetRunState() {
-    runTokenRef.current += 1;
-    runInFlightRef.current = false;
-    setRun(null);
-    setRunEvents([]);
+    resetExecutionState();
+    resetRunInspector();
+    setRunDrawerState(initialRunDrawerState);
   }
 
-  function startNewWorkflow() {
+  function applyWorkflowNavigationDocument({
+    baseline,
+    message,
+    selectedNodeId: nextSelectedNodeId,
+    selectedWorkflowId: nextSelectedWorkflowId,
+    workflow: nextWorkflow,
+  }: WorkflowNavigationDocumentRequest) {
     resetRunState();
-    setShowPreRunIssues(false);
-    setWorkflow(createEmptyWorkflow());
-    setSelectedWorkflowId("");
-    setEditScope(undefined);
-    setSelectedNodeId(null);
-    setMessage("已新建工作流。");
+    scrollAppToTop();
+    clearWorkflowIssues();
+    clearDeletedEdgesUndo();
+    replaceWorkflow(nextWorkflow, { baseline });
+    void updateSelectedWorkflowId(nextSelectedWorkflowId);
+    resetWorkbenchForDocument(nextSelectedNodeId);
+    setMessage(message);
   }
 
-  function applyTemplate(templateId: string) {
-    try {
-      const nextWorkflow = createWorkflowFromTemplate(templateId);
-      resetRunState();
-      setShowPreRunIssues(false);
-      setWorkflow(nextWorkflow);
-      setSelectedWorkflowId("");
-      setEditScope(undefined);
-      setSelectedNodeId(defaultSelectedTemplateNodeId(templateId));
-      setMessage(`已应用模板：${nextWorkflow.name}。`);
-    } catch (error) {
-      setMessage(`模板应用失败：${formatError(error)}`);
-    }
-  }
-
-  async function loadWorkflow(workflowId: string) {
-    setSelectedWorkflowId(workflowId);
-    setShowPreRunIssues(false);
-    if (!workflowId) {
+  useEffect(() => {
+    if (!workflowSettingsFocusRequest) {
       return;
     }
 
-    resetRunState();
-    setIsBusy(true);
-    try {
-      const loaded = await apiClient.getWorkflow(workflowId);
-      setWorkflow(loaded);
-      setSelectedWorkflowId(loaded.id);
-      setEditScope(undefined);
-      setSelectedNodeId(null);
-      setMessage(`已加载 ${loaded.name} v${loaded.version}。`);
-    } catch (error) {
-      setMessage(`工作流加载失败：${formatError(error)}`);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function validateWorkflow() {
-    setIsBusy(true);
-    try {
-      const result = await apiClient.validateWorkflow(workflow);
-      setMessage(
-        result.valid
-          ? "工作流验证通过。"
-          : `工作流有 ${result.issues.length} 个问题：${result.issues
-              .map((issue) => `${issue.path}: ${issue.message}`)
-              .join("; ")}`
-      );
-    } catch (error) {
-      setMessage(`验证失败：${formatError(error)}`);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function saveWorkflow() {
-    setIsBusy(true);
-    try {
-      const saved = await apiClient.saveWorkflow(workflow);
-      setWorkflow(saved);
-      setSelectedWorkflowId(saved.id);
-      upsertWorkflowSummary(saved);
-      setShowPreRunIssues(false);
-      setMessage(`已保存 v${saved.version}。`);
-      return saved;
-    } catch (error) {
-      setMessage(`保存失败：${formatError(error)}`);
-      return null;
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  function isActiveRun(runToken: number) {
-    return mountedRef.current && runTokenRef.current === runToken;
-  }
-
-  async function runWorkflow() {
-    if (runInFlightRef.current) {
+    if (workflowSettingsFocusRequest.field === "timeout_seconds") {
+      workflowTimeoutInputRef.current?.focus();
+      setWorkflowSettingsFocusRequest(null);
       return;
     }
 
-    const issues = currentPreRunIssues;
-    if (issues.length > 0) {
-      setShowPreRunIssues(true);
-      if (
-        isIssueInCurrentEditScope(issues[0], editScope) &&
-        editableWorkflow.nodes.some((node) => node.id === issues[0].nodeId)
-      ) {
-        setSelectedNodeId(issues[0].nodeId);
-      }
-      setMessage(`运行前检查发现 ${issues.length} 个问题，请先补齐配置。`);
+    if (workflowSettingsFocusRequest.field === "max_concurrent_runs") {
+      workflowConcurrencyInputRef.current?.focus();
+      setWorkflowSettingsFocusRequest(null);
       return;
     }
 
-    const runToken = runTokenRef.current + 1;
-    runTokenRef.current = runToken;
-    runInFlightRef.current = true;
-    setIsBusy(true);
-    setShowPreRunIssues(false);
-    setRunEvents([]);
-    try {
-      const saved = await apiClient.saveWorkflow(workflow);
-      if (!isActiveRun(runToken)) {
-        return;
-      }
-      setWorkflow(saved);
-      setSelectedWorkflowId(saved.id);
-      upsertWorkflowSummary(saved);
-      setMessage(`已保存 v${saved.version}，正在运行...`);
-
-      let currentRun = await apiClient.createRun(saved.id);
-      if (!isActiveRun(runToken)) {
-        return;
-      }
-      setRun(currentRun);
-      const initialEvents = await apiClient.getRunEvents(currentRun.id);
-      if (!isActiveRun(runToken)) {
-        return;
-      }
-      setRunEvents(initialEvents);
-
-      let attempts = 0;
-      while (!TERMINAL_RUN_STATUSES.has(currentRun.status) && attempts < MAX_RUN_POLL_ATTEMPTS) {
-        attempts += 1;
-        await delay(RUN_POLL_INTERVAL_MS);
-        if (!isActiveRun(runToken)) {
-          return;
-        }
-        const [nextRun, nextEvents] = await Promise.all([
-          apiClient.getRun(currentRun.id),
-          apiClient.getRunEvents(currentRun.id),
-        ]);
-        if (!isActiveRun(runToken)) {
-          return;
-        }
-        currentRun = nextRun;
-        setRun(nextRun);
-        setRunEvents(nextEvents);
-      }
-
-      if (!isActiveRun(runToken)) {
-        return;
-      }
-
-      setMessage(
-        TERMINAL_RUN_STATUSES.has(currentRun.status)
-          ? `运行 ${currentRun.id} ${formatRunStatus(currentRun.status)}。`
-          : `运行 ${currentRun.id} 轮询超时，已尝试 ${MAX_RUN_POLL_ATTEMPTS} 次。`
-      );
-    } catch (error) {
-      if (isActiveRun(runToken)) {
-        setMessage(`运行失败：${formatError(error)}`);
-      }
-    } finally {
-      if (runTokenRef.current === runToken) {
-        runInFlightRef.current = false;
-        if (mountedRef.current) {
-          setIsBusy(false);
-        }
-      }
-    }
-  }
-
-  async function cancelRun() {
-    if (!run || TERMINAL_RUN_STATUSES.has(run.status) || isCancelling) {
+    if (!isWorkflowSettingsOpen || !workflowSettingsFocusRequest.field) {
       return;
     }
 
-    const runId = run.id;
-    runTokenRef.current += 1;
-    const cancelToken = runTokenRef.current;
-    runInFlightRef.current = false;
-    setIsCancelling(true);
-    setIsBusy(true);
-    setMessage(`正在请求取消运行 ${runId}...`);
-
-    try {
-      let currentRun = await apiClient.cancelRun(runId);
-      if (!isActiveRun(cancelToken)) {
-        return;
-      }
-
-      let currentEvents = await apiClient.getRunEvents(runId);
-      if (!isActiveRun(cancelToken)) {
-        return;
-      }
-
-      setRun(currentRun);
-      setRunEvents(currentEvents);
-
-      let attempts = 0;
-      while (!TERMINAL_RUN_STATUSES.has(currentRun.status) && attempts < MAX_RUN_POLL_ATTEMPTS) {
-        if (attempts > 0) {
-          await delay(RUN_POLL_INTERVAL_MS);
-        }
-        attempts += 1;
-
-        if (!isActiveRun(cancelToken)) {
-          return;
-        }
-
-        const [nextRun, nextEvents] = await Promise.all([apiClient.getRun(runId), apiClient.getRunEvents(runId)]);
-        if (!isActiveRun(cancelToken)) {
-          return;
-        }
-
-        currentRun = nextRun;
-        currentEvents = nextEvents;
-        setRun(currentRun);
-        setRunEvents(currentEvents);
-      }
-
-      setMessage(
-        TERMINAL_RUN_STATUSES.has(currentRun.status)
-          ? `运行 ${currentRun.id} ${formatRunStatus(currentRun.status)}。`
-          : `运行 ${currentRun.id} 取消后轮询超时，已尝试 ${MAX_RUN_POLL_ATTEMPTS} 次。`
-      );
-    } catch (error) {
-      if (isActiveRun(cancelToken)) {
-        setMessage(`取消运行失败：${formatError(error)}`);
-      }
-    } finally {
-      if (runTokenRef.current === cancelToken && mountedRef.current) {
-        setIsCancelling(false);
-        setIsBusy(false);
-      }
+    const variableNameInput = workflowVariableNameRefs.current.get(workflowSettingsFocusRequest.field);
+    if (!variableNameInput) {
+      return;
     }
-  }
-
-  function upsertWorkflowSummary(saved: WorkflowDocument) {
-    setWorkflows((current) => {
-      const summary = { id: saved.id, name: saved.name, version: saved.version };
-      const existingIndex = current.findIndex((item) => item.id === saved.id);
-      if (existingIndex === -1) {
-        return [...current, summary];
-      }
-      return current.map((item, index) => (index === existingIndex ? summary : item));
-    });
-  }
+    variableNameInput.focus();
+    setWorkflowSettingsFocusRequest(null);
+  }, [isWorkflowSettingsOpen, workflowSettingsFocusRequest]);
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-title">节点流</span>
-          <input
-            aria-label="工作流名称"
-            className="workflow-name"
-            value={workflow.name}
-            onChange={(event) => setWorkflow({ ...workflow, name: event.currentTarget.value })}
+      <WorkflowTopbar
+        actions={{
+          onCancelRun: cancelRun,
+          onCreateWorkflow: startNewWorkflow,
+          onOpenCommandPalette: openCommandPalette,
+          onOpenManualRun: () => setIsManualRunDialogOpen(true),
+          onOpenSaveConflict: reopenWorkflowConflict,
+          onPreviewNodeUpgrades: () => void previewNodeUpgrades(),
+          onRedo: redoWorkflowChange,
+          onReturnToMain: returnToMain,
+          onRunWorkflow: () => void runWorkflow(),
+          onSaveWorkflow: () => void saveWorkflow(),
+          onToggleActivation: () => void updateWorkflowActivation(),
+          onUndo: undoWorkflowChange,
+          onUpdateName: updateWorkflowName,
+          onUpdateTimeout: updateWorkflowTimeoutSeconds,
+          onValidateWorkflow: () => void validateWorkflow(),
+        }}
+        identity={{
+          activeScopeLabel: editScope?.length ? editScopeLabel : null,
+          editorLocked: isEditorLocked,
+          name: workflow.name,
+          publication: workflowPublication,
+          saveStatus: {
+            className: workflowSavePresentation.className,
+            hasConflict: workflowConflict !== null,
+            label: workflowSavePresentation.label,
+            title: autoSaveController.lastError ?? workflowSavePresentation.title,
+          },
+          selectedWorkflowId,
+          timeoutInputRef: workflowTimeoutInputRef,
+          timeoutMaximum: MAX_WORKFLOW_TIMEOUT_SECONDS,
+          timeoutMinimum: MIN_WORKFLOW_TIMEOUT_SECONDS,
+          timeoutSeconds: workflowTimeoutSeconds(workflow),
+        }}
+        operationState={{
+          activation: workflowReleaseActionStates.activation,
+          canCancelRun,
+          canRedo: canRedoWorkflowChange,
+          canUndo: canUndoWorkflowChange,
+          isBusy,
+          isCancelling,
+          save: workflowSaveActionState,
+          upgrade: workflowReleaseActionStates.upgrade,
+        }}
+        resourceMenu={(
+          <WorkspaceResourceMenu
+            credentialCount={credentials.length}
+            disabled={isEditorLocked}
+            environmentCount={projectEnvironments.length}
+            packageAttentionCount={nodePackageAttentionCount(nodePackageScan)}
+            packageCount={nodePackageScan?.packages.length ?? 0}
+            variableCount={projectVariables.length}
+            onSelect={(kind) => void openWorkspaceResource(kind)}
           />
-          <nav aria-label="编辑范围" className="breadcrumbs">
-            <button disabled={!editScope?.length} type="button" onClick={returnToMain}>
-              主流程
-            </button>
-            {editScope?.length ? <span className="breadcrumb-current">/ {editScopeLabel}</span> : null}
-          </nav>
-        </div>
-        <div className="topbar-actions">
-          <label className="workflow-picker">
-            <span>工作流</span>
-            <select
-              aria-label="已保存工作流"
-              disabled={isBusy || workflows.length === 0}
-              value={selectedWorkflowId}
-              onChange={(event) => void loadWorkflow(event.currentTarget.value)}
-            >
-              <option value="">选择工作流...</option>
-              {workflows.map((savedWorkflow) => (
-                <option key={savedWorkflow.id} value={savedWorkflow.id}>
-                  {savedWorkflow.name} v{savedWorkflow.version}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button disabled={isBusy} type="button" onClick={startNewWorkflow}>
-            新建
-          </button>
-          <button disabled={isBusy} type="button" onClick={validateWorkflow}>
-            验证
-          </button>
-          <button disabled={isBusy} type="button" onClick={saveWorkflow}>
-            保存
-          </button>
-          <button className="primary-button" disabled={isBusy} type="button" onClick={runWorkflow}>
-            运行
-          </button>
-          <button className="danger-button" disabled={!canCancelRun || isCancelling} type="button" onClick={cancelRun}>
-            取消
-          </button>
-        </div>
-      </header>
+        )}
+        settingsMenu={(
+          <WorkflowSettingsMenu
+            actions={{
+              onAddTag: addWorkflowTag,
+              onAddVariable: addWorkflowVariable,
+              onAutoSaveChange: (enabled) => {
+                setAutoSaveEnabled(enabled);
+                writeAutoSavePreference(enabled);
+                if (!enabled) {
+                  autoSaveController.reset();
+                }
+              },
+              onCompareVersion: (version) => void compareWorkflowVersion(version),
+              onDescriptionChange: updateWorkflowDescription,
+              onEnvironmentChange: updateWorkflowEnvironment,
+              onErrorWorkflowChange: updateErrorWorkflow,
+              onMaxConcurrentRunsChange: updateWorkflowMaxConcurrentRuns,
+              onRegisterConcurrencyInput: (element) => {
+                workflowConcurrencyInputRef.current = element;
+              },
+              onRegisterVariableNameInput: (name, element) => {
+                if (element) {
+                  workflowVariableNameRefs.current.set(name, element);
+                } else {
+                  workflowVariableNameRefs.current.delete(name);
+                }
+              },
+              onRemoveTag: removeWorkflowTag,
+              onRemoveVariable: removeWorkflowVariable,
+              onRenameVariable: renameWorkflowVariable,
+              onRestoreVersion: (version) => void restoreWorkflowVersion(version),
+              onRollbackTargetChange: setRollbackTargetVersion,
+              onRollbackVersion: (version) => void rollbackWorkflowVersion(version),
+              onTagInputChange: setWorkflowTagInput,
+              onToggleTriggers: toggleWorkflowTriggers,
+              onToggleVersions: toggleWorkflowVersions,
+              onVariableValueChange: updateWorkflowVariableValue,
+            }}
+            disabled={isEditorLocked}
+            editor={{
+              autoSaveDisabled: isWorkflowMutating,
+              autoSaveEnabled,
+              isDirty: isWorkflowDirty,
+              isLocked: isEditorLocked,
+              selectedWorkflowId,
+            }}
+            lifecycle={{
+              isRollingBack: isRollingBackWorkflowVersion,
+              isTriggersLoading: isWorkflowTriggersLoading,
+              isTriggersOpen: isWorkflowTriggersOpen,
+              isVersionDiffLoading: isWorkflowVersionDiffLoading,
+              isVersionsLoading: isWorkflowVersionsLoading,
+              isVersionsOpen: isWorkflowVersionsOpen,
+              publication: workflowPublication,
+              rollbackTargetVersion,
+              triggers: workflowTriggers,
+              triggersError: workflowTriggersError,
+              versionDiff: workflowVersionDiff,
+              versionDiffError: workflowVersionDiffError,
+              versions: workflowVersions,
+              versionsError: workflowVersionsError,
+            }}
+            nodeDisplayNames={nodeDisplayNames}
+            nodeTypes={displayNodeTypes}
+            open={isWorkflowSettingsOpen}
+            projectEnvironments={projectEnvironments}
+            tagInput={workflowTagInput}
+            workflow={workflow}
+            workflows={workflows}
+            onOpenChange={setIsWorkflowSettingsOpen}
+          />
+        )}
+        workflowManager={(
+          <WorkflowManager
+            currentWorkflowName={selectedWorkflowId ? workflow.name : undefined}
+            disabled={isBusy}
+            hasMoreRunHistory={hasMoreWorkflowRuns}
+            isCurrentWorkflowDirty={isWorkflowDirty}
+            runHistoryError={workflowRunHistoryError}
+            runHistoryLoading={isWorkflowRunHistoryLoading}
+            runHistoryStatus={runHistoryStatusFilter}
+            saveActionState={workflowSaveActionState}
+            selectedWorkflowId={selectedWorkflowId}
+            selectedWorkflowRuns={selectedWorkflowRuns}
+            workflows={workflows}
+            onCreateWorkflow={startNewWorkflow}
+            onDeleteWorkflow={deleteWorkflow}
+            onDuplicateWorkflow={(workflowId) => void duplicateWorkflow(workflowId)}
+            onExportWorkflow={exportWorkflow}
+            onImportWorkflow={(file) => void importWorkflow(file)}
+            onLoadMoreRunHistory={loadMoreWorkflowRunHistory}
+            onLoadWorkflow={(workflowId) => void loadWorkflow(workflowId)}
+            onOpenRun={(runId) => void openHistoricalRun(runId)}
+            onReloadRunHistory={retryWorkflowRunHistory}
+            onRunHistoryStatusChange={changeRunHistoryStatusFilter}
+            onSaveWorkflow={() => void saveWorkflow()}
+            onValidateWorkflow={() => void validateWorkflow()}
+          />
+        )}
+      />
+
+      {isCommandPaletteOpen ? (
+        <CommandPalette commands={commandPaletteCommands} onClose={closeCommandPalette} />
+      ) : null}
+
+      <ManualRunDialog
+        defaultEnvironmentId={workflowEnvironmentId(workflow)}
+        disabled={isBusy}
+        environments={projectEnvironments}
+        open={isManualRunDialogOpen}
+        onClose={() => setIsManualRunDialogOpen(false)}
+        onRun={(input, environmentId) => {
+          if (currentPreRunIssues.length > 0) {
+            void runWorkflow();
+            return;
+          }
+          setIsManualRunDialogOpen(false);
+          void runWorkflow(
+            undefined,
+            input,
+            environmentId === workflowEnvironmentId(workflow) ? undefined : environmentId
+          );
+        }}
+      />
 
       <div className="message-bar" role="status">
-        {message}
+        <span>{message}</span>
+        {canUndoDeletedEdges ? (
+          <button disabled={isEditorLocked} type="button" onClick={undoDeletedEdges}>
+            撤销删除
+          </button>
+        ) : null}
       </div>
 
-      <PreRunIssueList issues={visiblePreRunIssues} onSelectIssue={selectPreRunIssue} />
+      {nodeUpgradePreview ? (
+        <section aria-label="节点升级" className="node-upgrade-review">
+          <div>
+            <strong>节点升级</strong>
+            <p>升级会基于已保存的工作流创建一个新版本。</p>
+          </div>
+          <ul className="node-upgrade-review-list">
+            {nodeUpgradeReviewItems.map(({ details, path, summary }) => (
+              <li key={path} className="node-upgrade-review-item">
+                <strong>{summary}</strong>
+                <span>{path}</span>
+                {details.migrationNotes.length > 0 ? (
+                  <ul className="node-upgrade-review-notes">
+                    {details.migrationNotes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {details.changes.length > 0 ? (
+                  <ul className="node-upgrade-review-changes">
+                    {details.changes.map((change) => (
+                      <li key={change}>{change}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="node-upgrade-review-unchanged">配置字段无需调整。</p>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div className="node-upgrade-review-actions">
+            <button disabled={isApplyingNodeUpgrades} type="button" onClick={dismissNodeUpgradePreview}>
+              暂不升级
+            </button>
+            <button className="primary-button" disabled={isApplyingNodeUpgrades} type="button" onClick={() => void applyNodeUpgrades()}>
+              应用升级
+            </button>
+          </div>
+        </section>
+      ) : null}
 
-      <main className="workspace-grid">
-        <NodePalette nodeTypes={displayNodeTypes} onAddNode={addNode} />
-        <FlowCanvas
-          nodeRunStates={nodeRunStates}
-          nodeTypes={displayNodeTypes}
-          selectedNodeId={selectedNodeId}
-          selectionResetKey={editScopeKey}
-          workflow={canvasWorkflow}
-          onAddNodeAt={addNodeAt}
-          onSelectNode={setSelectedNodeId}
-          onWorkflowChange={updateCurrentEditableWorkflow}
-        >
-          <CanvasEmptyState
-            actionsDisabled={isBusy || isCancelling}
-            templates={templateCards}
-            onApplyTemplate={applyTemplate}
+      <WorkflowIssuePanel
+        disabled={isEditorLocked}
+        edgeRepairCandidates={edgeRepairCandidatesByEditableEdgeId}
+        issues={workflowIssues}
+        onDeleteEdge={removeWorkflowEdge}
+        onDeleteEdges={removeWorkflowEdges}
+        onRepairEdgeTarget={repairWorkflowEdgeTarget}
+        onSelectIssue={selectWorkflowIssue}
+      />
+
+      <NodePackageAttentionNotice
+        scan={nodePackageScan}
+        onOpen={() => void openWorkspaceResource("packages")}
+      />
+
+      {activeResourceManager === "packages" ? (
+        <DialogBackdrop onClose={closeResource}>
+          <NodePackageManager
+            installing={isInstallingNodePackage}
+            loadingRevisionPackageId={loadingNodePackageRevisionId}
+            refreshing={isNodeTypesReloading}
+            revisionsByPackageId={nodePackageRevisions}
+            scan={nodePackageScan}
+            updatingPackageId={updatingNodePackageId}
+            onActivateRevision={(packageId, revisionId) =>
+              void activateNodePackageRevision(packageId, revisionId)
+            }
+            onClose={closeResource}
+            onInstall={(file) => void installNodePackage(file)}
+            onLoadRevisions={(packageId) => void loadNodePackageRevisions(packageId)}
+            onRefresh={() => void reloadNodeTypes()}
+            onUninstall={(packageId) => void uninstallNodePackage(packageId)}
+            onUpdateSettings={(packageId, request) =>
+              void updateNodePackageSettings(packageId, request)
+            }
           />
-        </FlowCanvas>
-        <ConfigPanel
-          node={selectedNode}
-          nodeType={selectedNodeType}
-          runtimeState={selectedRuntimeState}
-          onConfigChange={updateNodeConfig}
-          onOpenSubflow={openSubflow}
+        </DialogBackdrop>
+      ) : null}
+
+      {activeResourceManager === "credentials" ? (
+        <DialogBackdrop onClose={closeResource}>
+          <CredentialManager
+            credentialTypes={credentialTypes}
+            credentials={credentials}
+            disabled={isCredentialManagerLoading}
+            onClose={closeResource}
+            onCreate={createCredential}
+            onDelete={deleteCredential}
+            onUpdate={updateCredential}
+          />
+        </DialogBackdrop>
+      ) : null}
+
+      {activeResourceManager === "variables" ? (
+        <DialogBackdrop onClose={closeResource}>
+          <ProjectVariableManager
+            variables={projectVariables}
+            disabled={isProjectVariableManagerLoading}
+            onClose={closeResource}
+            onCreate={createProjectVariable}
+            onDelete={deleteProjectVariable}
+            onUpdate={updateProjectVariable}
+          />
+        </DialogBackdrop>
+      ) : null}
+
+      {activeResourceManager === "environments" ? (
+        <DialogBackdrop onClose={closeResource}>
+          <EnvironmentManager
+            credentials={credentials}
+            disabled={isEnvironmentManagerLoading}
+            environments={projectEnvironments}
+            onClose={closeResource}
+            onCreate={createProjectEnvironment}
+            onDelete={deleteProjectEnvironment}
+            onUpdate={updateProjectEnvironment}
+          />
+        </DialogBackdrop>
+      ) : null}
+
+      {workflowConflict && isWorkflowConflictOpen ? (
+        <WorkflowConflictDialog
+          action={workflowConflict.action}
+          busy={isPageBusy || isWorkflowMutating}
+          currentVersion={workflowConflict.currentVersion}
+          expectedVersion={workflowConflict.expectedVersion}
+          onClose={closeWorkflowConflict}
+          onReload={() => void reloadWorkflowAfterConflict()}
+          onSaveCopy={
+            workflowConflict.action === "save"
+              ? () => void saveWorkflowConflictAsCopy()
+              : undefined
+          }
         />
-        <RunPanel events={runEvents} run={run} onSelectNode={selectRunEventNode} />
-      </main>
+      ) : null}
+
+      <WorkflowWorkbenchLayout
+        canvas={(
+          <FlowCanvas
+            disabled={isEditorLocked}
+            edgeIssues={edgeIssuesByEditableEdgeId}
+            focusedEdgeId={edgeFocusRequest?.edgeId ?? null}
+            focusedEdgeRequestKey={edgeFocusRequest?.key}
+            fitRequestKey={fitRequestKey}
+            hasNodeClipboard={hasNodeClipboard}
+            nodeIssues={nodeIssuesByEditableNodeId}
+            nodeRunDetails={nodeRunDetails}
+            nodeRunStates={nodeRunStates}
+            nodeTypes={displayNodeTypes}
+            selectedNodeId={selectedNodeId}
+            selectedNodeIds={selectedNodeIds}
+            selectionResetKey={editScopeKey}
+            workflow={canvasWorkflow}
+            onAddAnnotationAt={addCanvasAnnotation}
+            onAddNodeAt={addNodeAt}
+            onCopyNodes={copySelectedNodes}
+            onDeleteEdge={removeWorkflowEdge}
+            onDuplicateNodes={duplicateSelectedNodes}
+            onNodeDragStateChange={setWorkflowHistoryGroupActive}
+            onOpenNodeRuntime={openNodeRuntime}
+            onPasteNodes={() => void pasteCopiedNodes()}
+            onSelectIssue={selectWorkflowIssue}
+            onSelectNode={selectNodeForPanel}
+            onSelectNodes={(nodeIds, primaryNodeId) =>
+              selectNodeForPanel(primaryNodeId, "config", undefined, nodeIds)
+            }
+            onWorkflowChange={updateCurrentEditableWorkflow}
+          >
+            <CanvasEmptyState
+              actionsDisabled={isBusy || isCancelling}
+              templates={templateCards}
+              onApplyTemplate={applyTemplate}
+            />
+          </FlowCanvas>
+        )}
+        inspector={(
+          <ConfigPanel
+            connectedInputHandles={selectedNodeConnectedInputHandles}
+            connectedOutputHandles={selectedNodeConnectedOutputHandles}
+            credentialTypes={credentialTypes}
+            credentials={credentials}
+            currentWorkflowId={selectedWorkflowId || undefined}
+            disabled={isEditorLocked}
+            expressionReferences={expressionReferences}
+            fieldFocusRequest={
+              configPanelTabRequest.field
+                ? { field: configPanelTabRequest.field, key: configPanelTabRequest.key }
+                : undefined
+            }
+            initialTab={configPanelTabRequest.tab}
+            node={selectedNode}
+            nodeType={selectedNodeType}
+            runDetail={selectedRunDetail}
+            runtimeNavigationScope={runtimeNavigationScope}
+            runtimeNavigationSource={runtimeNavigationSource}
+            runtimeState={selectedRuntimeState}
+            runFromNodeUnavailableReason={runFromNodeUnavailableReason}
+            tabRequestKey={configPanelTabRequest.key}
+            webhookTestListener={webhookTestListener}
+            webhookTestListenerChanging={isWebhookTestListenerChanging}
+            workflowOptions={workflows}
+            onConfigChange={updateNodeConfig}
+            onConfigRemove={removeNodeConfig}
+            onDisabledChange={updateNodeDisabled}
+            onExecutionPolicyChange={updateNodeFailurePolicy}
+            onLabelChange={updateNodeLabel}
+            onNotesChange={updateNodeNotes}
+            onOpenCredentialManager={() => void openWorkspaceResource("credentials")}
+            onOpenSubflow={openSubflow}
+            onPinnedDataChange={updateNodePinnedData}
+            onRunFromNode={editScope?.length ? undefined : (nodeId) => void runWorkflow(nodeId)}
+            onStartWebhookTestListener={(nodeId) => void startWebhookTestListener(nodeId)}
+            onStopWebhookTestListener={(nodeId) => void stopWebhookTestListener(nodeId)}
+          />
+        )}
+        nodeLibrary={(
+          <NodePalette
+            disabled={isEditorLocked}
+            isReloadingNodeTypes={isNodeTypesReloading}
+            nodeTypes={displayNodeTypes}
+            onAddNode={addNode}
+            onReloadNodeTypes={() => void reloadNodeTypes()}
+          />
+        )}
+        resetKeys={{
+          canvas: `${workflow.id}:${workflowRevision}:${editScopeKey}`,
+          inspector: `${workflow.id}:${workflowRevision}:${selectedNodeId ?? "none"}`,
+          nodeLibrary: displayNodeTypes
+            .map((nodeType) => `${nodeType.id}@${nodeType.version ?? 1}`)
+            .join("\u0000"),
+          runLog: `${run?.id ?? "empty"}:${runView.events.length}`,
+        }}
+        runLog={(
+          <RunDrawer
+            expanded={runDrawerState.expanded}
+            run={runView.run}
+            onToggle={() =>
+              setRunDrawerState((currentState) =>
+                reduceRunDrawer(currentState, { type: "toggle" })
+              )
+            }
+          >
+            <RunPanel
+              comparisonError={comparisonError}
+              comparisonEvents={comparisonEvents}
+              comparisonLoading={isComparisonLoading}
+              comparisonRun={comparisonRun}
+              comparisonRuns={
+                isHistoricalRun && run
+                  ? selectedWorkflowRuns.filter(
+                    (candidate) =>
+                      candidate.id !== run.id && candidate.workflow_id === run.workflow_id
+                  )
+                  : []
+              }
+              events={runView.events}
+              inspector={runInspector}
+              isHistoricalRun={isHistoricalRun}
+              nodeDisplayNames={nodeDisplayNames}
+              nodeTypesByNodeId={nodeTypesByRunNodeId}
+              queueStatus={runQueueStatus}
+              run={runView.run}
+              selectedNodeId={selectedNodeId}
+              onClearHistoricalRun={clearHistoricalRunView}
+              onOpenChildRun={(runId) => void openParentRun(runId)}
+              onOpenParentRun={(runId) => void openParentRun(runId)}
+              onRetryHistoricalRun={() => void retryHistoricalRun()}
+              onSelectComparisonRun={(runId) => void selectHistoricalRunForComparison(runId)}
+              onSelectNode={selectRunEventNode}
+            />
+          </RunDrawer>
+        )}
+      />
     </div>
   );
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function formatRunStatus(status: RunStatus): string {
-  switch (status) {
-    case "succeeded":
-      return "成功";
-    case "failed":
-      return "失败";
-    case "cancelled":
-      return "已取消";
-    case "running":
-      return "运行中";
-    case "queued":
-      return "排队中";
+function isEditableTextTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
   }
+
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
+function readAutoSavePreference(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+  try {
+    return window.localStorage?.getItem(AUTO_SAVE_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function writeAutoSavePreference(enabled: boolean) {
+  try {
+    window.localStorage?.setItem(AUTO_SAVE_STORAGE_KEY, String(enabled));
+  } catch {
+    // Saving remains available even when browser storage is unavailable.
+  }
+}
+
+function buildWorkflowSavePresentation({
+  autoSaveStatus,
+  baseClassName,
+  baseLabel,
+  hasConflict,
+  isSaving,
+  saveMode,
+}: {
+  autoSaveStatus: "idle" | "scheduled" | "saving" | "retrying" | "conflict";
+  baseClassName: "is-draft" | "is-dirty" | "is-saved";
+  baseLabel: "草稿" | "未保存" | "已保存";
+  hasConflict: boolean;
+  isSaving: boolean;
+  saveMode: "auto" | "manual" | null;
+}) {
+  if (isSaving) {
+    return {
+      className: "is-saving",
+      label: saveMode === "auto" ? "自动保存中" : "保存中",
+      title: "正在保存工作流",
+    };
+  }
+  if (hasConflict || autoSaveStatus === "conflict") {
+    return {
+      className: "is-error",
+      label: "保存冲突",
+      title: "自动保存已暂停",
+    };
+  }
+  if (autoSaveStatus === "retrying") {
+    return {
+      className: "is-error",
+      label: "等待重试",
+      title: "自动保存失败，稍后重试",
+    };
+  }
+  if (autoSaveStatus === "scheduled") {
+    return {
+      className: baseClassName,
+      label: baseLabel,
+      title: "自动保存已排队",
+    };
+  }
+  return { className: baseClassName, label: baseLabel, title: "" };
 }
 
 function defaultSelectedTemplateNodeId(templateId: string): string | null {
@@ -595,19 +1711,87 @@ function defaultSelectedTemplateNodeId(templateId: string): string | null {
       return "request";
     case "csv-parameterized-api":
       return "csv";
+    case "manual-approval-branch":
+      return "condition";
     default:
       return null;
   }
 }
 
-function isIssueInCurrentEditScope(issue: PreRunIssue, editScope: EditScope): boolean {
-  const issueScope = editScopeFromIssuePath(issue.path);
+function scrollAppToTop() {
+  if (typeof window === "undefined" || typeof window.scrollTo !== "function") {
+    return;
+  }
+
+  if (document.documentElement.scrollHeight <= document.documentElement.clientHeight) {
+    return;
+  }
+
+  try {
+    window.scrollTo({ top: 0, left: 0 });
+  } catch {
+    // Test environments may expose scrollTo without implementing it.
+  }
+}
+
+function isIssuePathInCurrentEditScope(path: string[] | undefined, editScope: EditScope): boolean {
+  const issueScope = editScopeFromIssuePath(path);
   const currentScope = editScope ?? [];
 
   return areEditScopesEqual(issueScope, currentScope);
 }
 
-function isRunSelectionInCurrentEditScope(target: NodeSelectionTarget, editScope: EditScope): boolean {
+function buildNodeIssuesByNodeId(
+  issues: WorkflowIssueItem[],
+  editableNodes: WorkflowNode[],
+  editScope: EditScope
+): Record<string, WorkflowIssueItem[]> {
+  const editableNodeIds = new Set(editableNodes.map((node) => node.id));
+  const issuesByNodeId: Record<string, WorkflowIssueItem[]> = {};
+
+  for (const issue of issues) {
+    if (issue.target.kind !== "node" || !editableNodeIds.has(issue.target.nodeId)) {
+      continue;
+    }
+
+    const isInCurrentScope =
+      issue.source === "pre_run" ? isIssuePathInCurrentEditScope(issue.target.path, editScope) : true;
+    if (!isInCurrentScope) {
+      continue;
+    }
+
+    issuesByNodeId[issue.target.nodeId] = [...(issuesByNodeId[issue.target.nodeId] ?? []), issue];
+  }
+
+  return issuesByNodeId;
+}
+
+function buildEdgeIssuesByEdgeId(
+  issues: WorkflowIssueItem[],
+  editableEdges: WorkflowEdge[],
+  editScope: EditScope
+): Record<string, WorkflowIssueItem[]> {
+  const editableEdgeIds = new Set(editableEdges.map((edge) => edge.id));
+  const issuesByEdgeId: Record<string, WorkflowIssueItem[]> = {};
+
+  for (const issue of issues) {
+    if (issue.target.kind !== "edge" || !editableEdgeIds.has(issue.target.edgeId)) {
+      continue;
+    }
+
+    const isInCurrentScope =
+      issue.source === "pre_run" ? isIssuePathInCurrentEditScope(issue.target.path, editScope) : true;
+    if (!isInCurrentScope) {
+      continue;
+    }
+
+    issuesByEdgeId[issue.target.edgeId] = [...(issuesByEdgeId[issue.target.edgeId] ?? []), issue];
+  }
+
+  return issuesByEdgeId;
+}
+
+function isRunSelectionInCurrentEditScope(target: NodeRuntimeNavigationTarget, editScope: EditScope): boolean {
   const targetScope = editScopeFromRunEventScope(target.scope);
   const currentScope = editScope ?? [];
 

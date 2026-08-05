@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import type { RunEvent } from "../types";
+import { buildNodeRuntimeTarget, type NodeRuntimeNavigationTarget } from "../lib/nodeRuntimeNavigation";
 import { buildTestReport, type TestCaseReport, type TestReport } from "../lib/testReport";
 
 type TestReportViewProps = {
   events?: RunEvent[];
   report?: TestReport;
-  onSelectNode?: (target: { nodeId: string; scope?: string[] }) => void;
+  onSelectNode?: (target: NodeRuntimeNavigationTarget) => void;
 };
 
 const STATUS_LABELS: Record<TestCaseReport["status"], string> = {
@@ -100,7 +101,7 @@ function SummaryItem({ label, value, tone }: SummaryItemProps) {
 
 type TestCaseRowProps = {
   testCase: TestCaseReport;
-  onSelectNode?: (target: { nodeId: string; scope?: string[] }) => void;
+  onSelectNode?: (target: NodeRuntimeNavigationTarget) => void;
 };
 
 function TestCaseRow({ testCase, onSelectNode }: TestCaseRowProps) {
@@ -127,7 +128,7 @@ function TestCaseRow({ testCase, onSelectNode }: TestCaseRowProps) {
         aria-label={`${testCase.name} ${SOURCE_PREFIX}${testCase.sourceNodeId}`}
         className="test-case-row test-case-button"
         type="button"
-        onClick={() => onSelectNode({ nodeId: testCase.sourceNodeId as string, scope: testCase.sourceScope ?? [] })}
+        onClick={() => onSelectNode(buildNodeRuntimeTarget(testCase.sourceNodeId as string, "test_report", testCase.sourceScope))}
       >
         {content}
       </button>

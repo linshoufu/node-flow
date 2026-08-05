@@ -1,4 +1,5 @@
 import type { RunEvent } from "../types";
+import { buildExecutionData, type ExecutionData } from "./executionData";
 
 export type TestCaseReport = {
   id: string;
@@ -26,10 +27,14 @@ export type TestReport = {
 const emptySummary: TestReportSummary = { total: 0, passed: 0, failed: 0, unknown: 0 };
 
 export function buildTestReport(events: RunEvent[]): TestReport {
+  return buildTestReportFromExecutionData(buildExecutionData(events));
+}
+
+export function buildTestReportFromExecutionData(data: ExecutionData): TestReport {
   const cases: TestCaseReport[] = [];
   let summaryFromEvent: TestReportSummary | undefined;
 
-  events.forEach((event, index) => {
+  orderedEvents(data).forEach((event, index) => {
     if (isRecordResultEvent(event)) {
       const testCase = buildCaseReport(event, index);
       if (testCase) {
@@ -50,6 +55,12 @@ export function buildTestReport(events: RunEvent[]): TestReport {
     cases,
     hasCases: cases.length > 0,
   };
+}
+
+function orderedEvents(data: ExecutionData): RunEvent[] {
+  const nodeEvents = data.nodeOrder.flatMap((nodeId) => data.nodeRuns[nodeId]?.flatMap((run) => run.events) ?? []);
+  const workflowEvents = data.events.filter((event) => !event.node_id);
+  return [...nodeEvents, ...workflowEvents];
 }
 
 function buildCaseReport(event: RunEvent, index: number): TestCaseReport | undefined {

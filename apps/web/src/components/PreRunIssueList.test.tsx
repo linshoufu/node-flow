@@ -33,6 +33,9 @@ describe("PreRunIssueList", () => {
 
     expect(screen.getByRole("heading", { name: "运行前检查" })).toBeInTheDocument();
     expect(screen.getByText("2 个问题")).toBeInTheDocument();
+    expect(screen.getByText("节点 request")).toBeInTheDocument();
+    expect(screen.getByText("字段 url")).toBeInTheDocument();
+    expect(screen.getByText("位置 主流程 / request")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /HTTP 请求缺少 URL。/ }));
 

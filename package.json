@@ -5,7 +5,9 @@
     "dev:web": "pnpm --filter @node-flow/web dev",
     "build:web": "pnpm --filter @node-flow/web build",
     "test:web": "pnpm --filter @node-flow/web test",
-    "dev:api": "uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8000",
+    "dev:api": "uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150",
+    "dev:worker": "python -m apps.api.nodeflow_api.worker",
+    "doctor:nodes": "python -m apps.api.nodeflow_api.node_doctor nodes",
     "test:api": "pytest tests/api -q",
     "test": "pnpm test:web && pytest tests/api -q"
   },
