@@ -9,6 +9,7 @@ __pycache__/
 node_modules/
 dist/
 coverage/
+.coverage
 .DS_Store
 .env
 .nodeflow-packages/
