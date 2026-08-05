@@ -3,18 +3,11 @@ import { apiClient } from "./api/client";
 import { CanvasEmptyState, type CanvasTemplateCard } from "./components/CanvasEmptyState";
 import { CommandPalette } from "./components/CommandPalette";
 import { ConfigPanel } from "./components/ConfigPanel";
-import { CredentialManager } from "./components/CredentialManager";
-import { DialogBackdrop } from "./components/DialogBackdrop";
-import { EnvironmentManager } from "./components/EnvironmentManager";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { ManualRunDialog } from "./components/ManualRunDialog";
-import {
-  NodePackageAttentionNotice,
-  NodePackageManager,
-} from "./components/NodePackageManager";
+import { NodePackageAttentionNotice } from "./components/NodePackageManager";
 import { nodePackageAttentionCount } from "./lib/nodePackageDisplay";
 import { NodePalette } from "./components/NodePalette";
-import { ProjectVariableManager } from "./components/ProjectVariableManager";
 import { RunDrawer } from "./components/RunDrawer";
 import { RunPanel } from "./components/RunPanel";
 import { WorkflowIssuePanel } from "./components/WorkflowIssuePanel";
@@ -23,6 +16,7 @@ import { WorkflowManager } from "./components/WorkflowManager";
 import { WorkflowSettingsMenu } from "./components/WorkflowSettingsMenu";
 import { WorkflowTopbar } from "./components/WorkflowTopbar";
 import { WorkflowWorkbenchLayout } from "./components/WorkflowWorkbenchLayout";
+import { WorkspaceResourceDialogs } from "./components/WorkspaceResourceDialogs";
 import {
   WorkspaceResourceMenu,
 } from "./components/WorkspaceResourceMenu";
@@ -67,7 +61,6 @@ import {
   workflowEnvironmentId,
   workflowTimeoutSeconds,
   workflowVariables,
-  type EditScope,
 } from "./lib/workflow";
 import { localizeNodeType } from "./lib/display";
 import { buildExpressionReferences } from "./lib/expressionReferences";
@@ -101,11 +94,14 @@ import {
   validationIssuesToWorkflowIssues,
   type WorkflowIssueItem,
 } from "./lib/workflowIssues";
-import type {
-  WorkflowDocument,
-  WorkflowEdge,
-  WorkflowNode,
-} from "./types";
+import {
+  buildEdgeIssuesByEdgeId,
+  buildNodeIssuesByNodeId,
+  isIssuePathInCurrentEditScope,
+  isRunSelectionInCurrentEditScope,
+} from "./lib/workflowIssueScopes";
+import { resolveWorkflowIssueSelection } from "./lib/workflowIssueSelection";
+import type { WorkflowDocument } from "./types";
 
 const RUN_POLL_INTERVAL_MS = 1000;
 const MAX_RUN_POLL_ATTEMPTS = 120;
@@ -118,21 +114,8 @@ type WorkflowSettingsFocusRequest = {
 };
 export default function App() {
   const [message, setMessage] = useState("正在加载节点类型...");
-  const {
-    activateNodePackageRevision,
-    installNodePackage,
-    isInstallingNodePackage,
-    isNodeTypesReloading,
-    loadNodePackageRevisions,
-    loadingNodePackageRevisionId,
-    nodePackageRevisions,
-    nodePackageScan,
-    nodeTypes,
-    reloadNodeTypes,
-    uninstallNodePackage,
-    updateNodePackageSettings,
-    updatingNodePackageId,
-  } = useNodeCatalogController({ onMessage: setMessage });
+  const nodeCatalogController = useNodeCatalogController({ onMessage: setMessage });
+  const { isNodeTypesReloading, nodePackageScan, nodeTypes, reloadNodeTypes } = nodeCatalogController;
   const {
     catalogError: workflowCatalogError,
     isSelectedWorkflowCurrent: isSelectedWorkflowStillCurrent,
@@ -213,27 +196,15 @@ export default function App() {
     selectNodeForPanel,
   } = useWorkbenchNavigationController();
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(readAutoSavePreference);
+  const workspaceResources = useWorkspaceResources({ onMessage: setMessage });
   const {
     activeResourceManager,
-    closeResource,
     credentialTypes,
     credentials,
-    createCredential,
-    createProjectEnvironment,
-    createProjectVariable,
-    deleteCredential,
-    deleteProjectEnvironment,
-    deleteProjectVariable,
-    isCredentialManagerLoading,
-    isEnvironmentManagerLoading,
-    isProjectVariableManagerLoading,
     openResource: openWorkspaceResource,
     projectEnvironments,
     projectVariables,
-    updateCredential,
-    updateProjectEnvironment,
-    updateProjectVariable,
-  } = useWorkspaceResources({ onMessage: setMessage });
+  } = workspaceResources;
   const [isPageBusy, setIsBusy] = useState(false);
   const isAutoSavingMutation =
     workflowMutationOperation === "save" && workflowSaveMode === "auto";
@@ -1061,53 +1032,38 @@ export default function App() {
   }
 
   function selectWorkflowIssue(issue: WorkflowIssueItem) {
-    const target = issue.target;
-    if (target.kind === "node") {
-      const isInCurrentScope =
-        issue.source === "pre_run" ? isIssuePathInCurrentEditScope(target.path, editScope) : true;
-      if (isInCurrentScope && editableWorkflow.nodes.some((node) => node.id === target.nodeId)) {
-        selectNodeForPanel(target.nodeId, "config", target.field);
-        return;
-      }
+    const selection = resolveWorkflowIssueSelection(issue, {
+      editScope,
+      editableNodeIds: new Set(editableWorkflow.nodes.map((node) => node.id)),
+      editableEdgeIds: new Set(editableWorkflow.edges.map((edge) => edge.id)),
+    });
 
-      setMessage(
-        issue.source === "pre_run"
-          ? "这个运行前问题属于未打开的子流程，请先进入对应循环体查看。"
-          : "这个验证问题属于未打开的子流程，请先进入对应循环体查看。"
-      );
+    if (selection.kind === "node") {
+      selectNodeForPanel(selection.nodeId, "config", selection.field);
       return;
     }
 
-    if (target.kind === "settings") {
+    if (selection.kind === "settings") {
       clearEdgeFocus();
       setIsWorkflowSettingsOpen(true);
       setWorkflowSettingsFocusRequest((current) => ({
-        field: target.field,
+        field: selection.field,
         key: (current?.key ?? 0) + 1,
       }));
       setMessage("已打开工作流设置，请修正对应配置。");
       return;
     }
 
-    if (target.kind === "edge") {
-      const isInCurrentScope =
-        issue.source === "pre_run" ? isIssuePathInCurrentEditScope(target.path, editScope) : true;
-      if (isInCurrentScope && editableWorkflow.edges.some((edge) => edge.id === target.edgeId)) {
-        focusEdge(target.edgeId);
-        setMessage(`已在画布中选中连线 ${target.edgeId}，可直接删除或重新连接。`);
-        return;
-      }
-
-      setMessage(
-        issue.source === "pre_run"
-          ? "这个运行前连线问题属于未打开的子流程，请先进入对应循环体查看。"
-          : "这个验证连线问题属于未打开的子流程，请先进入对应循环体查看。"
-      );
+    if (selection.kind === "edge") {
+      focusEdge(selection.edgeId);
+      setMessage(`已在画布中选中连线 ${selection.edgeId}，可直接删除或重新连接。`);
       return;
     }
 
-    clearEdgeFocus();
-    setMessage("请根据提示检查对应连线或工作流配置。");
+    if (selection.resetEdgeFocus) {
+      clearEdgeFocus();
+    }
+    setMessage(selection.message);
   }
 
   function resetRunState() {
@@ -1410,70 +1366,7 @@ export default function App() {
         onOpen={() => void openWorkspaceResource("packages")}
       />
 
-      {activeResourceManager === "packages" ? (
-        <DialogBackdrop onClose={closeResource}>
-          <NodePackageManager
-            installing={isInstallingNodePackage}
-            loadingRevisionPackageId={loadingNodePackageRevisionId}
-            refreshing={isNodeTypesReloading}
-            revisionsByPackageId={nodePackageRevisions}
-            scan={nodePackageScan}
-            updatingPackageId={updatingNodePackageId}
-            onActivateRevision={(packageId, revisionId) =>
-              void activateNodePackageRevision(packageId, revisionId)
-            }
-            onClose={closeResource}
-            onInstall={(file) => void installNodePackage(file)}
-            onLoadRevisions={(packageId) => void loadNodePackageRevisions(packageId)}
-            onRefresh={() => void reloadNodeTypes()}
-            onUninstall={(packageId) => void uninstallNodePackage(packageId)}
-            onUpdateSettings={(packageId, request) =>
-              void updateNodePackageSettings(packageId, request)
-            }
-          />
-        </DialogBackdrop>
-      ) : null}
-
-      {activeResourceManager === "credentials" ? (
-        <DialogBackdrop onClose={closeResource}>
-          <CredentialManager
-            credentialTypes={credentialTypes}
-            credentials={credentials}
-            disabled={isCredentialManagerLoading}
-            onClose={closeResource}
-            onCreate={createCredential}
-            onDelete={deleteCredential}
-            onUpdate={updateCredential}
-          />
-        </DialogBackdrop>
-      ) : null}
-
-      {activeResourceManager === "variables" ? (
-        <DialogBackdrop onClose={closeResource}>
-          <ProjectVariableManager
-            variables={projectVariables}
-            disabled={isProjectVariableManagerLoading}
-            onClose={closeResource}
-            onCreate={createProjectVariable}
-            onDelete={deleteProjectVariable}
-            onUpdate={updateProjectVariable}
-          />
-        </DialogBackdrop>
-      ) : null}
-
-      {activeResourceManager === "environments" ? (
-        <DialogBackdrop onClose={closeResource}>
-          <EnvironmentManager
-            credentials={credentials}
-            disabled={isEnvironmentManagerLoading}
-            environments={projectEnvironments}
-            onClose={closeResource}
-            onCreate={createProjectEnvironment}
-            onDelete={deleteProjectEnvironment}
-            onUpdate={updateProjectEnvironment}
-          />
-        </DialogBackdrop>
-      ) : null}
+      <WorkspaceResourceDialogs nodeCatalog={nodeCatalogController} resources={workspaceResources} />
 
       {workflowConflict && isWorkflowConflictOpen ? (
         <WorkflowConflictDialog
@@ -1732,105 +1625,4 @@ function scrollAppToTop() {
   } catch {
     // Test environments may expose scrollTo without implementing it.
   }
-}
-
-function isIssuePathInCurrentEditScope(path: string[] | undefined, editScope: EditScope): boolean {
-  const issueScope = editScopeFromIssuePath(path);
-  const currentScope = editScope ?? [];
-
-  return areEditScopesEqual(issueScope, currentScope);
-}
-
-function buildNodeIssuesByNodeId(
-  issues: WorkflowIssueItem[],
-  editableNodes: WorkflowNode[],
-  editScope: EditScope
-): Record<string, WorkflowIssueItem[]> {
-  const editableNodeIds = new Set(editableNodes.map((node) => node.id));
-  const issuesByNodeId: Record<string, WorkflowIssueItem[]> = {};
-
-  for (const issue of issues) {
-    if (issue.target.kind !== "node" || !editableNodeIds.has(issue.target.nodeId)) {
-      continue;
-    }
-
-    const isInCurrentScope =
-      issue.source === "pre_run" ? isIssuePathInCurrentEditScope(issue.target.path, editScope) : true;
-    if (!isInCurrentScope) {
-      continue;
-    }
-
-    issuesByNodeId[issue.target.nodeId] = [...(issuesByNodeId[issue.target.nodeId] ?? []), issue];
-  }
-
-  return issuesByNodeId;
-}
-
-function buildEdgeIssuesByEdgeId(
-  issues: WorkflowIssueItem[],
-  editableEdges: WorkflowEdge[],
-  editScope: EditScope
-): Record<string, WorkflowIssueItem[]> {
-  const editableEdgeIds = new Set(editableEdges.map((edge) => edge.id));
-  const issuesByEdgeId: Record<string, WorkflowIssueItem[]> = {};
-
-  for (const issue of issues) {
-    if (issue.target.kind !== "edge" || !editableEdgeIds.has(issue.target.edgeId)) {
-      continue;
-    }
-
-    const isInCurrentScope =
-      issue.source === "pre_run" ? isIssuePathInCurrentEditScope(issue.target.path, editScope) : true;
-    if (!isInCurrentScope) {
-      continue;
-    }
-
-    issuesByEdgeId[issue.target.edgeId] = [...(issuesByEdgeId[issue.target.edgeId] ?? []), issue];
-  }
-
-  return issuesByEdgeId;
-}
-
-function isRunSelectionInCurrentEditScope(target: NodeRuntimeNavigationTarget, editScope: EditScope): boolean {
-  const targetScope = editScopeFromRunEventScope(target.scope);
-  const currentScope = editScope ?? [];
-
-  return areEditScopesEqual(targetScope, currentScope);
-}
-
-function areEditScopesEqual(left: NonNullable<EditScope>, right: NonNullable<EditScope>): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  return left.every(
-    (step, index) => step.nodeId === right[index].nodeId && step.subflowName === right[index].subflowName
-  );
-}
-
-function editScopeFromIssuePath(path: string[] | undefined): NonNullable<EditScope> {
-  if (!path || path[0] !== "root") {
-    return [];
-  }
-
-  const scope: NonNullable<EditScope> = [];
-  for (let index = 1; index < path.length - 1; index += 2) {
-    const nodeId = path[index];
-    const subflowName = path[index + 1];
-    if (!nodeId || !subflowName) {
-      break;
-    }
-    scope.push({ nodeId, subflowName });
-  }
-
-  return scope;
-}
-
-function editScopeFromRunEventScope(scope: string[] | undefined): NonNullable<EditScope> {
-  return (scope ?? [])
-    .filter((part) => !part.startsWith("iteration:"))
-    .map((nodeId) => ({
-      nodeId,
-      subflowName: "body",
-    }));
 }
