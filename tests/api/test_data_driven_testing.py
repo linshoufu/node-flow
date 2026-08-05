@@ -199,6 +199,71 @@ async def test_csv_driven_api_workflow_records_assertions_and_writes_report(
 
 
 @pytest.mark.asyncio
+async def test_csv_item_output_drives_the_item_loop_body(tmp_path: Path):
+    csv_path = tmp_path / "users.csv"
+    csv_path.write_text("name\nAlice\nBob\n", encoding="utf-8")
+    workflow = WorkflowDocument(
+        id="wf_csv_items",
+        name="CSV item loop",
+        nodes=[
+            WorkflowNode(
+                id="csv",
+                type="data.csv_read",
+                position=position(),
+                config={"path": str(csv_path)},
+            ),
+            WorkflowNode(
+                id="each_item",
+                type="control.each_item",
+                position=position(240, 0),
+                config={"max_items": 100, "continue_on_error": False, "timeout_seconds": 300},
+                subflows={
+                    "body": WorkflowSubflow(
+                        nodes=[
+                            WorkflowNode(
+                                id="name",
+                                type="utility.transform",
+                                position=position(),
+                                config={"value": "{{ loop.item.name }}"},
+                            )
+                        ],
+                        edges=[],
+                    )
+                },
+            ),
+        ],
+        edges=[
+            WorkflowEdge(
+                id="csv_each_item",
+                source="csv",
+                sourceHandle="items",
+                target="each_item",
+                targetHandle="items",
+            )
+        ],
+    )
+
+    storage, run = await execute_workflow(workflow)
+
+    events = storage.list_events(run.id)
+    csv_event = next(event for event in events if event.node_id == "csv" and event.type == "node_succeeded")
+    loop_event = next(event for event in events if event.node_id == "each_item" and event.type == "node_started")
+    body_values = [
+        event.payload["outputs"]["success"]
+        for event in events
+        if event.node_id == "name" and event.type == "node_succeeded"
+    ]
+
+    assert storage.get_run(run.id).status == "succeeded"
+    assert csv_event.payload["outputs"]["items"] == [
+        {"json": {"name": "Alice"}, "pairedItem": {"item": 0}},
+        {"json": {"name": "Bob"}, "pairedItem": {"item": 1}},
+    ]
+    assert loop_event.payload["inputs"]["items"] == csv_event.payload["outputs"]["items"]
+    assert body_values == ["Alice", "Bob"]
+
+
+@pytest.mark.asyncio
 async def test_failed_assertion_can_be_recorded_and_fail_at_summary(tmp_path: Path):
     report_path = tmp_path / "failed-report.json"
     workflow = WorkflowDocument(
