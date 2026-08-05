@@ -56,6 +56,21 @@
   --focus-ring-primary: 0 0 0 3px rgba(29, 95, 136, 0.18);
   --focus-ring-danger: 0 0 0 3px rgba(139, 48, 48, 0.16);
   --focus-ring-success: 0 0 0 3px rgba(39, 99, 63, 0.18);
+  --color-focus-outline: rgb(45 111 143 / 40%);
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 [data-theme="dark"] {
@@ -116,6 +131,7 @@
   --focus-ring-primary: 0 0 0 3px rgba(61, 154, 209, 0.35);
   --focus-ring-danger: 0 0 0 3px rgba(224, 108, 108, 0.35);
   --focus-ring-success: 0 0 0 3px rgba(76, 191, 130, 0.35);
+  --color-focus-outline: rgb(127 192 230 / 55%);
 }
 
 :root {
@@ -158,9 +174,14 @@ button,
 select,
 input {
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 button {
@@ -170,6 +191,23 @@ button {
   font-size: 13px;
   font-weight: 650;
   white-space: nowrap;
+}
+
+.app-shell,
+.topbar,
+.canvas-shell,
+.run-panel,
+.flow-node,
+.run-drawer-content,
+.manual-run-dialog,
+.workflow-conflict-dialog,
+.workflow-manager-popover,
+.workflow-settings-popover,
+.workspace-resource-popover {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
 button:hover:not(:disabled) {
@@ -235,7 +273,7 @@ button:disabled {
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid var(--color-danger-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-danger-soft);
   color: var(--color-danger-text);
 }
@@ -346,7 +384,7 @@ button:disabled {
   align-items: center;
   height: 26px;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 0 9px;
   background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
@@ -466,7 +504,7 @@ button.workflow-save-state:hover {
 .workspace-resource-alert {
   align-items: center;
   background: var(--color-danger);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--color-text-inverse);
   display: inline-flex;
   font-size: 10px;
@@ -480,7 +518,7 @@ button.workflow-save-state:hover {
 .workspace-resource-popover {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);
   min-width: 300px;
   padding: 6px;
@@ -600,7 +638,7 @@ button.workflow-save-state:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-lg);
   padding: 14px;
@@ -643,7 +681,7 @@ button.workflow-save-state:hover {
 .workflow-variables-empty {
   margin: 0;
   border: 1px dashed var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 16px;
   color: var(--color-text-muted);
   font-size: 13px;
@@ -669,7 +707,7 @@ button.workflow-save-state:hover {
   justify-content: space-between;
   gap: 10px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-primary-softer);
   padding: 8px;
 }
@@ -705,7 +743,7 @@ button.workflow-save-state:hover {
 
 .workflow-trigger-state {
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 5px;
   font-size: 10px;
   font-weight: 750;
@@ -776,7 +814,7 @@ button.workflow-save-state:hover {
 .workflow-tag-input-row input {
   min-width: 0;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font: inherit;
@@ -816,7 +854,7 @@ button.workflow-save-state:hover {
   align-items: center;
   gap: 4px;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-primary-softer);
   color: var(--color-primary);
   padding: 2px 7px;
@@ -881,7 +919,7 @@ button.workflow-save-state:hover {
   gap: 12px;
   overflow: auto;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-lg);
   padding: 14px;
@@ -965,7 +1003,7 @@ button.workflow-save-state:hover {
   display: grid;
   gap: 8px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-primary-softer);
   padding: 10px;
 }
@@ -986,7 +1024,7 @@ button.workflow-save-state:hover {
 .workflow-manager-run-history-filters button {
   min-height: 24px;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 0 7px;
@@ -1032,7 +1070,7 @@ button.workflow-save-state:hover {
   justify-content: space-between;
   gap: 8px;
   border: 1px solid var(--color-danger-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-danger-soft);
   color: var(--color-danger-text);
   padding: 7px 8px;
@@ -1072,7 +1110,7 @@ button.workflow-save-state:hover {
 .workflow-manager-run-history-more button {
   min-height: 28px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 0 10px;
@@ -1163,7 +1201,7 @@ button.workflow-save-state:hover {
   align-items: center;
   gap: 12px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-primary-softer);
   padding: 10px;
 }
@@ -1227,7 +1265,7 @@ button.workflow-save-state:hover {
 .workflow-manager-status {
   flex: 0 0 auto;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -1238,7 +1276,7 @@ button.workflow-save-state:hover {
 .workflow-manager-activation {
   flex: 0 0 auto;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 2px 7px;
   font-size: 11px;
   font-weight: 800;
@@ -1270,7 +1308,7 @@ button.workflow-save-state:hover {
   justify-content: space-between;
   gap: 10px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px;
   background: var(--color-bg-raised);
 }
@@ -1300,7 +1338,7 @@ button.workflow-save-state:hover {
   gap: 7px;
   margin-top: 8px;
   border: 1px solid var(--color-warning-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-warning-soft);
   padding: 10px;
 }
@@ -1388,7 +1426,7 @@ button.workflow-save-state:hover {
 
 .workflow-version-diff-items span {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 3px 6px;
@@ -1443,7 +1481,7 @@ button.workflow-save-state:hover {
   display: grid;
   align-content: center;
   gap: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-surface-alpha);
   padding: 24px;
 }
@@ -1467,7 +1505,7 @@ button.workflow-save-state:hover {
 .workflow-delete-warning,
 .workflow-delete-error {
   border: 1px solid var(--color-warning-border);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-warning-soft);
   padding: 8px 10px;
   color: var(--color-warning-text) !important;
@@ -1490,7 +1528,7 @@ button.workflow-save-state:hover {
   min-height: 88px;
   place-items: center;
   border: 1px dashed var(--color-border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--color-text-muted);
   font-size: 13px;
   font-weight: 750;
@@ -1534,7 +1572,7 @@ button.workflow-save-state:hover {
   width: min(560px, 100%);
   gap: 16px;
   border: 1px solid var(--color-border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-lg);
   padding: 18px;
@@ -1573,7 +1611,7 @@ button.workflow-save-state:hover {
   min-height: 196px;
   resize: vertical;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   color: var(--color-text-primary);
   padding: 10px;
@@ -1776,7 +1814,7 @@ button.workflow-save-state:hover {
 
 .pre-run-issue-meta em {
   border: 1px solid var(--color-danger-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-danger-soft);
   color: var(--color-danger-text);
   padding: 1px 6px;
@@ -1823,7 +1861,7 @@ button.workflow-save-state:hover {
 
 .workflow-issue-panel-counts button {
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 2px 8px;
@@ -1864,7 +1902,7 @@ button.workflow-save-state:hover {
   align-content: start;
   min-height: 88px;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   padding: 9px 11px;
@@ -1952,7 +1990,7 @@ button.workflow-save-state:hover {
 .workflow-issue-card-badges em,
 .workflow-issue-card-meta em {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-primary-softer);
   color: var(--color-text-secondary);
   padding: 1px 7px;
@@ -1982,7 +2020,7 @@ button.workflow-save-state:hover {
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-raised);
   box-shadow: var(--shadow-md);
 }
@@ -2084,7 +2122,7 @@ button.workflow-save-state:hover {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   background: var(--color-bg-raised);
   color: var(--color-text-primary);
@@ -2095,7 +2133,7 @@ button.workflow-save-state:hover {
 .palette-search input:focus {
   border-color: var(--color-primary);
   background: var(--color-bg-surface);
-  outline: 2px solid var(--focus-ring-primary);
+  outline: 2px solid var(--color-focus-outline);
 }
 
 .palette-filter-tabs {
@@ -2115,7 +2153,7 @@ button.workflow-save-state:hover {
   min-width: 0;
   min-height: 30px;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   color: var(--color-text-secondary);
   font-size: 12px;
@@ -2135,7 +2173,7 @@ button.workflow-save-state:hover {
 
 .palette-filter-tabs button em {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-inset);
   color: var(--color-text-secondary);
   padding: 1px 5px;
@@ -2178,7 +2216,7 @@ button.workflow-save-state:hover {
 .palette-empty {
   margin: 0;
   border: 1px dashed var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 12px;
   background: var(--color-bg-surface);
   color: var(--color-text-muted);
@@ -2221,7 +2259,7 @@ button.workflow-save-state:hover {
   width: 22px;
   height: 22px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-raised);
   color: var(--color-primary);
 }
@@ -2249,7 +2287,7 @@ button.workflow-save-state:hover {
 
 .palette-node-tags em {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
   padding: 1px 6px;
@@ -2558,7 +2596,7 @@ button.workflow-save-state:hover {
 .node-package-manager {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-pop);
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -2950,7 +2988,7 @@ button.workflow-save-state:hover {
   display: grid;
   gap: 4px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-md);
   padding: 4px;
@@ -2963,7 +3001,7 @@ button.workflow-save-state:hover {
   height: 30px;
   min-height: 30px;
   border-color: transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   color: var(--color-text-primary);
   padding: 0;
@@ -2981,7 +3019,7 @@ button.workflow-save-state:hover {
   bottom: 14px !important;
   overflow: hidden;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-md);
 }
@@ -2993,6 +3031,41 @@ button.workflow-save-state:hover {
 .canvas-minimap .react-flow__minimap-node {
   fill: var(--color-text-muted);
   stroke: var(--color-text-secondary);
+}
+
+/* React Flow 内部变量适配双主题 */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-background-color-dot: var(--color-border-default);
+  --xy-edge-stroke: var(--color-border-strong);
+  --xy-edge-stroke-selected: var(--color-primary);
+  --xy-connectionline-stroke: var(--color-primary);
+  --xy-selection-bg: var(--color-primary-fill-soft);
+  --xy-selection-border: 1px dashed var(--color-primary);
+  --xy-handle-background-color: var(--color-bg-surface);
+  --xy-handle-border-color: var(--color-border-strong);
+  --xy-resize-control-line-color: var(--color-primary);
+}
+
+[data-theme="dark"] .react-flow {
+  --xy-background-color-dot: var(--color-border-subtle);
+}
+
+.react-flow__attribution {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.react-flow__attribution a {
+  color: inherit;
+}
+
+.react-flow__edge-text {
+  fill: var(--color-text-secondary);
+}
+
+.react-flow__edge-textbg {
+  fill: var(--color-bg-surface);
 }
 
 .canvas-empty-overlay {
@@ -3072,7 +3145,7 @@ button.workflow-save-state:hover {
   display: grid;
   gap: 14px;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface-alpha);
   padding: 14px;
   box-shadow: var(--shadow-lg);
@@ -3100,7 +3173,7 @@ button.workflow-save-state:hover {
 .template-node-count {
   align-self: start;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-primary-softer);
   color: var(--color-text-secondary);
   padding: 4px 8px;
@@ -3125,7 +3198,7 @@ button.workflow-save-state:hover {
 
 .template-tags span {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 3px 7px;
@@ -3155,7 +3228,7 @@ button.workflow-save-state:hover {
   position: relative;
   width: 190px;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-md);
 }
@@ -3196,7 +3269,7 @@ button.workflow-save-state:hover {
   margin: 8px 10px 0;
   width: fit-content;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 3px 8px;
@@ -3209,7 +3282,7 @@ button.workflow-save-state:hover {
   margin: 8px 10px 0;
   width: fit-content;
   border: 1px solid var(--color-danger-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-danger-soft);
   color: var(--color-danger-text);
   padding: 3px 8px;
@@ -3242,7 +3315,7 @@ button.node-issue-badge:focus-visible {
 
 .run-summary-badges span {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -3323,7 +3396,7 @@ button.node-issue-badge:focus-visible {
   width: 24px;
   height: 24px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-raised);
   color: var(--color-primary);
 }
@@ -3402,7 +3475,7 @@ button.node-issue-badge:focus-visible {
   max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 2px 5px;
@@ -3436,7 +3509,7 @@ button.node-issue-badge:focus-visible {
   z-index: 6;
   max-width: min(360px, calc(100% - 32px));
   border: 1px solid var(--color-warning-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-warning-soft);
   box-shadow: var(--shadow-md);
   color: var(--color-warning-text);
@@ -3458,7 +3531,7 @@ button.node-issue-badge:focus-visible {
   gap: 12px;
   width: min(520px, calc(100% - 32px));
   border: 1px solid var(--color-danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-danger-soft);
   box-shadow: var(--shadow-lg);
   color: var(--color-danger-strong);
@@ -3591,7 +3664,7 @@ button.node-issue-badge:focus-visible {
   width: 100%;
   height: 100%;
   border: 1px solid var(--color-warning-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
   padding: 12px;
 }
@@ -3698,7 +3771,7 @@ button.node-issue-badge:focus-visible {
 .selected-node-tags em,
 .node-version {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 1px 7px;
@@ -3713,7 +3786,7 @@ button.node-issue-badge:focus-visible {
   align-items: center;
   min-height: 24px;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   color: var(--color-primary);
   padding: 0 8px;
@@ -3828,7 +3901,7 @@ button.node-issue-badge:focus-visible {
   gap: 7px;
   border: 1px solid var(--color-border-subtle);
   border-left: 3px solid var(--color-border-emphasis);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   padding: 8px;
 }
@@ -3922,7 +3995,7 @@ button.node-issue-badge:focus-visible {
   gap: 10px;
   margin: 0 12px 12px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   padding: 10px;
 }
@@ -3979,7 +4052,7 @@ button.node-issue-badge:focus-visible {
   gap: 8px;
   margin: 0 12px 12px;
   border: 1px solid var(--color-success-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-success-soft);
   padding: 10px;
 }
@@ -4009,7 +4082,7 @@ button.node-issue-badge:focus-visible {
   min-height: 28px;
   padding: 4px 8px;
   border: 1px solid var(--color-success-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-surface);
   color: var(--color-success-text);
   font-size: 12px;
@@ -4035,7 +4108,7 @@ button.node-issue-badge:focus-visible {
   min-height: 118px;
   resize: vertical;
   border: 1px solid var(--color-success-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-surface);
   color: var(--color-success-text);
   font-family: "Cascadia Mono", Consolas, monospace;
@@ -4047,7 +4120,7 @@ button.node-issue-badge:focus-visible {
   justify-self: start;
   min-height: 28px;
   border: 1px solid var(--color-success);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-success);
   color: var(--color-text-inverse);
   font-size: 12px;
@@ -4071,7 +4144,7 @@ button.node-issue-badge:focus-visible {
   display: inline-flex;
   margin-left: 6px;
   border: 1px solid var(--color-success-border);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--color-success-soft);
   color: var(--color-success-text);
   font-size: 10px;
@@ -4086,7 +4159,7 @@ button.node-issue-badge:focus-visible {
   display: inline-flex;
   margin-left: 6px;
   border: 1px solid var(--color-warning-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 1px 5px;
   background: var(--color-warning-soft);
   color: var(--color-warning-text);
@@ -4101,7 +4174,7 @@ button.node-issue-badge:focus-visible {
   gap: 7px;
   margin: 12px;
   border: 1px solid var(--color-warning-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 9px 10px;
   background: var(--color-warning-soft);
 }
@@ -4145,7 +4218,7 @@ button.node-issue-badge:focus-visible {
   gap: 8px;
   margin: 12px 12px 0;
   border: 1px solid var(--color-primary-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   padding: 10px;
 }
@@ -4165,7 +4238,7 @@ button.node-issue-badge:focus-visible {
 .webhook-url-preview code {
   overflow-wrap: anywhere;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-surface);
   padding: 7px 8px;
   color: var(--color-primary-text);
@@ -4211,7 +4284,7 @@ button.node-issue-badge:focus-visible {
   gap: 9px;
   margin: 0 12px 12px;
   border: 1px solid var(--color-warning-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-warning-soft);
   padding: 10px;
   color: var(--color-warning-text);
@@ -4291,7 +4364,7 @@ button.node-issue-badge:focus-visible {
   gap: 6px;
   min-width: 0;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   padding: 9px;
 }
@@ -4326,7 +4399,7 @@ button.node-issue-badge:focus-visible {
 
 .port-row span {
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -4337,7 +4410,7 @@ button.node-issue-badge:focus-visible {
 
 .port-row code {
   justify-self: start;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-subtle);
   color: var(--color-primary-text);
   padding: 3px 6px;
@@ -4398,7 +4471,7 @@ button.node-issue-badge:focus-visible {
 
 .field-label em {
   border: 1px solid var(--color-warning-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-warning-soft);
   color: var(--color-warning-text);
   padding: 1px 6px;
@@ -4430,7 +4503,7 @@ button.node-issue-badge:focus-visible {
   min-height: 110px;
   resize: vertical;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   padding: 8px 9px;
@@ -4462,7 +4535,7 @@ button.node-issue-badge:focus-visible {
   margin: 0 12px 12px;
   padding: 10px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
 }
 
@@ -4509,7 +4582,7 @@ button.node-issue-badge:focus-visible {
   gap: 8px;
   padding: 8px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
 }
 
@@ -4541,7 +4614,7 @@ button.node-issue-badge:focus-visible {
   height: 28px;
   padding: 0 9px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   font-size: 12px;
@@ -4603,7 +4676,7 @@ button.node-issue-badge:focus-visible {
 .runtime-insight,
 .runtime-block {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
 }
 
@@ -4624,7 +4697,7 @@ button.node-issue-badge:focus-visible {
   min-width: 0;
   min-height: 32px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   padding: 0 9px;
@@ -4653,7 +4726,7 @@ button.node-issue-badge:focus-visible {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-subtle);
   padding: 5px;
 }
@@ -4662,7 +4735,7 @@ button.node-issue-badge:focus-visible {
   min-width: 0;
   min-height: 30px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 12px;
@@ -4730,7 +4803,7 @@ button.node-issue-badge:focus-visible {
 
 .runtime-copy-button {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -4770,7 +4843,7 @@ button.node-issue-badge:focus-visible {
 .runtime-execution-picker button {
   min-height: 28px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary-softer);
   color: var(--color-text-secondary);
   padding: 0 9px;
@@ -4801,7 +4874,7 @@ button.node-issue-badge:focus-visible {
   gap: 7px;
   min-width: 0;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-raised);
   padding: 8px;
 }
@@ -4866,7 +4939,7 @@ button.node-issue-badge:focus-visible {
 .runtime-scope-chips span {
   max-width: 100%;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-app);
   color: var(--color-text-secondary);
   padding: 2px 6px;
@@ -4879,7 +4952,7 @@ button.node-issue-badge:focus-visible {
 .runtime-execution-status {
   justify-self: start;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -4930,7 +5003,7 @@ button.node-issue-badge:focus-visible {
 .runtime-input-toggle {
   width: 100%;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-primary-softer);
   cursor: pointer;
   font: inherit;
@@ -4951,7 +5024,7 @@ button.node-issue-badge:focus-visible {
 .runtime-port-toggle {
   width: 100%;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-primary-softer);
   cursor: pointer;
   font: inherit;
@@ -4981,7 +5054,7 @@ button.node-issue-badge:focus-visible {
   display: grid;
   gap: 6px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-surface);
   padding: 8px;
   min-width: 0;
@@ -5010,7 +5083,7 @@ button.node-issue-badge:focus-visible {
 .runtime-item-metadata pre {
   margin: 0;
   overflow: auto;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-primary-softer);
   padding: 7px;
   color: var(--color-text-primary);
@@ -5118,7 +5191,7 @@ button.node-issue-badge:focus-visible {
 }
 
 .runtime-log-level {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -5168,7 +5241,7 @@ button.node-issue-badge:focus-visible {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-raised);
   box-shadow: var(--shadow-md);
 }
@@ -5257,7 +5330,7 @@ button.node-issue-badge:focus-visible {
 .run-execution-summary span,
 .run-execution-summary button {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -5315,7 +5388,7 @@ button.node-issue-badge:focus-visible {
 .focused-node-run-heading span,
 .focused-node-run-metrics span {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -5385,7 +5458,7 @@ button.node-issue-badge:focus-visible {
 
 .run-history-context strong {
   border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-primary-softer);
   color: var(--color-primary);
   padding: 2px 8px;
@@ -5409,7 +5482,7 @@ button.node-issue-badge:focus-visible {
   max-width: 260px;
   height: 28px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 0 7px;
@@ -5429,7 +5502,7 @@ button.node-issue-badge:focus-visible {
 .run-history-actions button {
   min-height: 28px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   padding: 0 9px;
@@ -5535,7 +5608,7 @@ button.node-issue-badge:focus-visible {
 
 .run-comparison-change,
 .run-comparison-details span {
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 2px 6px;
   font-size: 12px;
   font-weight: 700;
@@ -5560,7 +5633,7 @@ button.node-issue-badge:focus-visible {
 
 .status-pill {
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   padding: 4px 9px;
   font-size: 12px;
@@ -5607,7 +5680,7 @@ button.node-issue-badge:focus-visible {
   gap: 3px;
   min-width: 0;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   padding: 8px 10px;
 }
@@ -5671,7 +5744,7 @@ button.node-issue-badge:focus-visible {
   align-items: start;
   gap: 10px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   padding: 9px 10px;
 }
@@ -5733,7 +5806,7 @@ button.node-issue-badge:focus-visible {
 
 .test-case-status {
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   padding: 3px 8px;
 }
@@ -5768,7 +5841,7 @@ button.node-issue-badge:focus-visible {
   gap: 10px;
   min-width: 0;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-raised);
   padding: 10px;
 }
@@ -5786,7 +5859,7 @@ button.node-issue-badge:focus-visible {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font: inherit;
@@ -5811,7 +5884,7 @@ button.node-issue-badge:focus-visible {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -5823,7 +5896,7 @@ button.node-issue-badge:focus-visible {
 
 .execution-status-filters button em {
   min-width: 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-subtle);
   color: var(--color-text-muted);
   font-size: 11px;
@@ -5871,7 +5944,7 @@ button.node-issue-badge:focus-visible {
 
 .execution-node-summary span {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   color: var(--color-text-secondary);
   padding: 2px 7px;
@@ -5889,7 +5962,7 @@ button.node-issue-badge:focus-visible {
   display: grid;
   overflow: hidden;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
 }
 
@@ -5932,7 +6005,7 @@ button.node-issue-badge:focus-visible {
 .execution-status {
   justify-self: start;
   border: 1px solid var(--color-border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-raised);
   padding: 2px 7px;
   font-weight: 750;
@@ -6007,7 +6080,7 @@ button.node-issue-badge:focus-visible {
   gap: 8px;
   align-items: start;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-raised);
   padding: 7px 8px;
   color: var(--color-text-secondary);
@@ -6059,7 +6132,7 @@ button.node-issue-badge:focus-visible {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font: inherit;
@@ -6140,7 +6213,7 @@ button.node-issue-badge:focus-visible {
   width: min(540px, 100%);
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-pop);
 }
@@ -6187,7 +6260,7 @@ button.node-issue-badge:focus-visible {
 
 .workflow-conflict-body dl > div {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-raised);
   padding: 9px 11px;
 }
@@ -6232,7 +6305,7 @@ button.node-issue-badge:focus-visible {
   max-height: min(620px, calc(100vh - 64px));
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-pop);
 }
@@ -6269,7 +6342,7 @@ button.node-issue-badge:focus-visible {
   align-items: center;
   min-height: 20px;
   border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-bg-raised);
   color: var(--color-text-muted);
   font-family: inherit;
@@ -6378,7 +6451,7 @@ button.node-issue-badge:focus-visible {
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--color-border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-pop);
 }
@@ -6472,7 +6545,7 @@ button.node-issue-badge:focus-visible {
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   padding: 10px;
 }
@@ -6509,7 +6582,7 @@ button.node-issue-badge:focus-visible {
   min-height: 30px;
   padding: 5px 8px;
   border: 1px solid var(--color-border-default);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   font-size: 12px;
@@ -6548,7 +6621,7 @@ button.node-issue-badge:focus-visible {
   min-width: 0;
   margin: 0;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   padding: 9px;
 }
 
