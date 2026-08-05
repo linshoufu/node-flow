@@ -10,6 +10,7 @@ import { nodePackageAttentionCount } from "./lib/nodePackageDisplay";
 import { NodePalette } from "./components/NodePalette";
 import { RunDrawer } from "./components/RunDrawer";
 import { RunPanel } from "./components/RunPanel";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { WorkflowIssuePanel } from "./components/WorkflowIssuePanel";
 import { WorkflowConflictDialog } from "./components/WorkflowConflictDialog";
 import { WorkflowManager } from "./components/WorkflowManager";
@@ -1248,6 +1249,7 @@ export default function App() {
             onOpenChange={setIsWorkflowSettingsOpen}
           />
         )}
+        themeToggle={<ThemeToggle />}
         workflowManager={(
           <WorkflowManager
             currentWorkflowName={selectedWorkflowId ? workflow.name : undefined}

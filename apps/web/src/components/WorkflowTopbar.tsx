@@ -57,6 +57,7 @@ type WorkflowTopbarProps = {
   operationState: WorkflowTopbarOperationState;
   resourceMenu: ReactNode;
   settingsMenu: ReactNode;
+  themeToggle?: ReactNode;
   workflowManager: ReactNode;
 };
 
@@ -66,6 +67,7 @@ export function WorkflowTopbar({
   operationState,
   resourceMenu,
   settingsMenu,
+  themeToggle,
   workflowManager,
 }: WorkflowTopbarProps) {
   return (
@@ -161,6 +163,7 @@ export function WorkflowTopbar({
           >
             <Redo2 aria-hidden="true" size={16} strokeWidth={2.1} />
           </button>
+          {themeToggle}
         </div>
 
         <div aria-label="工作区资源" className="topbar-action-group" role="group">
