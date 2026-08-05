@@ -11,3 +11,17 @@ dist/
 coverage/
 .DS_Store
 .env
+.nodeflow-packages/
+nodes/_installed/
+
+# 运行生成物与本地缓存
+.tmp/
+tmp/
+logs/
+reports/
+*.orig
+
+# 工具缓存与非交付参考资料
+.qoder/
+outsource/
+ppt_beautify_review/
