@@ -142,3 +142,55 @@ def test_credential_reference_protection_ignores_unrelated_config_values():
     assert client.post("/api/workflows", json=workflow).status_code == 200
     assert client.get(f"/api/credentials/{credential['id']}/references").json() == []
     assert client.delete(f"/api/credentials/{credential['id']}").status_code == 204
+
+
+def test_credential_api_rejects_unknown_type_and_invalid_data():
+    client = _client()
+
+    unknown_type = client.post(
+        "/api/credentials",
+        json={"type_id": "nope.unknown", "name": "不存在类型", "data": {}},
+    )
+    assert unknown_type.status_code == 422
+    assert unknown_type.json()["detail"] == [
+        {
+            "path": "type_id",
+            "message": "不支持的凭据类型。",
+            "code": "credential_type_unknown",
+        }
+    ]
+
+    invalid_data = client.post(
+        "/api/credentials",
+        json={"type_id": "http.bearer", "name": "缺字段", "data": {}},
+    )
+    assert invalid_data.status_code == 422
+    detail = invalid_data.json()["detail"]
+    assert detail[0]["code"] == "credential_data_invalid"
+    assert "缺少字段" in detail[0]["message"]
+
+
+def test_credential_api_rejects_duplicate_name_within_same_type():
+    client = _client()
+    _create_bearer_credential(client)
+
+    duplicate = client.post(
+        "/api/credentials",
+        json={
+            "type_id": "http.bearer",
+            "name": "测试接口令牌",
+            "data": {"token": "another-token"},
+        },
+    )
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "同类型下已存在同名凭据。"
+
+
+def test_credential_api_returns_404_for_missing_credentials():
+    client = _client()
+
+    assert client.patch("/api/credentials/cred_missing", json={"name": "新名"}).status_code == 404
+    assert client.get("/api/credentials/cred_missing/references").status_code == 404
+    assert client.delete("/api/credentials/cred_missing").status_code == 404
+
