@@ -23,6 +23,7 @@ reports/
 *.orig
 
 # 工具缓存与非交付参考资料
-.qoder/
+.qoder/*
+!.qoder/skills/
 outsource/
 ppt_beautify_review/
