@@ -4,9 +4,10 @@ from typing import Any
 
 from pydantic import Field
 
-from nodeflow_sdk import BaseNode, Input, NodeConfig, NodeContext, Output, node
+from nodeflow_sdk import BaseNode, FormField, FormGroup, Input, NodeConfig, NodeContext, NodeForm, Output, node
 
 from nodes.builtin._data_utils import resolve_data_path
+from nodes.builtin._schemas import ANY_JSON_SCHEMA, ASSERTION_RESULT_SCHEMA, HTTP_RESPONSE_SCHEMA
 
 
 class StatusCodeAssertConfig(NodeConfig):
@@ -18,12 +19,28 @@ class StatusCodeAssertConfig(NodeConfig):
     name="Assert Status Code",
     category="Assertions",
     description="Assert an HTTP response status code.",
+    group="action",
+    icon="badge-check",
+    tags=["assertion", "http", "testing"],
+    keywords=["status", "code", "response", "expect"],
+    documentation_url="/docs/nodes/index.html#assert.status_code",
+    form=NodeForm(
+        groups=(
+            FormGroup(
+                "assertion",
+                "断言",
+                fields=(
+                    FormField("expected", control="number", label="期望状态码"),
+                ),
+            ),
+        )
+    ),
 )
 class StatusCodeAssertNode(BaseNode[StatusCodeAssertConfig]):
-    inputs = {"input": Input(required=True, description="HTTP response")}
+    inputs = {"input": Input(display_name="响应", required=True, description="HTTP response", schema=HTTP_RESPONSE_SCHEMA)}
     outputs = {
-        "passed": Output(description="Assertion passed"),
-        "failed": Output(description="Assertion failed"),
+        "passed": Output(display_name="通过", description="Assertion passed", schema=ASSERTION_RESULT_SCHEMA),
+        "failed": Output(display_name="失败", description="Assertion failed", schema=ASSERTION_RESULT_SCHEMA),
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict):
@@ -49,12 +66,34 @@ class EqualsAssertConfig(NodeConfig):
     expected: Any = Field(..., title="Expected value")
 
 
-@node(id="assert.equals", name="Assert Equals", category="Assertions", description="Assert that a value equals expected.")
+@node(
+    id="assert.equals",
+    name="Assert Equals",
+    category="Assertions",
+    description="Assert that a value equals expected.",
+    group="action",
+    icon="equal",
+    tags=["assertion", "testing"],
+    keywords=["equals", "expect", "compare", "actual"],
+    documentation_url="/docs/nodes/index.html#assert.equals",
+    form=NodeForm(
+        groups=(
+            FormGroup(
+                "comparison",
+                "比较",
+                fields=(
+                    FormField("actual_path", label="数据路径", placeholder="body.user.id", expression="disabled"),
+                    FormField("expected", control="textarea", label="期望值"),
+                ),
+            ),
+        )
+    ),
+)
 class EqualsAssertNode(BaseNode[EqualsAssertConfig]):
-    inputs = {"input": Input(required=True, description="Source data")}
+    inputs = {"input": Input(display_name="数据", required=True, description="Source data", schema=ANY_JSON_SCHEMA)}
     outputs = {
-        "passed": Output(description="Assertion passed"),
-        "failed": Output(description="Assertion failed"),
+        "passed": Output(display_name="通过", description="Assertion passed", schema=ASSERTION_RESULT_SCHEMA),
+        "failed": Output(display_name="失败", description="Assertion failed", schema=ASSERTION_RESULT_SCHEMA),
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict):
@@ -87,12 +126,34 @@ class ContainsAssertConfig(NodeConfig):
     expected: Any = Field(..., title="Expected contained value")
 
 
-@node(id="assert.contains", name="Assert Contains", category="Assertions", description="Assert that a value contains expected.")
+@node(
+    id="assert.contains",
+    name="Assert Contains",
+    category="Assertions",
+    description="Assert that a value contains expected.",
+    group="action",
+    icon="search-check",
+    tags=["assertion", "testing"],
+    keywords=["contains", "include", "expect", "text"],
+    documentation_url="/docs/nodes/index.html#assert.contains",
+    form=NodeForm(
+        groups=(
+            FormGroup(
+                "comparison",
+                "比较",
+                fields=(
+                    FormField("actual_path", label="数据路径", placeholder="body.message", expression="disabled"),
+                    FormField("expected", control="textarea", label="期望包含值"),
+                ),
+            ),
+        )
+    ),
+)
 class ContainsAssertNode(BaseNode[ContainsAssertConfig]):
-    inputs = {"input": Input(required=True, description="Source data")}
+    inputs = {"input": Input(display_name="数据", required=True, description="Source data", schema=ANY_JSON_SCHEMA)}
     outputs = {
-        "passed": Output(description="Assertion passed"),
-        "failed": Output(description="Assertion failed"),
+        "passed": Output(display_name="通过", description="Assertion passed", schema=ASSERTION_RESULT_SCHEMA),
+        "failed": Output(display_name="失败", description="Assertion failed", schema=ASSERTION_RESULT_SCHEMA),
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict):
