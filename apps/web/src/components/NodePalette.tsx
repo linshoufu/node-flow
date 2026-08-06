@@ -137,6 +137,7 @@ export function NodePalette({
                       disabled={disabled}
                       draggable={!disabled}
                       key={nodeType.id}
+                      title={nodePackageLabel(nodeType)}
                       type="button"
                       onClick={() => handleAddNode(nodeType)}
                       onDragStart={(event) => {
@@ -154,20 +155,24 @@ export function NodePalette({
                         event.dataTransfer.setData("text/plain", nodeType.id);
                       }}
                     >
-                      <span className="palette-node-heading">
-                        <NodeTypeIcon className="palette-node-icon" icon={nodeType.icon} />
-                        <span>{displayNodeName(nodeType)}</span>
-                      </span>
-                      {nodeType.description ? <p>{nodeType.description}</p> : null}
-                      <small className="palette-node-port-summary">{portSummary.text}</small>
-                      <small className="palette-node-source">{nodePackageLabel(nodeType)}</small>
-                      {nodeType.tags && nodeType.tags.length > 0 ? (
-                        <span className="palette-node-tags">
-                          {nodeType.tags.map((tag) => (
-                            <em key={tag}>{tag}</em>
-                          ))}
+                      <NodeTypeIcon className="palette-node-icon" icon={nodeType.icon} />
+                      <span className="palette-node-body">
+                        <span className="palette-node-topline">
+                          <span className="palette-node-name">{displayNodeName(nodeType)}</span>
+                          <small className="palette-node-source">{nodePackageLabel(nodeType)}</small>
                         </span>
-                      ) : null}
+                        {nodeType.description ? (
+                          <span className="palette-node-desc">{nodeType.description}</span>
+                        ) : null}
+                        <small className="palette-node-ports">{portSummary.text}</small>
+                        {nodeType.tags && nodeType.tags.length > 0 ? (
+                          <span className="palette-node-tags">
+                            {nodeType.tags.map((tag) => (
+                              <em key={tag}>{tag}</em>
+                            ))}
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                   );
                 })}

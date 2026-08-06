@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MousePointerClick } from "lucide-react";
 import { translateCategory } from "../lib/display";
 import type { NodeRunDetail } from "../lib/nodeRunDetail";
 import { nodeRuntimeSourceLabel, type NodeRuntimeNavigationSource } from "../lib/nodeRuntimeNavigation";
@@ -187,7 +188,14 @@ export function ConfigPanel({
       </div>
 
       {!node || !nodeType ? (
-        <p className="empty-state">选择一个节点后，在这里编辑它的参数。</p>
+        <div className="config-empty-state">
+          <span aria-hidden="true" className="config-empty-icon">
+            <MousePointerClick size={22} strokeWidth={2} />
+          </span>
+          <h3>还没有选中节点</h3>
+          <p className="empty-state">选择一个节点后，在这里编辑它的参数。</p>
+          <p className="config-empty-hint">提示：从左侧节点库拖拽节点到画布，或点击画布中的节点开始配置。</p>
+        </div>
       ) : (
         <div className="config-content">
           <div className="selected-node">

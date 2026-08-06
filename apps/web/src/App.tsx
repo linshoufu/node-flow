@@ -228,6 +228,22 @@ export default function App() {
     pollIntervalMs: RUN_POLL_INTERVAL_MS,
   });
   const [runDrawerState, setRunDrawerState] = useState(() => initialRunDrawerState);
+  const [isCanvasFocusMode, setIsCanvasFocusMode] = useState(false);
+
+  useEffect(() => {
+    if (!isCanvasFocusMode) {
+      return;
+    }
+    const handleFocusModeShortcut = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      setIsCanvasFocusMode(false);
+    };
+    window.addEventListener("keydown", handleFocusModeShortcut);
+    return () => window.removeEventListener("keydown", handleFocusModeShortcut);
+  }, [isCanvasFocusMode]);
   const {
     changeStatusFilter: changeRunHistoryStatusFilter,
     error: workflowRunHistoryError,
@@ -1120,7 +1136,7 @@ export default function App() {
   }, [isWorkflowSettingsOpen, workflowSettingsFocusRequest]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-focus={isCanvasFocusMode ? "true" : undefined}>
       <WorkflowTopbar
         actions={{
           onCancelRun: cancelRun,
@@ -1474,6 +1490,8 @@ export default function App() {
             onReloadNodeTypes={() => void reloadNodeTypes()}
           />
         )}
+        focusMode={isCanvasFocusMode}
+        onToggleFocusMode={() => setIsCanvasFocusMode((current) => !current)}
         resetKeys={{
           canvas: `${workflow.id}:${workflowRevision}:${editScopeKey}`,
           inspector: `${workflow.id}:${workflowRevision}:${selectedNodeId ?? "none"}`,

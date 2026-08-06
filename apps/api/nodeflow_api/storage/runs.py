@@ -129,7 +129,7 @@ class RunRepositoryMixin:
                 """
                 SELECT * FROM runs
                 WHERE status IN ('queued', 'running')
-                ORDER BY created_at, id
+                ORDER BY created_at, rowid
                 """
             ).fetchall()
         return [RunRecord(**dict(row)) for row in rows]
@@ -168,7 +168,7 @@ class RunRepositoryMixin:
                     JOIN run_invocations i ON i.run_id = r.id
                     WHERE r.status = 'queued'
                       AND i.execution_mode IN ('manual', 'schedule')
-                    ORDER BY r.created_at, r.id
+                    ORDER BY r.created_at, r.rowid
                     """
                 ).fetchall()
                 row = next(
@@ -309,7 +309,7 @@ class RunRepositoryMixin:
         with self._lock:
             row = self._connection.execute(
                 """
-                SELECT r.*, i.execution_mode
+                SELECT r.*, r.rowid AS rowid, i.execution_mode
                 FROM runs r
                 JOIN run_invocations i ON i.run_id = r.id
                 WHERE r.id = ?
@@ -351,9 +351,9 @@ class RunRepositoryMixin:
                 JOIN run_invocations i ON i.run_id = r.id
                 WHERE r.status = 'queued'
                   AND i.execution_mode IN ('manual', 'schedule')
-                  AND (r.created_at < ? OR (r.created_at = ? AND r.id <= ?))
+                  AND (r.created_at < ? OR (r.created_at = ? AND r.rowid <= ?))
                 """,
-                (row["created_at"], row["created_at"], run_id),
+                (row["created_at"], row["created_at"], row["rowid"]),
             ).fetchone()["total"]
         return RunQueueStatus(
             run_id=run_id,
