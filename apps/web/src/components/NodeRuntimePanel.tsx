@@ -40,6 +40,9 @@ type NodeRuntimePanelProps = {
 
 type RuntimeDetailsSection = "data" | "logs" | "events" | "raw";
 
+// 超长 JSON 块默认截断阈值（字符），超过后折叠展示并提供展开与复制出口
+const RUNTIME_PRE_COLLAPSE_LIMIT = 2000;
+
 const RUNTIME_DETAIL_SECTIONS: Array<{ id: RuntimeDetailsSection; label: string }> = [
   { id: "data", label: "执行数据" },
   { id: "logs", label: "日志" },
@@ -130,7 +133,7 @@ export function NodeRuntimePanel({
           {runtimeState.scopes.length > 0 ? (
             <div className="runtime-block">
               <strong>范围</strong>
-              <pre>{runtimeState.scopes.map(formatScope).join("\n")}</pre>
+              <RuntimeCollapsiblePre label="范围" showCopy text={runtimeState.scopes.map(formatScope).join("\n")} />
             </div>
           ) : null}
         </>
@@ -410,11 +413,12 @@ function RuntimeItemList({
                 text={formatUnknown(item.json)}
               />
             </div>
-            <pre>{formatUnknown(item.json)}</pre>
+            {/* item 卡片头部已有复制按钮，这里只负责截断折叠 */}
+            <RuntimeCollapsiblePre label={`${connectionName} 第 ${originalIndex + 1} 项`} text={formatUnknown(item.json)} />
             {metadata ? (
               <div className="runtime-item-metadata">
                 <span>元数据</span>
-                <pre>{formatUnknown(metadata)}</pre>
+                <RuntimeCollapsiblePre label={`${connectionName} 第 ${originalIndex + 1} 项元数据`} showCopy text={formatUnknown(metadata)} />
               </div>
             ) : null}
           </li>
@@ -517,7 +521,9 @@ function RuntimeLogList({ logs, searchQuery }: { logs: unknown; searchQuery: str
             <div>
               <p>{logMessage(log)}</p>
               {logTimestamp(log) ? <time>{formatRuntimeTime(logTimestamp(log) ?? "")}</time> : null}
-              {logFields(log) ? <pre>{formatUnknown(logFields(log))}</pre> : null}
+              {logFields(log) ? (
+                <RuntimeCollapsiblePre label={`第 ${originalIndex + 1} 条日志字段`} showCopy text={formatUnknown(logFields(log))} />
+              ) : null}
             </div>
           </li>
         ))}
@@ -558,7 +564,33 @@ function RuntimeBlock({ title, value }: { title: string; value: unknown }) {
         <strong>{title}</strong>
         <RuntimeCopyButton label={title} text={text} />
       </div>
-      <pre>{text}</pre>
+      {/* 头部已有复制按钮，折叠块不重复提供复制 */}
+      <RuntimeCollapsiblePre label={title} text={text} />
+    </div>
+  );
+}
+
+/** 大 JSON 展示块：超长默认截断，可展开/收起，可选附带复制完整内容按钮 */
+function RuntimeCollapsiblePre({ label, showCopy = false, text }: { label: string; showCopy?: boolean; text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isOverflow = text.length > RUNTIME_PRE_COLLAPSE_LIMIT;
+
+  return (
+    <div className="runtime-collapsible-pre">
+      <pre>{isOverflow && !isExpanded ? `${text.slice(0, RUNTIME_PRE_COLLAPSE_LIMIT)}...` : text}</pre>
+      {isOverflow ? (
+        <div className="runtime-collapsible-pre-actions">
+          <button
+            aria-expanded={isExpanded}
+            aria-label={`${isExpanded ? "收起" : "展开"}${label}完整内容`}
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+          >
+            {isExpanded ? "收起" : `展开全部（${text.length} 字符）`}
+          </button>
+          {showCopy ? <RuntimeCopyButton label={label} text={text} /> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

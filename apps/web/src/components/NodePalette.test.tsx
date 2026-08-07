@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localizeNodeType } from "../lib/display";
 import type { NodeType } from "../types";
-import { NodePalette } from "./NodePalette";
+import { NodePalette, buildNodeTypeSearchIndex, filterNodeTypes } from "./NodePalette";
 
 const nodeTypes: NodeType[] = [
   nodeType("http.request", "HTTP 请求", "网络", "发送 HTTP 请求。"),
@@ -54,12 +54,16 @@ describe("NodePalette", () => {
       />,
     );
 
+    // 包来源改在详情卡里展示：聚焦节点行后出现
+    fireEvent.focus(screen.getByRole("button", { name: "HTTP 请求" }));
     expect(screen.getByText("工具集 v1.2.0")).toBeInTheDocument();
     expect(screen.queryByText("example.tools")).not.toBeInTheDocument();
   });
 
   it("labels nodes without package provenance as local scripts", () => {
     render(<NodePalette nodeTypes={nodeTypes} onAddNode={vi.fn()} />);
+
+    fireEvent.focus(screen.getByRole("button", { name: "HTTP 请求" }));
 
     expect(screen.getAllByText("本地脚本").length).toBeGreaterThan(0);
   });
@@ -153,8 +157,14 @@ describe("NodePalette", () => {
     );
 
     expect(screen.getByText("接口请求")).toBeInTheDocument();
-    expect(screen.getByText("推荐")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "接口请求 推荐 网络" })).toBeInTheDocument();
+
+    // 单行化后，标签等详情在悬停/聚焦的详情卡里展示
+    const productNode = screen.getByRole("button", { name: "接口请求 推荐 网络" });
+    fireEvent.focus(productNode);
+    expect(screen.getByText("推荐")).toBeInTheDocument();
+    fireEvent.blur(productNode);
+    expect(screen.queryByText("推荐")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索节点" }), { target: { value: "rest" } });
 
@@ -211,9 +221,13 @@ describe("NodePalette", () => {
     );
 
     const httpNode = screen.getByRole("button", { name: "HTTP 请求 HTTP 接口 网络" });
-    expect(within(httpNode).getByText("HTTP")).toBeInTheDocument();
-    expect(within(httpNode).getByText("接口")).toBeInTheDocument();
-    expect(within(httpNode).getByText("网络")).toBeInTheDocument();
+    fireEvent.focus(httpNode);
+    const previewCard = document.querySelector(".palette-node-preview");
+    expect(previewCard).not.toBeNull();
+    expect(within(previewCard as HTMLElement).getByText("HTTP")).toBeInTheDocument();
+    expect(within(previewCard as HTMLElement).getByText("接口")).toBeInTheDocument();
+    expect(within(previewCard as HTMLElement).getByText("网络")).toBeInTheDocument();
+    fireEvent.blur(httpNode);
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索节点" }), { target: { value: "network" } });
 
@@ -244,7 +258,10 @@ describe("NodePalette", () => {
       />
     );
 
+    // 端口契约摘要改在详情卡里展示：聚焦对应节点行后出现
+    fireEvent.focus(screen.getByRole("button", { name: "HTTP 请求" }));
     expect(screen.getByText("动作 · 输入 2 · 输出 2 · 必填输入 1 · 支持多连接")).toBeInTheDocument();
+    fireEvent.focus(screen.getByRole("button", { name: "手动触发" }));
     expect(screen.getByText("触发器 · 输入 0 · 输出 1")).toBeInTheDocument();
   });
 
@@ -339,6 +356,56 @@ describe("NodePalette", () => {
     expect(screen.queryByRole("button", { name: "HTTP 请求 网络" })).not.toBeInTheDocument();
   });
 
+  it("collapses and expands category groups and persists the preference", () => {
+    render(<NodePalette nodeTypes={nodeTypes} onAddNode={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "折叠 网络 分组" }));
+
+    expect(screen.queryByRole("button", { name: "HTTP 请求" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开 网络 分组" })).toHaveAttribute("aria-expanded", "false");
+    expect(window.localStorage.getItem("node-flow.palette-collapsed-categories")).toBe(JSON.stringify(["网络"]));
+
+    fireEvent.click(screen.getByRole("button", { name: "展开 网络 分组" }));
+
+    expect(screen.getByRole("button", { name: "HTTP 请求" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("node-flow.palette-collapsed-categories")).toBe(JSON.stringify([]));
+  });
+
+  it("keeps matching nodes visible while searching even if their category is collapsed", () => {
+    window.localStorage.setItem("node-flow.palette-collapsed-categories", JSON.stringify(["网络"]));
+    render(<NodePalette nodeTypes={nodeTypes} onAddNode={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "HTTP 请求" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索节点" }), { target: { value: "HTTP" } });
+
+    expect(screen.getByRole("button", { name: "HTTP 请求" })).toBeInTheDocument();
+  });
+
+  it("adds the selected node from search results with keyboard navigation", () => {
+    const onAddNode = vi.fn();
+    render(<NodePalette nodeTypes={nodeTypes} onAddNode={onAddNode} />);
+
+    const searchInput = screen.getByRole("searchbox", { name: "搜索节点" });
+    fireEvent.change(searchInput, { target: { value: "e" } });
+    fireEvent.keyDown(searchInput, { key: "ArrowDown" });
+    fireEvent.keyDown(searchInput, { key: "Enter" });
+
+    expect(onAddNode).toHaveBeenCalledWith(nodeTypes[1]);
+  });
+
+  it("clears the search with the dedicated clear button", () => {
+    render(<NodePalette nodeTypes={nodeTypes} onAddNode={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索节点" }), { target: { value: "HTTP" } });
+    expect(screen.getByText("1 个")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "清空搜索" }));
+
+    expect(screen.getByText("3 个")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "读取 CSV" })).toBeInTheDocument();
+  });
+
   it("records recently used nodes and filters them with search", () => {
     const onAddNode = vi.fn();
     render(<NodePalette nodeTypes={nodeTypes} onAddNode={onAddNode} />);
@@ -395,6 +462,15 @@ describe("NodePalette", () => {
     expect(screen.getByRole("button", { name: "最近 0" })).toBeInTheDocument();
     expect(emitWarning).not.toHaveBeenCalled();
     emitWarning.mockRestore();
+  });
+
+  it("filters with a prebuilt search index exactly like the on-demand path", () => {
+    const searchIndex = buildNodeTypeSearchIndex(nodeTypes);
+
+    // 预建索引与实时拼接路径的过滤结果保持一致（含大小写归一化）
+    expect(filterNodeTypes(nodeTypes, "HTTP", searchIndex)).toEqual([nodeTypes[0]]);
+    expect(filterNodeTypes(nodeTypes, "状态码", searchIndex)).toEqual([nodeTypes[1]]);
+    expect(filterNodeTypes(nodeTypes, "  ", searchIndex)).toEqual(nodeTypes);
   });
 });
 

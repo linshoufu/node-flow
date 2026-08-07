@@ -209,7 +209,7 @@ describe("useNodeCatalogController", () => {
   });
 
   it("does not install an untrusted package when confirmation is declined", async () => {
-    const confirmAction = vi.fn().mockReturnValue(false);
+    const confirmAction = vi.fn().mockResolvedValue(false);
     const catalogClient = client();
     const { result } = renderHook(() => useNodeCatalogController({
       client: catalogClient,

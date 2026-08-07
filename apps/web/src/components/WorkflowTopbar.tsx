@@ -1,5 +1,19 @@
-import type { ReactNode, Ref } from "react";
-import { Redo2, Search, SlidersHorizontal, Undo2, Workflow } from "lucide-react";
+import type { ReactNode } from "react";
+import { ActionIcon, Button, TextInput, Tooltip } from "@mantine/core";
+import {
+  CircleStop,
+  Play,
+  Plus,
+  Redo2,
+  Rocket,
+  Save,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Undo2,
+  Workflow,
+} from "lucide-react";
 import type { WorkflowReleaseActionState } from "../lib/workflowRelease";
 import type { WorkflowSaveActionState } from "../lib/saveState";
 import type { WorkflowPublicationStatus } from "../types";
@@ -16,10 +30,6 @@ export type WorkflowTopbarIdentity = {
     title: string;
   };
   selectedWorkflowId: string;
-  timeoutInputRef: Ref<HTMLInputElement>;
-  timeoutMaximum: number;
-  timeoutMinimum: number;
-  timeoutSeconds: number;
 };
 
 export type WorkflowTopbarActions = {
@@ -36,7 +46,6 @@ export type WorkflowTopbarActions = {
   onToggleActivation: () => void;
   onUndo: () => void;
   onUpdateName: (name: string) => void;
-  onUpdateTimeout: (value: string) => void;
   onValidateWorkflow: () => void;
 };
 
@@ -77,23 +86,26 @@ export function WorkflowTopbar({
           <Workflow size={16} strokeWidth={2.2} />
         </span>
         <span className="brand-title">节点流</span>
-        <input
+        <TextInput
           aria-label="工作流名称"
-          className="workflow-name"
+          classNames={{ input: "workflow-name", root: "workflow-name-root" }}
           disabled={identity.editorLocked}
+          size="sm"
           value={identity.name}
           onChange={(event) => actions.onUpdateName(event.currentTarget.value)}
         />
         {identity.saveStatus.hasConflict ? (
-          <button
+          <Button
             aria-label="保存状态"
             className={`workflow-save-state ${identity.saveStatus.className}`}
+            size="compact-xs"
             title="自动保存已暂停，点击处理版本冲突"
             type="button"
+            variant="subtle"
             onClick={actions.onOpenSaveConflict}
           >
             {identity.saveStatus.label}
-          </button>
+          </Button>
         ) : (
           <span
             aria-label="保存状态"
@@ -111,24 +123,10 @@ export function WorkflowTopbar({
             {publicationStatusLabel(identity.publication)}
           </span>
         ) : null}
-        <label className="workflow-timeout-field">
-          <span>超时</span>
-          <input
-            aria-label="运行超时（秒）"
-            disabled={identity.editorLocked}
-            max={identity.timeoutMaximum}
-            min={identity.timeoutMinimum}
-            ref={identity.timeoutInputRef}
-            type="number"
-            value={identity.timeoutSeconds}
-            onChange={(event) => actions.onUpdateTimeout(event.currentTarget.value)}
-          />
-          <span>秒</span>
-        </label>
         <nav aria-label="编辑范围" className="breadcrumbs">
-          <button disabled={!identity.activeScopeLabel} type="button" onClick={actions.onReturnToMain}>
+          <Button disabled={!identity.activeScopeLabel} size="compact-xs" type="button" variant="subtle" onClick={actions.onReturnToMain}>
             主流程
-          </button>
+          </Button>
           {identity.activeScopeLabel ? (
             <span className="breadcrumb-current">/ {identity.activeScopeLabel}</span>
           ) : null}
@@ -137,35 +135,9 @@ export function WorkflowTopbar({
 
       <div className="topbar-actions">
         <div aria-label="编辑历史" className="topbar-action-group topbar-history-group" role="group">
-          <button
-            aria-label="打开命令面板"
-            className="icon-button"
-            title="打开命令面板（Ctrl+K）"
-            type="button"
-            onClick={actions.onOpenCommandPalette}
-          >
-            <Search aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
-          <button
-            aria-label="撤销"
-            className="icon-button"
-            disabled={!operationState.canUndo}
-            title="撤销（Ctrl+Z）"
-            type="button"
-            onClick={actions.onUndo}
-          >
-            <Undo2 aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
-          <button
-            aria-label="重做"
-            className="icon-button"
-            disabled={!operationState.canRedo}
-            title="重做（Ctrl+Y 或 Ctrl+Shift+Z）"
-            type="button"
-            onClick={actions.onRedo}
-          >
-            <Redo2 aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
+          <Tooltip label="命令面板 · Ctrl+K"><ActionIcon aria-label="打开命令面板" className="icon-button" size="lg" type="button" onClick={actions.onOpenCommandPalette}><Search aria-hidden="true" size={16} strokeWidth={2.1} /></ActionIcon></Tooltip>
+          <Tooltip label="撤销 · Ctrl+Z"><ActionIcon aria-label="撤销" className="icon-button" disabled={!operationState.canUndo} size="lg" type="button" onClick={actions.onUndo}><Undo2 aria-hidden="true" size={16} strokeWidth={2.1} /></ActionIcon></Tooltip>
+          <Tooltip label="重做 · Ctrl+Y"><ActionIcon aria-label="重做" className="icon-button" disabled={!operationState.canRedo} size="lg" type="button" onClick={actions.onRedo}><Redo2 aria-hidden="true" size={16} strokeWidth={2.1} /></ActionIcon></Tooltip>
           {themeToggle}
         </div>
 
@@ -176,54 +148,59 @@ export function WorkflowTopbar({
         </div>
 
         <div aria-label="工作流命令" className="topbar-action-group" role="group">
-          <button disabled={operationState.isBusy} type="button" onClick={actions.onCreateWorkflow}>新建</button>
-          <button disabled={operationState.isBusy} type="button" onClick={actions.onValidateWorkflow}>验证</button>
-          <button
+          <Button disabled={operationState.isBusy} leftSection={<Plus size={14} />} size="compact-sm" type="button" variant="subtle" onClick={actions.onCreateWorkflow}>新建</Button>
+          <Button disabled={operationState.isBusy} leftSection={<ShieldCheck size={14} />} size="compact-sm" type="button" variant="subtle" onClick={actions.onValidateWorkflow}>验证</Button>
+          <Button
             disabled={operationState.save.disabled}
+            leftSection={<Save size={14} />}
+            size="compact-sm"
             title={operationState.save.title}
             type="button"
+            variant="subtle"
             onClick={actions.onSaveWorkflow}
-          >保存</button>
+          >保存</Button>
         </div>
 
         <div aria-label="发布管理" className="topbar-action-group" role="group">
-          <button
+          <Button
             disabled={operationState.activation.disabled}
+            leftSection={<Rocket size={14} />}
+            size="compact-sm"
             title={operationState.activation.title}
             type="button"
+            variant="subtle"
             onClick={actions.onToggleActivation}
-          >{operationState.activation.label}</button>
-          <button
+          >{operationState.activation.label}</Button>
+          <Button
             disabled={operationState.upgrade.disabled}
+            leftSection={<Sparkles size={14} />}
+            size="compact-sm"
             title={operationState.upgrade.title}
             type="button"
+            variant="subtle"
             onClick={actions.onPreviewNodeUpgrades}
-          >{operationState.upgrade.label}</button>
+          >{operationState.upgrade.label}</Button>
         </div>
 
         <div aria-label="运行控制" className="topbar-action-group topbar-run-group" role="group">
-          <button
-            aria-label="设置本次运行输入"
-            className="icon-button"
-            disabled={operationState.isBusy}
-            title="设置本次运行输入"
-            type="button"
-            onClick={actions.onOpenManualRun}
-          >
-            <SlidersHorizontal aria-hidden="true" size={16} strokeWidth={2} />
-          </button>
-          <button
+          <Tooltip label="运行输入"><ActionIcon aria-label="设置本次运行输入" className="icon-button" disabled={operationState.isBusy} size="lg" type="button" onClick={actions.onOpenManualRun}><SlidersHorizontal aria-hidden="true" size={16} strokeWidth={2} /></ActionIcon></Tooltip>
+          <Button
             className="primary-button"
             disabled={operationState.isBusy}
+            leftSection={<Play size={14} fill="currentColor" />}
+            size="compact-sm"
             type="button"
             onClick={actions.onRunWorkflow}
-          >运行</button>
-          <button
+          >运行</Button>
+          <Button
             className="danger-button"
             disabled={!operationState.canCancelRun || operationState.isCancelling}
+            leftSection={<CircleStop size={14} />}
+            size="compact-sm"
             type="button"
+            variant="subtle"
             onClick={actions.onCancelRun}
-          >取消</button>
+          >取消</Button>
         </div>
       </div>
     </header>

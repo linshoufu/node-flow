@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { StrictMode } from "react";
+import { cleanup, fireEvent, render as testingRender, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { NodeFlowMantineProvider } from "./components/NodeFlowMantineProvider";
 import type { WorkflowDocument } from "./types";
 
 class ResizeObserverMock {
@@ -29,11 +30,12 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the editor shell", () => {
+  it("renders the editor shell", async () => {
     render(<App />);
 
     expect(screen.getByText("节点流")).toBeInTheDocument();
-    expect(screen.getByLabelText("画布工作区")).toBeInTheDocument();
+    // 初始加载阶段画布先展示骨架屏，目录加载完成后才渲染真实画布
+    expect(await screen.findByLabelText("画布工作区")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "验证" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "运行" })).toBeInTheDocument();
@@ -303,7 +305,6 @@ describe("App", () => {
   it("restores the current URL when browser navigation would discard local changes", async () => {
     window.history.replaceState(null, "", "/workflow/wf_current");
     const currentWorkflow = workflowDocument({ id: "wf_current", name: "当前工作流" });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/workflows/wf_current")) {
@@ -325,8 +326,12 @@ describe("App", () => {
     window.history.pushState(null, "", "/workflow/wf_other");
     fireEvent.popState(window);
 
+    // 统一确认弹窗替换 window.confirm：拒绝丢弃后导航被还原
+    const discardDialog = await screen.findByRole("dialog", { name: "丢弃未保存修改？" });
+    fireEvent.click(within(discardDialog).getByRole("button", { name: "取消" }));
+
     await waitFor(() => expect(window.location.pathname).toBe("/workflow/wf_current"));
-    expect(confirmSpy).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog", { name: "丢弃未保存修改？" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("工作流名称")).toHaveValue("尚未保存");
     expect(fetchMock.mock.calls.some(([input]) =>
       String(input) === "http://127.0.0.1:8150/api/workflows/wf_other"
@@ -392,10 +397,12 @@ describe("App", () => {
     const credentialDialog = await screen.findByRole("dialog", { name: "凭据管理" });
     expect(credentialDialog).toHaveAttribute("aria-modal", "true");
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(window.location.pathname).toBe("/resources/credentials");
 
+    // 资源页面按 Escape 返回工作流，页面内容随之卸载
     fireEvent.keyDown(document, { key: "Escape" });
+    expect(await screen.findByRole("button", { name: "资源" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "凭据管理" })).not.toBeInTheDocument();
-    expect(resourceTrigger).toHaveFocus();
     fireEvent.click(resourceTrigger);
     fireEvent.click(
       within(screen.getByRole("dialog", { name: "资源管理" })).getByRole("button", {
@@ -405,6 +412,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("dialog", { name: "项目变量管理" })).toBeInTheDocument();
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(window.location.pathname).toBe("/resources/variables");
   });
 
   it("opens the command palette with Ctrl+K and dispatches resource commands", async () => {
@@ -697,6 +705,60 @@ describe("App", () => {
     expect(screen.getByText("已加载 2 个节点，发现 1 个节点包问题。")) .toBeInTheDocument();
   });
 
+  it("opens the node asset manager and bridges source files to the system editor", async () => {
+    const initialNodeTypes = [
+      {
+        id: "local.demo",
+        name: "Local Demo",
+        displayName: "本地节点",
+        category: "Demo",
+        description: "Local script node.",
+        inputs: {},
+        outputs: { success: { description: "Done" } },
+        configSchema: { type: "object", properties: {} },
+        sourcePath: "local/demo.py",
+      },
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/node-assets/open-source") && init?.method === "POST") {
+        return jsonResponse({ opened: true, sourcePath: "local/demo.py" });
+      }
+      if (url.endsWith("/api/node-packages")) {
+        return jsonResponse({ packages: [], diagnostics: [], legacyNodeCount: 1 });
+      }
+      if (url.endsWith("/api/node-types")) {
+        return jsonResponse(initialNodeTypes);
+      }
+      if ((url.endsWith("/api/workflows") || url.endsWith("/api/workflows?draft=true")) && init?.method !== "POST") {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "本地节点" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^资源/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "资源管理" })).getByRole("button", { name: /^节点资产/ }),
+    );
+    const assetWorkspace = screen.getByRole("region", { name: "节点资产管理" });
+    expect(assetWorkspace).toBeInTheDocument();
+    expect(within(assetWorkspace).getByRole("region", { name: "本地脚本" })).toBeInTheDocument();
+
+    fireEvent.click(within(assetWorkspace).getByRole("button", { name: "打开源文件" }));
+    expect(await screen.findByText("已用系统默认程序打开源文件“local/demo.py”。")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/node-assets\/open-source$/),
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.click(within(assetWorkspace).getByRole("button", { name: "关闭节点资产管理" }));
+    expect(screen.queryByRole("region", { name: "节点资产管理" })).not.toBeInTheDocument();
+  });
+
   it("disables a managed node package and refreshes the usable node library", async () => {
     const triggerNode = {
       id: "manual.trigger",
@@ -933,7 +995,6 @@ describe("App", () => {
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "刷新节点" }));
@@ -944,17 +1005,37 @@ describe("App", () => {
       target: { files: [file] },
     });
 
+    // 导入前弹出统一确认弹窗，确认后才执行安装
+    const installConfirm = await screen.findByRole("dialog", { name: "节点包操作确认" });
+    expect(installConfirm).toHaveTextContent("请只导入你信任的文件");
+    fireEvent.click(within(installConfirm).getByRole("button", { name: "执行操作" }));
+
     expect(
       await screen.findByText("已安装节点包“导入工具” v1.0.0，当前可用节点 2 个。"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "导入节点" })).toBeInTheDocument();
 
-    const packagePanel = screen.getByRole("dialog", { name: "节点包管理" });
+    // 返回工作流后，新导入的节点出现在节点库
+    fireEvent.click(screen.getByRole("button", { name: /返回工作流/ }));
+    expect(await screen.findByRole("button", { name: "导入节点" })).toBeInTheDocument();
+
+    // 重新进入资源页执行卸载
+    fireEvent.click(screen.getByRole("button", { name: /^资源/ }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "资源管理" })).getByRole("button", { name: /^节点包/ }));
+    const packagePanel = await screen.findByRole("dialog", { name: "节点包管理" });
     fireEvent.click(within(packagePanel).getByRole("button", { name: "卸载" }));
 
+    // 卸载前再次弹出统一确认弹窗，两次破坏性操作各确认一次
+    const uninstallConfirm = await screen.findByRole("dialog", { name: "节点包操作确认" });
+    expect(uninstallConfirm).toHaveTextContent("确认卸载节点包“导入工具”吗？");
+    fireEvent.click(within(uninstallConfirm).getByRole("button", { name: "执行操作" }));
+
     expect(await screen.findByText("已卸载节点包“导入工具”。")).toBeInTheDocument();
+
+    // 返回工作流后确认节点已从节点库移除
+    fireEvent.click(screen.getByRole("button", { name: /返回工作流/ }));
+    await screen.findByRole("button", { name: /^资源/ });
     expect(screen.queryByRole("button", { name: "导入节点" })).not.toBeInTheDocument();
-    expect(window.confirm).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog", { name: "节点包操作确认" })).not.toBeInTheDocument();
   });
 
   it("loads package history and restores a previous installed version", async () => {
@@ -1053,7 +1134,6 @@ describe("App", () => {
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "刷新节点" }));
@@ -1065,12 +1145,16 @@ describe("App", () => {
       await within(packagePanel).findByRole("button", { name: "恢复 v1.0.0" }),
     );
 
+    // 恢复历史版本前弹出统一确认弹窗，展示与旧 window.confirm 等价的文案
+    const restoreConfirm = await screen.findByRole("dialog", { name: "节点包操作确认" });
+    expect(restoreConfirm).toHaveTextContent(
+      "确认将节点包“历史工具”恢复到 v1.0.0吗？当前版本会保留到历史记录。",
+    );
+    fireEvent.click(within(restoreConfirm).getByRole("button", { name: "执行操作" }));
+
     expect(
       await screen.findByText("已将节点包“历史工具”恢复到 v1.0.0。"),
     ).toBeInTheDocument();
-    expect(window.confirm).toHaveBeenCalledWith(
-      "确认将节点包“历史工具”恢复到 v1.0.0吗？当前版本会保留到历史记录。",
-    );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8150/api/node-packages/example.installed/revisions/rev_123/activate",
       expect.objectContaining({ method: "POST" }),
@@ -1627,8 +1711,9 @@ describe("App", () => {
     const templateCard = await screen.findByRole("article", { name: "单接口状态码断言" });
     fireEvent.click(within(templateCard).getByRole("button", { name: "使用模板" }));
 
+    // 模板应用前会经过异步丢弃确认（未脏时直接放行），等待画布渲染模板节点
     const canvas = screen.getByLabelText("画布工作区");
-    expect(within(canvas).getByText("HTTP 请求")).toBeInTheDocument();
+    expect(await within(canvas).findByText("HTTP 请求")).toBeInTheDocument();
     expect(within(canvas).getByText("状态码断言")).toBeInTheDocument();
     expect(screen.getByLabelText("工作流名称")).toHaveValue("单接口状态码断言");
     expect(screen.getByText("未保存")).toBeInTheDocument();
@@ -1733,7 +1818,7 @@ describe("App", () => {
     const templateCard = await screen.findByRole("article", { name: "CSV 参数化接口测试" });
     fireEvent.click(within(templateCard).getByRole("button", { name: "使用模板" }));
 
-    expect(screen.getByLabelText("工作流名称")).toHaveValue("CSV 参数化接口测试");
+    await waitFor(() => expect(screen.getByLabelText("工作流名称")).toHaveValue("CSV 参数化接口测试"));
     expect(within(screen.getByLabelText("配置面板")).getByText("读取 CSV")).toBeInTheDocument();
     expect(screen.getByText("填写 CSV 文件路径，确认分隔符和表头设置。运行后可在运行详情查看表头和行数。")).toBeInTheDocument();
   });
@@ -1787,7 +1872,7 @@ describe("App", () => {
     const templateCard = await screen.findByRole("article", { name: "条件分支路由" });
     fireEvent.click(within(templateCard).getByRole("button", { name: "使用模板" }));
 
-    expect(screen.getByLabelText("工作流名称")).toHaveValue("条件分支路由");
+    await waitFor(() => expect(screen.getByLabelText("工作流名称")).toHaveValue("条件分支路由"));
     expect(within(screen.getByLabelText("配置面板")).getByText("条件判断")).toBeInTheDocument();
     expect(screen.getByDisplayValue("{{ inputs.input.approved }}")).toBeInTheDocument();
   });
@@ -2499,7 +2584,6 @@ describe("App", () => {
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("confirm", vi.fn(() => true));
 
     render(<App />);
 
@@ -2512,6 +2596,9 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "撤销删除" })).toBeInTheDocument();
 
     await openSavedWorkflow("Clean After Delete");
+    // 当前文档因删除连线变脏：切换前弹出统一确认弹窗，确认后继续加载
+    const discardDialog = await screen.findByRole("dialog", { name: "丢弃未保存修改？" });
+    fireEvent.click(within(discardDialog).getByRole("button", { name: "丢弃并继续" }));
     await screen.findByText("已加载 Clean After Delete v4。");
 
     expect(screen.queryByRole("button", { name: "撤销删除" })).not.toBeInTheDocument();
@@ -3043,6 +3130,8 @@ describe("App", () => {
     render(<App />);
 
     const nameInput = await screen.findByLabelText("工作流名称");
+    // 超时输入位于工作流设置弹层的执行设置分区，先打开弹层
+    fireEvent.click(screen.getByRole("button", { name: "工作流设置" }));
     const timeoutInput = screen.getByLabelText("运行超时（秒）");
     fireEvent.change(nameInput, { target: { value: "保存中的工作流" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -3389,7 +3478,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "新建" }));
 
-    expect(screen.getByLabelText("工作流名称")).toHaveValue("未命名工作流");
+    await waitFor(() => expect(screen.getByLabelText("工作流名称")).toHaveValue("未命名工作流"));
     expect(canvas.queryByText("手动触发")).not.toBeInTheDocument();
     expect(screen.getByText("已新建工作流。")).toBeInTheDocument();
   });
@@ -3497,6 +3586,9 @@ describe("App", () => {
 
     render(<App />);
 
+    await screen.findByLabelText("工作流名称");
+    // 超时输入位于工作流设置弹层的执行设置分区，先打开弹层
+    fireEvent.click(screen.getByRole("button", { name: "工作流设置" }));
     const timeoutInput = screen.getByLabelText("运行超时（秒）");
     expect(timeoutInput).toHaveValue(600);
 
@@ -3752,16 +3844,20 @@ describe("App", () => {
     );
   });
 
-  it("keeps unsaved changes when discarding the draft is cancelled", () => {
-    const confirmDiscard = vi.fn().mockReturnValue(false);
-    vi.stubGlobal("confirm", confirmDiscard);
-
+  it("keeps unsaved changes when discarding the draft is cancelled", async () => {
     render(<App />);
 
     fireEvent.change(screen.getByLabelText("工作流名称"), { target: { value: "Dirty Workflow" } });
     fireEvent.click(screen.getByRole("button", { name: "新建" }));
 
-    expect(confirmDiscard).toHaveBeenCalledWith("当前工作流有未保存变更，继续会丢弃这些修改。是否继续？");
+    // 统一确认弹窗替换 window.confirm：点击取消后保留未保存修改
+    const discardDialog = await screen.findByRole("dialog", { name: "丢弃未保存修改？" });
+    expect(discardDialog).toHaveTextContent("当前工作流有未保存变更，继续会丢弃这些修改。是否继续？");
+    fireEvent.click(within(discardDialog).getByRole("button", { name: "取消" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "丢弃未保存修改？" })).not.toBeInTheDocument(),
+    );
     expect(screen.getByLabelText("工作流名称")).toHaveValue("Dirty Workflow");
     expect(screen.getByText("未保存")).toBeInTheDocument();
   });
@@ -4862,7 +4958,7 @@ describe("App", () => {
     await screen.findByText("已加载 历史失败演示 v2。");
     const panel = await openWorkflowManager();
 
-    expect(within(panel).getByText("运行历史加载失败：API 500: Run history unavailable")).toBeInTheDocument();
+    expect(within(panel).getByText("运行历史加载失败：服务暂时不可用，请稍后重试（API 500: Run history unavailable）")).toBeInTheDocument();
     expect(within(panel).queryByText("暂无运行记录")).not.toBeInTheDocument();
   });
 
@@ -4903,12 +4999,12 @@ describe("App", () => {
     await openSavedWorkflow("历史重试演示");
     await screen.findByText("已加载 历史重试演示 v2。");
     const panel = await openWorkflowManager();
-    expect(within(panel).getByText("运行历史加载失败：API 500: Run history unavailable")).toBeInTheDocument();
+    expect(within(panel).getByText("运行历史加载失败：服务暂时不可用，请稍后重试（API 500: Run history unavailable）")).toBeInTheDocument();
 
     fireEvent.click(within(panel).getByRole("button", { name: "重试运行历史加载" }));
 
     expect(await within(panel).findByText(/运行记录 1/)).toBeInTheDocument();
-    expect(within(panel).queryByText("运行历史加载失败：API 500: Run history unavailable")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("运行历史加载失败：服务暂时不可用，请稍后重试（API 500: Run history unavailable）")).not.toBeInTheDocument();
     expect(historyRequests).toBe(2);
   });
 
@@ -5694,7 +5790,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "运行" }));
 
-    expect(await screen.findByText("运行失败：API 500: Run queue unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("运行失败：服务暂时不可用，请稍后重试（API 500: Run queue unavailable）")).toBeInTheDocument();
     expect(within(runPanel).getByText("历史运行")).toBeInTheDocument();
     expect(within(runPanel).getByText("查看本次运行的测试报告、执行数据和运行事件")).toBeInTheDocument();
   });
@@ -6173,6 +6269,10 @@ describe("App", () => {
 async function openWorkflowManager() {
   fireEvent.click(await screen.findByRole("button", { name: /工作流 \d+$/ }));
   return screen.findByRole("dialog", { name: "工作流管理" });
+}
+
+function render(ui: ReactElement) {
+  return testingRender(<NodeFlowMantineProvider>{ui}</NodeFlowMantineProvider>);
 }
 
 async function openSavedWorkflow(name: string) {

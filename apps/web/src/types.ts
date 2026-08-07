@@ -36,6 +36,8 @@ export type NodePort = {
   connectionKind?: string;
   maxConnections?: number | null;
   dataMode?: "value" | "items";
+  /** Display-only metadata from the node presentation manifest. */
+  collapsed?: boolean;
 };
 
 export type NodeFormControl =
@@ -75,6 +77,7 @@ export type NodeFormField = {
   visibleWhen?: NodeFormCondition;
   expression?: NodeFormExpressionMode;
   credentialTypeIds?: string[];
+  placement?: "inline" | "panel";
 };
 
 export type NodeFormGroup = {
@@ -124,6 +127,7 @@ export type NodeType = {
   dynamicInputs?: DynamicInputList | null;
   dynamicOutputs?: DynamicOutputList | null;
   package?: NodePackageProvenance | null;
+  sourcePath?: string | null;
 };
 
 export type NodePackageProvenance = {
@@ -174,6 +178,36 @@ export type NodePackageDiagnostic = {
   packageId?: string | null;
   path?: string | null;
   entrypoint?: string | null;
+};
+
+export type NodeAssetOpenSourceResult = {
+  opened: boolean;
+  sourcePath: string;
+};
+
+export type NodeFormManifest = {
+  version: number;
+  form?: NodeForm | null;
+  defaults?: Record<string, unknown> | null;
+  placements?: Record<string, "inline" | "panel"> | null;
+  portPresentation?: Partial<Record<"inputs" | "outputs", Record<string, NodePortPresentation>>> | null;
+};
+
+export type NodePortPresentation = {
+  displayName?: string;
+  description?: string;
+  collapsed?: boolean;
+  order?: number;
+};
+
+export type NodeTypeManifestSaveResult = {
+  saved: boolean;
+  nodeTypeId: string;
+};
+
+export type NodeTypeManifestDeleteResult = {
+  deleted: boolean;
+  nodeTypeId: string;
 };
 
 export type NodePackageRecoveryEvent = {

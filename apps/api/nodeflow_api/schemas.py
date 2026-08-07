@@ -14,6 +14,69 @@ class Position(BaseModel):
     y: float
 
 
+class NodeAssetOpenSourceRequest(BaseModel):
+    source_path: str
+
+    @field_validator("source_path")
+    @classmethod
+    def validate_source_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("source_path 不能为空")
+        return normalized
+
+
+class NodeFormManifestRequest(BaseModel):
+    """节点表单覆盖清单请求，对应 SDK 的 NodeFormManifest。"""
+
+    version: int = 1
+    form: dict[str, Any] | None = None
+    defaults: dict[str, Any] | None = None
+    placements: dict[str, str] | None = None
+    portPresentation: dict[str, dict[str, dict[str, Any]]] | None = None
+
+    @field_validator("placements")
+    @classmethod
+    def validate_placements(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        for key, placement in value.items():
+            if placement not in {"inline", "panel"}:
+                raise ValueError(f"字段 {key} 的 placement 必须是 'inline' 或 'panel'")
+        return value
+
+    @field_validator("portPresentation")
+    @classmethod
+    def validate_port_presentation(
+        cls, value: dict[str, dict[str, dict[str, Any]]] | None
+    ) -> dict[str, dict[str, dict[str, Any]]] | None:
+        if value is None:
+            return None
+        unexpected_directions = set(value) - {"inputs", "outputs"}
+        if unexpected_directions:
+            raise ValueError("端口呈现仅支持 inputs 和 outputs")
+        for direction, ports in value.items():
+            if not isinstance(ports, dict):
+                raise ValueError(f"{direction} 必须是端口呈现对象")
+            for handle, presentation in ports.items():
+                if not isinstance(handle, str) or not handle.strip():
+                    raise ValueError("端口 handle 不能为空")
+                if not isinstance(presentation, dict):
+                    raise ValueError(f"端口 {handle} 的呈现配置必须是对象")
+                unexpected_fields = set(presentation) - {"displayName", "description", "collapsed", "order"}
+                if unexpected_fields:
+                    raise ValueError(f"端口 {handle} 包含不支持的呈现字段")
+                if "displayName" in presentation and not isinstance(presentation["displayName"], str):
+                    raise ValueError(f"端口 {handle} 的 displayName 必须是字符串")
+                if "description" in presentation and not isinstance(presentation["description"], str):
+                    raise ValueError(f"端口 {handle} 的 description 必须是字符串")
+                if "collapsed" in presentation and not isinstance(presentation["collapsed"], bool):
+                    raise ValueError(f"端口 {handle} 的 collapsed 必须是布尔值")
+                if "order" in presentation and (not isinstance(presentation["order"], int) or isinstance(presentation["order"], bool)):
+                    raise ValueError(f"端口 {handle} 的 order 必须是整数")
+        return value
+
+
 class NodePackageSettingsUpdate(BaseModel):
     enabled: bool
     locked_version: str | None = None

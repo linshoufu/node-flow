@@ -8,6 +8,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mantine/core": "^9.5.1",
+    "@mantine/hooks": "^9.5.1",
     "@xyflow/react": "^12.11.0",
     "lucide-react": "^1.23.0",
     "react": "^19.1.0",

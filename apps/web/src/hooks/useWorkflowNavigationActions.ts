@@ -5,6 +5,7 @@ import { formatApiError } from "../lib/apiError";
 import { createEmptyWorkflow, normalizeWorkflowDocument } from "../lib/workflow";
 import type { WorkflowRoute } from "../lib/workflowRoute";
 import type { WorkflowDocument } from "../types";
+import type { ConfirmDialogOptions } from "./useConfirmDialog";
 import type { WorkflowRouteRequestSource } from "./useWorkflowRouteController";
 
 export type WorkflowNavigationDocumentRequest = {
@@ -29,6 +30,8 @@ type WorkflowNavigationClient = Pick<ApiClient, "deleteWorkflow" | "getWorkflow"
 
 type UseWorkflowNavigationActionsOptions = {
   client?: WorkflowNavigationClient;
+  // 异步确认弹窗服务（替换 window.confirm）；未接线时默认拒绝丢弃，保证安全
+  confirmDiscard?: (options: ConfirmDialogOptions) => Promise<boolean>;
   createWorkflowFromTemplate: (templateId: string) => WorkflowDocument;
   hasActiveOperation: () => boolean;
   isBusy: boolean;
@@ -53,7 +56,7 @@ type UseWorkflowNavigationActionsOptions = {
 
 export type WorkflowNavigationActions = {
   applyTemplate: (templateId: string) => void;
-  confirmDiscardUnsavedChanges: () => boolean;
+  confirmDiscardUnsavedChanges: () => Promise<boolean>;
   deleteWorkflow: (workflowId: string) => Promise<void>;
   handleRouteRequest: (
     route: WorkflowRoute,
@@ -69,6 +72,7 @@ export type WorkflowNavigationActions = {
 
 export function useWorkflowNavigationActions({
   client = apiClient,
+  confirmDiscard = defaultConfirmDiscard,
   createWorkflowFromTemplate,
   hasActiveOperation,
   isBusy,
@@ -85,6 +89,8 @@ export function useWorkflowNavigationActions({
 }: UseWorkflowNavigationActionsOptions): WorkflowNavigationActions {
   const mountedRef = useRef(true);
   const loadRequestRef = useRef(0);
+  // 丢弃确认弹窗打开期间拒绝再次发起确认，避免重复弹窗的竞态
+  const discardConfirmPendingRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -94,17 +100,31 @@ export function useWorkflowNavigationActions({
     };
   }, []);
 
-  const confirmDiscardUnsavedChanges = useCallback((): boolean => {
+  const confirmDiscardUnsavedChanges = useCallback(async (): Promise<boolean> => {
     if (!isWorkflowDirty) {
       return true;
     }
+    if (discardConfirmPendingRef.current) {
+      return false;
+    }
 
-    const confirmed = window.confirm("当前工作流有未保存变更，继续会丢弃这些修改。是否继续？");
+    discardConfirmPendingRef.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirmDiscard({
+        confirmLabel: "丢弃并继续",
+        danger: true,
+        description: "当前工作流有未保存变更，继续会丢弃这些修改。是否继续？",
+        title: "丢弃未保存修改？",
+      });
+    } finally {
+      discardConfirmPendingRef.current = false;
+    }
     if (!confirmed) {
       onMessage("已保留当前未保存修改。");
     }
     return confirmed;
-  }, [isWorkflowDirty, onMessage]);
+  }, [confirmDiscard, isWorkflowDirty, onMessage]);
 
   const resetEditorForNewWorkflow = useCallback((
     message: string,
@@ -125,32 +145,36 @@ export function useWorkflowNavigationActions({
   }, [navigate, onApplyDocument, onBusyChange]);
 
   const startNewWorkflow = useCallback(() => {
-    if (!confirmDiscardUnsavedChanges()) {
-      return;
-    }
-    resetEditorForNewWorkflow("已新建工作流。");
+    void (async () => {
+      if (!(await confirmDiscardUnsavedChanges())) {
+        return;
+      }
+      resetEditorForNewWorkflow("已新建工作流。");
+    })();
   }, [confirmDiscardUnsavedChanges, resetEditorForNewWorkflow]);
 
   const applyTemplate = useCallback((templateId: string) => {
-    if (!confirmDiscardUnsavedChanges()) {
-      return;
-    }
+    void (async () => {
+      if (!(await confirmDiscardUnsavedChanges())) {
+        return;
+      }
 
-    try {
-      const nextWorkflow = normalizeWorkflowDocument(createWorkflowFromTemplate(templateId));
-      loadRequestRef.current += 1;
-      onBusyChange(false);
-      onApplyDocument({
-        baseline: "dirty",
-        message: `已应用模板：${nextWorkflow.name}。`,
-        selectedNodeId: selectTemplateNode(templateId),
-        selectedWorkflowId: "",
-        workflow: nextWorkflow,
-      });
-      navigate({ kind: "new" });
-    } catch (error) {
-      onMessage(`模板应用失败：${formatApiError(error)}`);
-    }
+      try {
+        const nextWorkflow = normalizeWorkflowDocument(createWorkflowFromTemplate(templateId));
+        loadRequestRef.current += 1;
+        onBusyChange(false);
+        onApplyDocument({
+          baseline: "dirty",
+          message: `已应用模板：${nextWorkflow.name}。`,
+          selectedNodeId: selectTemplateNode(templateId),
+          selectedWorkflowId: "",
+          workflow: nextWorkflow,
+        });
+        navigate({ kind: "new" });
+      } catch (error) {
+        onMessage(`模板应用失败：${formatApiError(error)}`);
+      }
+    })();
   }, [
     confirmDiscardUnsavedChanges,
     createWorkflowFromTemplate,
@@ -172,7 +196,7 @@ export function useWorkflowNavigationActions({
     if (!workflowId) {
       return null;
     }
-    if (confirmDiscard && !confirmDiscardUnsavedChanges()) {
+    if (confirmDiscard && !(await confirmDiscardUnsavedChanges())) {
       return null;
     }
 
@@ -267,11 +291,15 @@ export function useWorkflowNavigationActions({
       onMessage("当前操作尚未完成，暂时不能离开这个工作流。");
       return null;
     }
+    if (route.kind === "resources") {
+      // 资源页面路由由 App 装配层接管渲染，此处直接接受，不触发工作流加载
+      return route;
+    }
     if (route.kind === "new") {
       if (source === "initial") {
         return route;
       }
-      if (!confirmDiscardUnsavedChanges()) {
+      if (!(await confirmDiscardUnsavedChanges())) {
         return null;
       }
       resetEditorForNewWorkflow("已打开新工作流。", { updateRoute: false });
@@ -316,4 +344,9 @@ export function useWorkflowNavigationActions({
     resetEditorForNewWorkflow,
     startNewWorkflow,
   };
+}
+
+// 未接线确认弹窗服务时的安全默认：拒绝丢弃未保存修改
+function defaultConfirmDiscard(): Promise<boolean> {
+  return Promise.resolve(false);
 }

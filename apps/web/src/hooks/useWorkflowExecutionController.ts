@@ -6,6 +6,7 @@ import {
   type RunPollingResult,
   type RunPollingSnapshot,
 } from "../lib/runPolling";
+import { notifyRunTerminal } from "../lib/runTerminalBus";
 import {
   currentRunView,
   emptyRunView,
@@ -13,17 +14,29 @@ import {
   isTerminalRunStatus,
   type RunViewState,
 } from "../lib/runView";
+import {
+  isRunEventStreamSupported,
+  isTerminalRunEvent,
+  maxRunEventId,
+  mergeRunEvents,
+  openRunEventStream,
+} from "./useRunEventStream";
 import type { RunEvent, RunQueueStatus, RunRecord } from "../types";
 
 export type WorkflowExecutionClient = Pick<
   ApiClient,
-  "getRun" | "getRunEvents" | "getRunQueueStatus"
+  | "getRun"
+  | "getRunEvents"
+  | "getRunQueueStatus"
+  | "eventsAfter"
+  | "runEventStreamUrl"
 >;
 
 type UseWorkflowExecutionControllerOptions = {
   client?: WorkflowExecutionClient;
   maxPollAttempts?: number;
   pollIntervalMs?: number;
+  streamStatusPollIntervalMs?: number;
   wait?: (milliseconds: number) => Promise<void>;
 };
 
@@ -33,13 +46,24 @@ type TrackCurrentRunOptions = {
   token: number;
 };
 
-const DEFAULT_MAX_POLL_ATTEMPTS = 120;
-const DEFAULT_POLL_INTERVAL_MS = 1000;
+type TrackWithStreamOptions = {
+  initialEvents: RunEvent[];
+  initialQueueStatus: RunQueueStatus | null;
+  run: RunRecord;
+  token: number;
+};
+
+// 轮询降级不再设次数上限：运行中持续跟踪直到终态或组件卸载/run 切换
+const DEFAULT_MAX_POLL_ATTEMPTS = Number.POSITIVE_INFINITY;
+const DEFAULT_POLL_INTERVAL_MS = 2000;
+// stream 模式下 run 状态与队列状态的低频轮询间隔（事件本身走 SSE 增量）
+const DEFAULT_STREAM_STATUS_POLL_INTERVAL_MS = 2500;
 
 export function useWorkflowExecutionController({
   client = apiClient,
   maxPollAttempts = DEFAULT_MAX_POLL_ATTEMPTS,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  streamStatusPollIntervalMs = DEFAULT_STREAM_STATUS_POLL_INTERVAL_MS,
   wait,
 }: UseWorkflowExecutionControllerOptions = {}) {
   const [runView, setRunView] = useState<RunViewState>(() => emptyRunView());
@@ -126,6 +150,114 @@ export function useWorkflowExecutionController({
     return { run, events, queueStatus: nextQueueStatus };
   }, [client, loadQueueStatus]);
 
+  /**
+   * SSE 事件流跟踪：事件经 stream 增量到达，run 状态与队列状态低频轮询；
+   * 返回 null 表示需要降级到轮询路径（环境不支持、连接失败或重连超限）。
+   */
+  const trackWithEventStream = useCallback(async ({
+    initialEvents,
+    initialQueueStatus,
+    run,
+    token,
+  }: TrackWithStreamOptions): Promise<RunPollingResult | null> => {
+    if (!isRunEventStreamSupported()) {
+      return null;
+    }
+
+    const streamWait = wait ?? ((milliseconds: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds)));
+    let latestRun = run;
+    let mergedEvents = initialEvents;
+    let latestQueueStatus = initialQueueStatus;
+    let fallbackRequested = false;
+    let statusPolls = 0;
+    let wakeResolver: (() => void) | null = null;
+
+    const currentSnapshot = (): RunPollingSnapshot =>
+      ({ run: latestRun, events: mergedEvents, queueStatus: latestQueueStatus });
+    const cancelledResult = (): RunPollingResult =>
+      ({ kind: "cancelled", attempts: statusPolls, snapshot: currentSnapshot() });
+    const wake = () => {
+      wakeResolver?.();
+    };
+
+    const streamHandle = openRunEventStream({
+      url: client.runEventStreamUrl(run.id),
+      fetchEventsAfter: (afterId) => client.eventsAfter(run.id, afterId),
+      initialAfterId: maxRunEventId(initialEvents),
+      onEvents: (incoming) => {
+        mergedEvents = mergeRunEvents(mergedEvents, incoming);
+        if (mountedRef.current) {
+          setRunView(currentRunView(latestRun, mergedEvents));
+        }
+        // 收到终态事件时提前唤醒，立即拉取最终 run 状态
+        if (incoming.some(isTerminalRunEvent)) {
+          wake();
+        }
+      },
+      onFallback: () => {
+        fallbackRequested = true;
+        wake();
+      },
+    });
+    if (!streamHandle) {
+      return null;
+    }
+
+    try {
+      while (true) {
+        if (!isOperationActive(token)) {
+          return cancelledResult();
+        }
+        if (fallbackRequested) {
+          return null;
+        }
+
+        // 低频状态轮询；终态事件或降级信号会提前唤醒
+        await Promise.race([
+          streamWait(streamStatusPollIntervalMs),
+          new Promise<void>((resolve) => {
+            wakeResolver = resolve;
+          }),
+        ]);
+        wakeResolver = null;
+        if (!isOperationActive(token)) {
+          return cancelledResult();
+        }
+        if (fallbackRequested) {
+          return null;
+        }
+
+        let nextRun: RunRecord;
+        try {
+          nextRun = await client.getRun(run.id);
+        } catch {
+          // run 状态拉取失败：交给轮询路径统一处理错误与重试
+          return null;
+        }
+        latestQueueStatus = await loadQueueStatus(run.id);
+        if (!isOperationActive(token)) {
+          return cancelledResult();
+        }
+        if (fallbackRequested) {
+          return null;
+        }
+        statusPolls += 1;
+        latestRun = nextRun;
+        if (mountedRef.current) {
+          setRunView(currentRunView(latestRun, mergedEvents));
+          setQueueStatus(latestQueueStatus);
+        }
+        if (isTerminalRunStatus(latestRun.status)) {
+          return { kind: "terminal", attempts: statusPolls, snapshot: currentSnapshot() };
+        }
+      }
+    } finally {
+      // 组件卸载/run 切换/降级/终态都必须关闭 EventSource
+      streamHandle.close();
+    }
+  }, [client, isOperationActive, loadQueueStatus, wait]);
+
   const trackCurrentRun = useCallback(async ({
     fetchImmediately = false,
     run,
@@ -147,7 +279,29 @@ export function useWorkflowExecutionController({
     }
     applyCurrentSnapshot(initialSnapshot);
 
-    return pollRunUntilTerminal({
+    // 优先走 SSE 事件流；不可用或中途失败时回退轮询（轮询仍是一等路径）。
+    // 初始事件已含终态事件说明 run 实际已结束（快速 run 常见）：此时 SSE 只会
+    // 回放重复事件并在终态关流，重连没有任何收益，直接走轮询拉取最终状态
+    const alreadyTerminatedByEvents = events.some(isTerminalRunEvent);
+    if (!isTerminalRunStatus(run.status) && !alreadyTerminatedByEvents) {
+      const streamResult = await trackWithEventStream({
+        initialEvents: events,
+        initialQueueStatus,
+        run,
+        token,
+      });
+      if (streamResult) {
+        if (streamResult.kind === "terminal") {
+          notifyRunTerminal(streamResult.snapshot.run);
+        }
+        return streamResult;
+      }
+      if (!isOperationActive(token)) {
+        return { kind: "cancelled", attempts: 0, snapshot: emptySnapshot };
+      }
+    }
+
+    const pollingResult = await pollRunUntilTerminal({
       initialSnapshot,
       loadSnapshot,
       isTerminal: (runRecord) => isTerminalRunStatus(runRecord.status),
@@ -155,17 +309,22 @@ export function useWorkflowExecutionController({
       onSnapshot: applyCurrentSnapshot,
       maxAttempts: maxPollAttempts,
       intervalMs: pollIntervalMs,
-      fetchImmediately,
+      // 事件已含终态时立即拉取最终状态，不再等一个轮询间隔
+      fetchImmediately: fetchImmediately || alreadyTerminatedByEvents,
       wait,
     });
+    if (pollingResult.kind === "terminal") {
+      notifyRunTerminal(pollingResult.snapshot.run);
+    }
+    return pollingResult;
   }, [
     applyCurrentSnapshot,
     client,
     isOperationActive,
     loadQueueStatus,
-    loadSnapshot,
     maxPollAttempts,
     pollIntervalMs,
+    trackWithEventStream,
     wait,
   ]);
 

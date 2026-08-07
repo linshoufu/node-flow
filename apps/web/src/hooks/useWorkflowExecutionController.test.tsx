@@ -45,6 +45,8 @@ function client(overrides: Partial<WorkflowExecutionClient> = {}): WorkflowExecu
     getRun: vi.fn().mockResolvedValue(run("succeeded")),
     getRunEvents: vi.fn().mockResolvedValue([]),
     getRunQueueStatus: vi.fn().mockResolvedValue(null),
+    eventsAfter: vi.fn().mockResolvedValue([]),
+    runEventStreamUrl: vi.fn().mockReturnValue("http://127.0.0.1:8150/api/runs/run-1/events/stream"),
     ...overrides,
   };
 }
@@ -167,6 +169,39 @@ describe("useWorkflowExecutionController", () => {
 
     expect(result.current.runView.run).toEqual(completed);
     expect(result.current.queueStatus).toBeNull();
+  });
+
+  it("skips the SSE stream when initial events already contain a terminal event", async () => {
+    // 快速 run：拉取初始事件时 run 已实际结束（事件含终态，但 run 记录还是旧状态）。
+    // 此时不应再打开 SSE（回放只会重复且服务端立即关流），而是立即轮询收尾
+    const completed = run("succeeded");
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const executionClient = client({
+      getRun: vi.fn().mockResolvedValue(completed),
+      getRunEvents: vi.fn().mockResolvedValue([
+        event("node_started"),
+        event("run_succeeded"),
+      ]),
+    });
+    const { result } = renderHook(() => useWorkflowExecutionController({
+      client: executionClient,
+      pollIntervalMs: 0,
+      wait,
+    }));
+    const token = result.current.beginRunOperation()!;
+
+    let trackingResult: Awaited<ReturnType<typeof result.current.trackCurrentRun>> | undefined;
+    await act(async () => {
+      trackingResult = await result.current.trackCurrentRun({ run: run("running"), token });
+    });
+
+    expect(trackingResult?.kind).toBe("terminal");
+    // 未打开 SSE：不应请求流地址与断线补齐
+    expect(executionClient.runEventStreamUrl).not.toHaveBeenCalled();
+    expect(executionClient.eventsAfter).not.toHaveBeenCalled();
+    // 事件已含终态：立即拉取最终状态，不等待轮询间隔
+    expect(wait).not.toHaveBeenCalled();
+    expect(result.current.runView.run).toEqual(completed);
   });
 
   it("clears queue state when switching to history and when resetting", async () => {

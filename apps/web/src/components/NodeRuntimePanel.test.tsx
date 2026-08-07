@@ -379,6 +379,62 @@ describe("NodeRuntimePanel", () => {
     expect(within(diagnosticSection).getByText("diagnostic-log")).toBeInTheDocument();
     expect(within(diagnosticSection).getByText(/diagnostic-error/)).toBeInTheDocument();
   });
+
+  it("collapses oversized runtime JSON blocks and expands them on demand", () => {
+    const longMessage = "x".repeat(2500);
+    const { container } = render(
+      <NodeRuntimePanel
+        nodeTypeId="manual.trigger"
+        runtimeState={{
+          nodeId: "node_manual",
+          status: "failed",
+          scopes: [],
+          events: [],
+          executions: [],
+          error: { message: longMessage },
+        }}
+      />
+    );
+
+    // 错误块在“原始数据”分区展示
+    fireEvent.click(screen.getByRole("tab", { name: "原始数据" }));
+
+    // 错误块默认截断折叠，完整内容不直接渲染
+    const errorPre = container.querySelector(".runtime-block pre") as HTMLPreElement;
+    expect(errorPre.textContent ?? "").toContain("...");
+    expect(errorPre.textContent ?? "").not.toContain(longMessage);
+
+    fireEvent.click(screen.getByRole("button", { name: "展开错误完整内容" }));
+
+    expect(errorPre.textContent ?? "").toContain(longMessage);
+  });
+
+  it("copies the full text of a collapsed runtime block", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: { writeText } });
+    const longMessage = "z".repeat(2500);
+
+    render(
+      <NodeRuntimePanel
+        nodeTypeId="manual.trigger"
+        runtimeState={{
+          nodeId: "node_manual",
+          status: "failed",
+          scopes: [],
+          events: [],
+          executions: [],
+          error: { message: longMessage },
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "原始数据" }));
+    fireEvent.click(screen.getByRole("button", { name: "复制 错误" }));
+
+    // 复制出口始终使用完整文本，不受截断影响
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain(longMessage);
+  });
 });
 
 it("shows and expands the current loop item for an execution", () => {

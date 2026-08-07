@@ -30,16 +30,26 @@ export function nodePortContractSummary(nodeType: NodeType): NodePortContractSum
 
   const inputDisplayNames = portDisplayNames(inputPorts);
   const outputDisplayNames = portDisplayNames(outputPorts);
-  const details = [
-    ...(inputDisplayNames.length ? [`输入：${inputDisplayNames.join("、")}`] : []),
-    ...(outputDisplayNames.length ? [`输出：${outputDisplayNames.join("、")}`] : []),
-  ];
+  // 有端口展示名时优先用“输入：A、B · 输出：C”这种接口介绍式文案，避免与计数信息重复；
+  // 缺少展示名的一侧退回计数描述，两侧都只有计数时保留完整契约标签。
+  const inputIntroPart = inputDisplayNames.length
+    ? `输入：${inputDisplayNames.join("、")}`
+    : inputPorts.length > 0
+      ? `输入 ${inputPorts.length}`
+      : "";
+  const outputIntroPart = outputDisplayNames.length
+    ? `输出：${outputDisplayNames.join("、")}`
+    : outputPorts.length > 0
+      ? `输出 ${outputPorts.length}`
+      : "";
+  const introParts = [inputIntroPart, outputIntroPart].filter(Boolean);
+  const hasPortDisplayNames = inputDisplayNames.length > 0 || outputDisplayNames.length > 0;
   const searchTokens = [...labels, ...inputDisplayNames, ...outputDisplayNames];
 
   return {
     labels,
     searchText: searchTokens.join(" "),
-    text: [...labels, ...details].join(" · "),
+    text: hasPortDisplayNames ? introParts.join(" · ") : labels.join(" · "),
   };
 }
 

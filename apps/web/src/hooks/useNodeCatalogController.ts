@@ -16,6 +16,7 @@ export type NodeCatalogClient = Pick<
   | "listNodePackageRevisions"
   | "listNodePackages"
   | "listNodeTypes"
+  | "openNodeAssetSource"
   | "reloadNodeTypes"
   | "uninstallNodePackage"
   | "updateNodePackageSettings"
@@ -23,7 +24,8 @@ export type NodeCatalogClient = Pick<
 
 type UseNodeCatalogControllerOptions = {
   client?: NodeCatalogClient;
-  confirmAction?: (message: string) => boolean;
+  // 异步确认弹窗服务（替换 window.confirm），由 App 层基于 ConfirmDialog 注入
+  confirmAction?: (message: string) => Promise<boolean>;
   onMessage: (message: string) => void;
 };
 
@@ -47,6 +49,7 @@ export function useNodeCatalogController({
   const [isInstallingNodePackage, setIsInstallingNodePackage] = useState(false);
   const [updatingNodePackageId, setUpdatingNodePackageId] = useState<string | null>(null);
   const [loadingNodePackageRevisionId, setLoadingNodePackageRevisionId] = useState<string | null>(null);
+  const [openingNodeAssetSourcePath, setOpeningNodeAssetSourcePath] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const onMessageRef = useRef(onMessage);
   const catalogRequestTokenRef = useRef(0);
@@ -55,6 +58,8 @@ export function useNodeCatalogController({
   const activePackageMutationRef = useRef<ActivePackageMutation | null>(null);
   const revisionRequestTokenRef = useRef(0);
   const activeRevisionPackageRef = useRef<string | null>(null);
+  // 确认弹窗打开期间拒绝重复触发破坏性操作，与 beginPackageMutation 的 in-flight 保护叠加防连点
+  const confirmPendingRef = useRef(false);
   onMessageRef.current = onMessage;
 
   const emitMessage = useCallback((message: string) => {
@@ -81,7 +86,6 @@ export function useNodeCatalogController({
         return;
       }
       setNodeTypes(types);
-      emitMessage(types.length === 0 ? "没有可用节点。" : `已加载 ${types.length} 个节点类型。`);
       try {
         const packageScan = validateNodePackageScan(await client.listNodePackages());
         if (!isCatalogRequestCurrent(requestToken)) {
@@ -247,12 +251,19 @@ export function useNodeCatalogController({
   ]);
 
   const installNodePackage = useCallback(async (file: File) => {
-    if (reloadActiveRef.current || activePackageMutationRef.current) {
+    if (reloadActiveRef.current || activePackageMutationRef.current || confirmPendingRef.current) {
       return;
     }
-    if (!confirmAction(
-      `节点包“${file.name}”包含会在本机执行的 Python 代码。请只导入你信任的文件。是否继续？`,
-    )) {
+    confirmPendingRef.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirmAction(
+        `节点包“${file.name}”包含会在本机执行的 Python 代码。请只导入你信任的文件。是否继续？`,
+      );
+    } finally {
+      confirmPendingRef.current = false;
+    }
+    if (!confirmed || !mountedRef.current) {
       return;
     }
 
@@ -297,11 +308,18 @@ export function useNodeCatalogController({
   ]);
 
   const uninstallNodePackage = useCallback(async (packageId: string) => {
-    if (reloadActiveRef.current || activePackageMutationRef.current) {
+    if (reloadActiveRef.current || activePackageMutationRef.current || confirmPendingRef.current) {
       return;
     }
     const nodePackage = nodePackageScan?.packages.find((candidate) => candidate.id === packageId);
-    if (!confirmAction(`确认卸载节点包“${nodePackage?.name ?? packageId}”吗？`)) {
+    confirmPendingRef.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirmAction(`确认卸载节点包“${nodePackage?.name ?? packageId}”吗？`);
+    } finally {
+      confirmPendingRef.current = false;
+    }
+    if (!confirmed || !mountedRef.current) {
       return;
     }
 
@@ -335,6 +353,31 @@ export function useNodeCatalogController({
     nodePackageScan?.packages,
     emitMessage,
   ]);
+
+  const openNodeAssetSource = useCallback(async (sourcePath: string) => {
+    if (openingNodeAssetSourcePath !== null) {
+      return;
+    }
+    setOpeningNodeAssetSourcePath(sourcePath);
+    try {
+      const result = await client.openNodeAssetSource(sourcePath);
+      if (mountedRef.current) {
+        emitMessage(
+          result.opened
+            ? `已用系统默认程序打开源文件“${result.sourcePath}”。`
+            : `无法打开源文件“${sourcePath}”。`,
+        );
+      }
+    } catch (error: unknown) {
+      if (mountedRef.current) {
+        emitMessage(`打开源文件失败：${formatApiError(error)} 如文件已移动，请重新扫描节点库。`);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setOpeningNodeAssetSourcePath(null);
+      }
+    }
+  }, [client, emitMessage, openingNodeAssetSourcePath]);
 
   const loadNodePackageRevisions = useCallback(async (packageId: string) => {
     if (
@@ -377,16 +420,23 @@ export function useNodeCatalogController({
     packageId: string,
     revisionId: string,
   ) => {
-    if (reloadActiveRef.current || activePackageMutationRef.current) {
+    if (reloadActiveRef.current || activePackageMutationRef.current || confirmPendingRef.current) {
       return;
     }
     const nodePackage = nodePackageScan?.packages.find((candidate) => candidate.id === packageId);
     const revision = nodePackageRevisions[packageId]?.find(
       (candidate) => candidate.revisionId === revisionId,
     );
-    if (!confirmAction(
-      `确认将节点包“${nodePackage?.name ?? packageId}”恢复到 v${revision?.version ?? "未知版本"}吗？当前版本会保留到历史记录。`,
-    )) {
+    confirmPendingRef.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirmAction(
+        `确认将节点包“${nodePackage?.name ?? packageId}”恢复到 v${revision?.version ?? "未知版本"}吗？当前版本会保留到历史记录。`,
+      );
+    } finally {
+      confirmPendingRef.current = false;
+    }
+    if (!confirmed || !mountedRef.current) {
       return;
     }
 
@@ -436,6 +486,8 @@ export function useNodeCatalogController({
     nodePackageRevisions,
     nodePackageScan,
     nodeTypes,
+    openNodeAssetSource,
+    openingNodeAssetSourcePath,
     reloadNodeTypes,
     uninstallNodePackage,
     updateNodePackageSettings,
@@ -443,8 +495,9 @@ export function useNodeCatalogController({
   };
 }
 
-function defaultConfirmAction(message: string): boolean {
-  return window.confirm(message);
+// 未接入确认弹窗服务时的安全默认：直接拒绝破坏性操作，不再回退到 window.confirm
+function defaultConfirmAction(): Promise<boolean> {
+  return Promise.resolve(false);
 }
 
 function validateNodePackageScan(scan: NodePackageScanResult): NodePackageScanResult {

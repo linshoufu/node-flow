@@ -79,4 +79,12 @@ describe("CanvasEmptyState", () => {
     const card = screen.getByRole("article", { name: "CSV 参数化接口测试" });
     expect(within(card).getByRole("button", { name: "即将开放" })).toBeDisabled();
   });
+
+  it("呈现双击搜索节点的高效操作提示", () => {
+    render(<CanvasEmptyState templates={templateCards} onApplyTemplate={vi.fn()} />);
+
+    expect(
+      screen.getByText("高效操作：双击画布空白处可快速搜索并添加节点，按 Ctrl+K 可打开命令面板。"),
+    ).toBeInTheDocument();
+  });
 });

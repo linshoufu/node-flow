@@ -1514,3 +1514,6 @@ function validateJsonShape(value: unknown, expectedType: "object" | "array"): st
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+// default 导出适配：供 React.lazy 懒加载使用，不改变组件内部逻辑
+export default ConfigPanel;

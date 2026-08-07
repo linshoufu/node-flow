@@ -83,6 +83,7 @@ FormControl = Literal[
     "credential",
 ]
 FormExpressionMode = Literal["allowed", "disabled", "required"]
+FieldPlacement = Literal["inline", "panel"]
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,7 @@ class FormField:
     visible_when: FormCondition | None = None
     expression: FormExpressionMode | None = None
     credential_type_ids: tuple[str, ...] = ()
+    placement: FieldPlacement = "panel"
 
     def __post_init__(self) -> None:
         normalized_options = tuple(
@@ -147,6 +149,8 @@ class FormField:
             result["expression"] = self.expression
         if self.credential_type_ids:
             result["credentialTypeIds"] = list(self.credential_type_ids)
+        if self.placement != "panel":
+            result["placement"] = self.placement
         return result
 
 
@@ -177,6 +181,22 @@ class NodeForm:
 
     def to_dict(self) -> dict[str, Any]:
         return {"groups": [group.to_dict() for group in self.groups]}
+
+
+class NodeFormManifest(BaseModel):
+    """节点呈现覆盖清单：编辑结果不写回 py 源码，而是在 py 文件旁生成 .nodeform.json。
+
+    ``port_presentation`` 仅控制端口在编辑器和画布中的呈现；端口的
+    handle、类型和运行语义始终由 Python 节点类声明。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = 1
+    form: dict[str, Any] | None = None
+    defaults: dict[str, Any] | None = None
+    placements: dict[str, FieldPlacement] | None = None
+    portPresentation: dict[str, dict[str, dict[str, Any]]] | None = None
 
 
 @dataclass(frozen=True)

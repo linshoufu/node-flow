@@ -619,12 +619,28 @@ class RunRepositoryMixin:
                 self._connection.rollback()
                 raise
 
-    def list_events(self, run_id: str) -> list[RunEvent]:
+    def list_events(
+        self,
+        run_id: str,
+        *,
+        after_id: int | None = None,
+        limit: int | None = None,
+    ) -> list[RunEvent]:
+        """查询运行事件；支持基于事件自增 id 的增量查询与数量上限。
+
+        不传 after_id / limit 时保持原有全量返回行为。
+        """
+        query = "SELECT * FROM run_events WHERE run_id = ?"
+        parameters: list[str | int] = [run_id]
+        if after_id is not None:
+            query += " AND id > ?"
+            parameters.append(after_id)
+        query += " ORDER BY id"
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters.append(limit)
         with self._lock:
-            rows = self._connection.execute(
-                "SELECT * FROM run_events WHERE run_id = ? ORDER BY id",
-                (run_id,),
-            ).fetchall()
+            rows = self._connection.execute(query, parameters).fetchall()
             return [
                 RunEvent(
                     id=row["id"],

@@ -15,15 +15,31 @@ type ApiErrorPayload = {
   } | Array<{ message?: string }>;
 };
 
+// 常见浏览器 fetch 网络层错误的 message 特征
+const NETWORK_ERROR_PATTERNS = [
+  /failed to fetch/i,
+  /networkerror/i,
+  /load failed/i,
+  /network request failed/i,
+];
+
+function isNetworkLayerError(message: string): boolean {
+  return NETWORK_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 export function parseApiError(error: unknown): ParsedApiError {
   const message = error instanceof Error ? error.message : String(error);
   const match = message.match(/^API (\d+): (.+)$/s);
   if (!match) {
+    // fetch 网络层错误（如 "Failed to fetch"）给出中文友好兜底文案，
+    // 原始信息以括号后缀保留便于排查；其他无前缀错误保持原样透出。
     return {
       code: null,
       currentVersion: null,
       expectedVersion: null,
-      message,
+      message: isNetworkLayerError(message)
+        ? `无法连接到服务，请检查后端是否已启动（${message}）`
+        : message,
       status: null,
     };
   }
@@ -50,7 +66,12 @@ export function parseApiError(error: unknown): ParsedApiError {
       status: Number(match[1]),
     };
   } catch {
-    return apiError(Number(match[1]), message);
+    const status = Number(match[1]);
+    // 5xx 且响应体无法解析时，给出服务不可用的兜底文案，原始信息保留为后缀
+    if (status >= 500) {
+      return apiError(status, `服务暂时不可用，请稍后重试（${message}）`);
+    }
+    return apiError(status, message);
   }
 }
 

@@ -25,6 +25,12 @@ from .node_package_compatibility import (
     check_package_compatibility,
 )
 from .node_package_lifecycle import NodePackagePolicy
+from .node_registry_manifest import (
+    apply_manifest_defaults,
+    apply_manifest_port_presentation,
+    merge_form_with_manifest,
+    read_manifest,
+)
 
 
 @dataclass(frozen=True)
@@ -136,6 +142,8 @@ class RegisteredNodeType:
     dynamic_outputs: dict[str, Any] | None
     node_class: type[BaseNode[Any]]
     package: NodePackageInfo | None = None
+    # 节点定义所在的源文件，相对 nodes_dir 的 posix 路径；供节点资产管理页展示与打开源文件。
+    source_path: str | None = None
 
     def to_api_dict(self) -> dict[str, Any]:
         return {
@@ -157,6 +165,7 @@ class RegisteredNodeType:
             "dynamicInputs": self.dynamic_inputs,
             "dynamicOutputs": self.dynamic_outputs,
             "package": self.package.provenance_api_dict() if self.package else None,
+            "sourcePath": self.source_path,
         }
 
 @dataclass(frozen=True)
@@ -273,6 +282,7 @@ class NodeRegistry:
         source_paths = [
             *self.nodes_dir.rglob("*.py"),
             *self.nodes_dir.rglob("nodeflow-package.json"),
+            *self.nodes_dir.rglob("*.nodeform.json"),
         ]
         entries: list[tuple[str, int, int]] = []
         for path in source_paths:
@@ -300,6 +310,17 @@ class NodeRegistry:
         return sorted(
             self._nodes.values(), key=lambda node_type: (node_type.category, node_type.name)
         )
+
+    def get_node_type(self, node_type_id: str) -> RegisteredNodeType | None:
+        """获取单个节点类型，供 manifest API 与编辑页查询。"""
+        return self._nodes.get(node_type_id)
+
+    def source_path_for(self, node_type_id: str) -> Path | None:
+        """获取节点类型的源文件绝对路径，供 manifest 读写定位。"""
+        node_type = self._nodes.get(node_type_id)
+        if node_type is None or not node_type.source_path:
+            return None
+        return self.nodes_dir.resolve() / node_type.source_path
 
     def snapshot(self) -> NodeRegistrySnapshot:
         return NodeRegistrySnapshot(MappingProxyType(dict(self._nodes)))
@@ -644,11 +665,15 @@ class NodeRegistry:
             )
             return False
         config_schema = node_class.config_schema()
+        # 读取 manifest 并应用默认值覆盖
+        manifest = read_manifest(file_path)
+        config_schema = apply_manifest_defaults(config_schema, manifest)
         form = self._registered_form(
             node_class,
             config_schema=config_schema,
             file_path=file_path,
             package=package,
+            manifest=manifest,
         )
         self._nodes[meta.id] = RegisteredNodeType(
             id=meta.id,
@@ -662,8 +687,16 @@ class NodeRegistry:
             keywords=meta.keywords,
             documentation_url=meta.documentation_url,
             version=meta.version,
-            inputs={name: value.to_dict() for name, value in node_class.inputs.items()},
-            outputs={name: value.to_dict() for name, value in node_class.outputs.items()},
+            inputs=apply_manifest_port_presentation(
+                {name: value.to_dict() for name, value in node_class.inputs.items()},
+                manifest,
+                "inputs",
+            ),
+            outputs=apply_manifest_port_presentation(
+                {name: value.to_dict() for name, value in node_class.outputs.items()},
+                manifest,
+                "outputs",
+            ),
             config_schema=config_schema,
             form=form,
             dynamic_inputs=(
@@ -674,6 +707,7 @@ class NodeRegistry:
             ),
             node_class=node_class,
             package=package,
+            source_path=self._relative_path(file_path),
         )
         return True
 
@@ -684,12 +718,18 @@ class NodeRegistry:
         config_schema: dict[str, Any],
         file_path: Path,
         package: NodePackageInfo | None,
+        manifest: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         form = node_class.__node_meta__.form
-        if form is None:
+        py_form_dict = form.to_dict() if form is not None else None
+
+        # 合并 manifest 覆盖层
+        merged_form = merge_form_with_manifest(py_form_dict, manifest, config_schema)
+        if merged_form is None:
             return None
+
         try:
-            _validate_node_form(form.to_dict(), config_schema)
+            _validate_node_form(merged_form, config_schema)
         except ValueError as exc:
             self._record_diagnostic(
                 "node_form_invalid",
@@ -698,7 +738,7 @@ class NodeRegistry:
                 path=self._relative_path(file_path),
             )
             return None
-        return form.to_dict()
+        return merged_form
 
     def _record_diagnostic(
         self,

@@ -16,7 +16,8 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { ClipboardPaste, Copy, CopyPlus, Map as MapIcon, Maximize2, Minus, Plus, StickyNote, ZoomIn, ZoomOut } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { CanvasQuickSearch } from "./CanvasQuickSearch";
 import { buildCanvasConnectionEdge } from "../lib/canvasConnectionEdge";
 import { buildCanvasNodeData, type CanvasNodePortEntry } from "../lib/canvasNodeData";
 import { validateConnection } from "../lib/connectionValidation";
@@ -30,6 +31,7 @@ import type { NodeRuntimeState } from "../lib/runState";
 import type { WorkflowIssueItem } from "../lib/workflowIssues";
 import type { CanvasAnnotation, NodePort, NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
 import { NodeTypeIcon } from "./NodeTypeIcon";
+import { getInlineFields, renderInlineField } from "../lib/inlineFieldControls";
 
 type FlowCanvasProps = {
   disabled?: boolean;
@@ -56,6 +58,7 @@ type FlowCanvasProps = {
   onOpenNodeRuntime?: (target: NodeRuntimeNavigationTarget) => void;
   onNodeDragStateChange?: (isDragging: boolean) => void;
   onSelectIssue?: (issue: WorkflowIssueItem) => void;
+  onConfigChange?: (nodeId: string, key: string, value: unknown) => void;
   onWorkflowChange: (workflow: WorkflowDocument) => void;
   onSelectNode: (nodeId: string | null) => void;
   onSelectNodes?: (nodeIds: string[], primaryNodeId: string | null) => void;
@@ -69,6 +72,8 @@ type EditorNodeData = {
   runDetail?: NodeRunDetail;
   onOpenNodeRuntime?: (target: NodeRuntimeNavigationTarget) => void;
   onSelectIssue?: (issue: WorkflowIssueItem) => void;
+  /** 内联控件配置变更回调：由上层 useCanvasOperations 提供 */
+  onConfigChange?: (nodeId: string, key: string, value: unknown) => void;
 };
 
 type EditorNode = Node<EditorNodeData, "workflowNode">;
@@ -92,10 +97,7 @@ type NodeMeasurement = {
 const FLOW_NODE_INITIAL_WIDTH = 190;
 const FLOW_NODE_INITIAL_HEIGHT = 110;
 
-const flowNodeTypes = {
-  workflowNode: WorkflowNodeView,
-  canvasAnnotation: CanvasAnnotationView,
-};
+// 节点类型注册表移到文件末尾声明，因为 WorkflowNodeView 现在由 memo 包装为 const 绑定
 
 export function FlowCanvas({
   ...props
@@ -125,6 +127,7 @@ function FlowCanvasInner({
   onAddAnnotationAt,
   onAddNodeAt,
   hasNodeClipboard = false,
+  onConfigChange,
   onCopyNodes,
   onPasteNodes,
   onDuplicateNodes,
@@ -140,8 +143,15 @@ function FlowCanvasInner({
   const [nodeMeasurements, setNodeMeasurements] = useState<Record<string, NodeMeasurement>>({});
   const [showFallbackEdges, setShowFallbackEdges] = useState(false);
   const [connectionHint, setConnectionHint] = useState<string | null>(null);
-  const [isMinimapVisible, setIsMinimapVisible] = useState(false);
+  // 双击画布空白处弹出的快速搜索框位置（屏幕坐标）
+  const [quickSearchScreenPosition, setQuickSearchScreenPosition] = useState<{ x: number; y: number } | null>(null);
+  // 小地图默认开启，帮助定位大画布；用户偏好持久化，关闭后下次仍保持关闭。
+  const [isMinimapVisible, setIsMinimapVisible] = useState(readMinimapPreference);
   const canvasShellRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    writeMinimapPreference(isMinimapVisible);
+  }, [isMinimapVisible]);
   const connectionHintRef = useRef<string | null>(null);
   const { fitView, screenToFlowPosition, zoomIn, zoomOut } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -228,6 +238,7 @@ function FlowCanvasInner({
         previousNode.data.runDetail === runDetail &&
         previousNode.data.onOpenNodeRuntime === onOpenNodeRuntime &&
         previousNode.data.onSelectIssue === onSelectIssue &&
+        previousNode.data.onConfigChange === onConfigChange &&
         hasSameMeasurement(previousNode, measurement)
       ) {
         nextEditorNodes.set(node.id, previousNode);
@@ -249,6 +260,7 @@ function FlowCanvasInner({
           runDetail,
           onOpenNodeRuntime,
           onSelectIssue,
+          onConfigChange,
         },
         ...(measurement ? measurement : {}),
       };
@@ -288,18 +300,32 @@ function FlowCanvasInner({
     workflow.nodes,
   ]);
 
+  // 记录上一次各节点的端口结构签名，用于只对实际变化的节点调用 updateNodeInternals
+  const nodeInternalsSignatureRef = useRef<Map<string, string> | null>(null);
+
   useEffect(() => {
-    const nodeIds = nodes.map((node) => node.id);
     if (
-      nodeIds.length === 0 ||
+      nodes.length === 0 ||
       typeof window === "undefined" ||
       window.navigator.userAgent.toLowerCase().includes("jsdom")
     ) {
       return;
     }
 
+    // 对比前后节点集合：仅新增/删除/端口结构变化的节点才需要重新测量 handle 位置
+    const nextSignatures = new Map(nodes.map((node) => [node.id, nodeInternalsSignature(node)]));
+    const previousSignatures = nodeInternalsSignatureRef.current;
+    nodeInternalsSignatureRef.current = nextSignatures;
+
+    const changedNodeIds = [...nextSignatures.entries()]
+      .filter(([nodeId, signature]) => previousSignatures?.get(nodeId) !== signature)
+      .map(([nodeId]) => nodeId);
+    if (changedNodeIds.length === 0) {
+      return;
+    }
+
     const animationFrame = window.requestAnimationFrame(() => {
-      updateNodeInternals(nodeIds);
+      updateNodeInternals(changedNodeIds);
     });
 
     return () => window.cancelAnimationFrame(animationFrame);
@@ -577,8 +603,26 @@ function FlowCanvasInner({
     [disabled, nodeTypeById, onAddNodeAt, screenToFlowPosition]
   );
 
+  const handleCanvasDoubleClick = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
+      if (disabled || !onAddNodeAt) {
+        return;
+      }
+      const target = event.target as HTMLElement;
+      // 双击节点/连线/按钮等交互元素不触发；仅在空白 pane 或空画布模板遮罩上打开
+      if (target.closest("button, a, .flow-node, .canvas-quick-search")) {
+        return;
+      }
+      if (!target.closest(".react-flow__pane") && !target.closest(".canvas-empty-overlay")) {
+        return;
+      }
+      setQuickSearchScreenPosition({ x: event.clientX, y: event.clientY });
+    },
+    [disabled, onAddNodeAt]
+  );
+
   return (
-    <section className="canvas-shell" aria-label="画布工作区" ref={canvasShellRef}>
+    <section className="canvas-shell" aria-label="画布工作区" onDoubleClick={handleCanvasDoubleClick} ref={canvasShellRef}>
       <ReactFlow
         deleteKeyCode={disabled ? [] : ["Delete", "Backspace"]}
         edges={edges}
@@ -586,6 +630,8 @@ function FlowCanvasInner({
         nodeTypes={flowNodeTypes}
         nodesConnectable={!disabled}
         nodesDraggable={!disabled}
+        // 双击留给快速搜索框，不再缩放画布
+        zoomOnDoubleClick={false}
         multiSelectionKeyCode={["Control", "Meta", "Shift"]}
         proOptions={{ hideAttribution: true }}
         selectionKeyCode="Shift"
@@ -692,6 +738,14 @@ function FlowCanvasInner({
         <div className="connection-hint" role="status">
           {connectionHint}
         </div>
+      ) : null}
+      {quickSearchScreenPosition && !disabled && onAddNodeAt ? (
+        <CanvasQuickSearch
+          nodeTypes={nodeTypes}
+          screenPosition={quickSearchScreenPosition}
+          onAdd={(nodeType) => onAddNodeAt(nodeType, screenToFlowPosition(quickSearchScreenPosition))}
+          onClose={() => setQuickSearchScreenPosition(null)}
+        />
       ) : null}
       {selectedIssueEdge ? (
         <SelectedIssueEdgeActionBar
@@ -1134,14 +1188,33 @@ function annotationColorLabel(color: CanvasAnnotation["color"]) {
   }
 }
 
-function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
-  const { workflowNode, nodeType, issues, runtimeState, runDetail } = data;
-  const statusClass = runtimeState ? ` run-${runtimeState.status}` : "";
-  const canvasNode = buildCanvasNodeData({ issues, node: workflowNode, nodeType, runDetail, runtimeState });
+// memo 包装：画布重渲染时，data/selected 未变的节点跳过重渲染；
+// 上层 nodes useMemo 已对未变化节点复用同一对象引用，浅比较即可命中
+export function NodeVisualCard({
+  canvasNode,
+  className = "",
+  interactivePorts = true,
+  nodeType,
+  onConfigChange,
+  topContent,
+  workflowNode,
+}: {
+  canvasNode: ReturnType<typeof buildCanvasNodeData>;
+  className?: string;
+  interactivePorts?: boolean;
+  nodeType?: NodeType;
+  onConfigChange?: (nodeId: string, key: string, value: unknown) => void;
+  topContent?: ReactNode;
+  workflowNode: WorkflowNode;
+}) {
+  const inlineFields = useMemo(
+    () => getInlineFields(nodeType),
+    [nodeType],
+  );
 
   return (
     <div
-      className={`${selected ? "flow-node is-selected" : "flow-node"}${canvasNode.isDisabled ? " is-disabled" : ""}${statusClass}`}
+      className={`flow-node${canvasNode.isDisabled ? " is-disabled" : ""}${className ? ` ${className}` : ""}`}
       data-category={nodeType?.category || "其他"}
     >
       <div className="flow-node-header">
@@ -1155,34 +1228,67 @@ function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
           <small title={canvasNode.subtitleTitle}>{canvasNode.subtitle}</small>
         </span>
       </div>
-      {canvasNode.runtimeStatusLabel ? (
-        <div className="run-status-badge">{canvasNode.runtimeStatusLabel}</div>
-      ) : null}
-      <NodeIssueBadge canvasNode={canvasNode} onSelectIssue={data.onSelectIssue} />
-      {canvasNode.runSummary ? (
-        <button
-          aria-label={`查看运行数据：${canvasNode.displayName}，${canvasNode.runSummary.ariaLabel}`}
-          className="run-summary-badges nodrag"
-          title={canvasNode.runSummary.ariaLabel}
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            data.onOpenNodeRuntime?.(buildNodeRuntimeTarget(workflowNode.id, "canvas"));
-          }}
-        >
-          {canvasNode.runSummary.badges.map((badge) => (
-            <span className={badge.tone ? `is-${badge.tone}` : undefined} key={badge.id}>
-              {badge.label}
-            </span>
-          ))}
-        </button>
-      ) : null}
+      {topContent}
       {canvasNode.description ? <p>{canvasNode.description}</p> : null}
       {canvasNode.notes ? <p className="flow-node-note" title={canvasNode.notes}>{canvasNode.notes}</p> : null}
-      <PortSection inputPorts={canvasNode.inputPorts} outputPorts={canvasNode.outputPorts} />
+      {/* 内联控件：仅 placement="inline" 的字段渲染在卡片上 */}
+      {inlineFields.length > 0 ? (
+        <div className="flow-node-inline-fields nodrag" onClick={(e) => e.stopPropagation()}>
+          {inlineFields.map((field) => {
+            const currentValue = workflowNode.config[field.key];
+            return (
+              <div className="inline-field-row" key={field.key}>
+                {renderInlineField(
+                  field,
+                  currentValue,
+                  (value) => onConfigChange?.(workflowNode.id, field.key, value),
+                  canvasNode.isDisabled,
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <PortSection inputPorts={canvasNode.inputPorts} interactive={interactivePorts} outputPorts={canvasNode.outputPorts} />
     </div>
   );
 }
+
+// memo 包装：画布重渲染时，data/selected 未变的节点跳过重渲染；
+// 上层 nodes useMemo 已对未变化节点复用同一对象引用，浅比较即可命中
+const WorkflowNodeView = memo(function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
+  const { workflowNode, nodeType, issues, runtimeState, runDetail } = data;
+  const statusClass = runtimeState ? ` run-${runtimeState.status}` : "";
+  const canvasNode = buildCanvasNodeData({ issues, node: workflowNode, nodeType, runDetail, runtimeState });
+
+  return (
+    <NodeVisualCard
+      canvasNode={canvasNode}
+      className={`${selected ? "is-selected" : ""}${statusClass}`}
+      nodeType={nodeType}
+      onConfigChange={data.onConfigChange}
+      workflowNode={workflowNode}
+      topContent={<>
+        {canvasNode.runtimeStatusLabel ? <div className="run-status-badge">{canvasNode.runtimeStatusLabel}</div> : null}
+        <NodeIssueBadge canvasNode={canvasNode} onSelectIssue={data.onSelectIssue} />
+        {canvasNode.runSummary ? (
+          <button
+            aria-label={`查看运行数据：${canvasNode.displayName}，${canvasNode.runSummary.ariaLabel}`}
+            className="run-summary-badges nodrag"
+            title={canvasNode.runSummary.ariaLabel}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onOpenNodeRuntime?.(buildNodeRuntimeTarget(workflowNode.id, "canvas"));
+            }}
+          >
+            {canvasNode.runSummary.badges.map((badge) => <span className={badge.tone ? `is-${badge.tone}` : undefined} key={badge.id}>{badge.label}</span>)}
+          </button>
+        ) : null}
+      </>}
+    />
+  );
+});
 
 function NodeIssueBadge({
   canvasNode,
@@ -1224,10 +1330,11 @@ function NodeIssueBadge({
 
 type PortSectionProps = {
   inputPorts: CanvasNodePortEntry[];
+  interactive?: boolean;
   outputPorts: CanvasNodePortEntry[];
 };
 
-function PortSection({ inputPorts, outputPorts }: PortSectionProps) {
+function PortSection({ inputPorts, interactive = true, outputPorts }: PortSectionProps) {
   const rowCount = Math.max(inputPorts.length, outputPorts.length);
 
   if (rowCount === 0) {
@@ -1238,15 +1345,15 @@ function PortSection({ inputPorts, outputPorts }: PortSectionProps) {
     <div aria-label="节点端口" className="flow-port-section" role="group">
       {Array.from({ length: rowCount }, (_, index) => (
         <div className="flow-port-row" key={index}>
-          <PortCell entry={inputPorts[index]} side="input" />
-          <PortCell entry={outputPorts[index]} side="output" />
+          <PortCell entry={inputPorts[index]} interactive={interactive} side="input" />
+          <PortCell entry={outputPorts[index]} interactive={interactive} side="output" />
         </div>
       ))}
     </div>
   );
 }
 
-function PortCell({ entry, side }: { entry?: CanvasNodePortEntry; side: "input" | "output" }) {
+function PortCell({ entry, interactive, side }: { entry?: CanvasNodePortEntry; interactive: boolean; side: "input" | "output" }) {
   if (!entry) {
     return <span aria-hidden="true" className={`flow-port-cell is-${side} is-empty`} />;
   }
@@ -1265,19 +1372,17 @@ function PortCell({ entry, side }: { entry?: CanvasNodePortEntry; side: "input" 
 
   return (
     <span className={`flow-port-cell is-${side}`}>
-      <Handle
+      {interactive ? <Handle
         className={[
           "flow-handle",
           isMultiConnectionInput(side, port) ? "is-multi-connection" : "",
           isErrorOutput(side, port) ? "is-error-port" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        ].filter(Boolean).join(" ")}
         id={portName}
         position={position}
         title={portTooltip({ direction: side, name: portName, port })}
         type={type}
-      />
+      /> : <span aria-hidden="true" className="flow-handle" />}
       <span className={classNames} title={label}>
         {label}
       </span>
@@ -1291,4 +1396,46 @@ function isMultiConnectionInput(side: "input" | "output", port: NodePort): boole
 
 function isErrorOutput(side: "input" | "output", port: NodePort): boolean {
   return side === "output" && port.category === "error";
+}
+
+const MINIMAP_PREFERENCE_STORAGE_KEY = "node-flow.canvas-minimap-visible";
+
+function readMinimapPreference(): boolean {
+  try {
+    const stored = window.localStorage.getItem(MINIMAP_PREFERENCE_STORAGE_KEY);
+    if (stored === null) return true;
+    return stored !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function writeMinimapPreference(visible: boolean) {
+  try {
+    window.localStorage.setItem(MINIMAP_PREFERENCE_STORAGE_KEY, String(visible));
+  } catch {
+    // localStorage 不可用时静默降级，仅影响偏好持久化。
+  }
+}
+
+// 节点类型注册表：依赖 memo 包装的 WorkflowNodeView，故声明在组件定义之后
+const flowNodeTypes = {
+  workflowNode: WorkflowNodeView,
+  canvasAnnotation: CanvasAnnotationView,
+};
+
+// 节点端口结构签名：端口集合变化时才需要 updateNodeInternals 重新测量 handle
+function nodeInternalsSignature(node: CanvasEditorNode): string {
+  if (node.type !== "workflowNode") {
+    return "annotation";
+  }
+
+  const { workflowNode, nodeType } = node.data;
+  if (!nodeType) {
+    return `unknown:${workflowNode.type}`;
+  }
+
+  const inputPortIds = Object.keys(resolveNodeInputPorts(workflowNode, nodeType));
+  const outputPortIds = Object.keys(resolveNodeOutputPorts(workflowNode, nodeType));
+  return `${inputPortIds.join(",")}|${outputPortIds.join(",")}`;
 }

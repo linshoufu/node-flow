@@ -41,6 +41,7 @@ function actions(): WorkflowSettingsActions {
     onErrorWorkflowChange: vi.fn(),
     onMaxConcurrentRunsChange: vi.fn(),
     onRegisterConcurrencyInput: vi.fn(),
+    onRegisterTimeoutInput: vi.fn(),
     onRegisterVariableNameInput: vi.fn(),
     onRemoveTag: vi.fn(),
     onRemoveVariable: vi.fn(),
@@ -49,6 +50,7 @@ function actions(): WorkflowSettingsActions {
     onRollbackTargetChange: vi.fn(),
     onRollbackVersion: vi.fn(),
     onTagInputChange: vi.fn(),
+    onTimeoutChange: vi.fn(),
     onToggleTriggers: vi.fn(),
     onToggleVersions: vi.fn(),
     onVariableValueChange: vi.fn(),
@@ -152,6 +154,7 @@ describe("WorkflowSettingsPopover", () => {
     fireEvent.click(screen.getByLabelText("移除标签 smoke"));
     fireEvent.change(screen.getByLabelText("变量值 token"), { target: { value: "new-token" } });
     fireEvent.change(screen.getByLabelText("工作流默认环境"), { target: { value: "staging" } });
+    fireEvent.change(screen.getByLabelText("运行超时（秒）"), { target: { value: "45" } });
     fireEvent.change(screen.getByLabelText("工作流同时运行上限"), { target: { value: "4" } });
     fireEvent.change(screen.getByLabelText("错误处理工作流"), { target: { value: "workflow-error" } });
     fireEvent.click(screen.getByLabelText("自动保存草稿"));
@@ -161,10 +164,13 @@ describe("WorkflowSettingsPopover", () => {
     expect(actionSet.onRemoveTag).toHaveBeenCalledWith("smoke");
     expect(actionSet.onVariableValueChange).toHaveBeenCalledWith("token", "new-token");
     expect(actionSet.onEnvironmentChange).toHaveBeenCalledWith("staging");
+    expect(actionSet.onTimeoutChange).toHaveBeenCalledWith("45");
     expect(actionSet.onMaxConcurrentRunsChange).toHaveBeenCalledWith("4");
     expect(actionSet.onErrorWorkflowChange).toHaveBeenCalledWith("workflow-error");
     expect(actionSet.onAutoSaveChange).toHaveBeenCalledWith(false);
     expect(actionSet.onRegisterConcurrencyInput).toHaveBeenCalledWith(expect.any(HTMLInputElement));
+    expect(actionSet.onRegisterTimeoutInput).toHaveBeenCalledWith(expect.any(HTMLInputElement));
+    expect(screen.getByText("执行设置")).toBeInTheDocument();
     expect(screen.getByLabelText("变量名 bad-name")).toHaveAttribute("aria-invalid", "true");
   });
 

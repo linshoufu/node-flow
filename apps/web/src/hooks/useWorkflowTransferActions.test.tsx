@@ -18,7 +18,7 @@ function options(overrides: Record<string, unknown> = {}) {
   return {
     blocked: false,
     client: { getWorkflow: vi.fn().mockResolvedValue(workflow("source", 4)) },
-    confirmDiscardUnsavedChanges: vi.fn().mockReturnValue(true),
+    confirmDiscardUnsavedChanges: vi.fn().mockResolvedValue(true),
     currentWorkflow: workflow(),
     documentId: "workflow-1",
     download: vi.fn(),
@@ -71,7 +71,7 @@ describe("useWorkflowTransferActions", () => {
   });
 
   it("用户拒绝丢弃修改时不读取源工作流", async () => {
-    const current = options({ confirmDiscardUnsavedChanges: vi.fn().mockReturnValue(false) });
+    const current = options({ confirmDiscardUnsavedChanges: vi.fn().mockResolvedValue(false) });
     const { result } = renderHook(() => useWorkflowTransferActions(current));
 
     await act(() => result.current.duplicateWorkflow("source"));
@@ -109,6 +109,7 @@ describe("useWorkflowTransferActions", () => {
     act(() => {
       request = result.current.duplicateWorkflow("source");
     });
+    // 异步确认未结算前切换文档：确认后应直接丢弃结果，不再进入 busy 传输
     rerender({
       currentOptions: {
         ...current,
@@ -124,7 +125,7 @@ describe("useWorkflowTransferActions", () => {
     expect(current.onOpenDraft).not.toHaveBeenCalled();
     expect(current.navigateToNew).not.toHaveBeenCalled();
     expect(current.onMessage).not.toHaveBeenCalled();
-    expect(current.onBusyChange).toHaveBeenLastCalledWith(false);
+    expect(current.onBusyChange).not.toHaveBeenCalled();
   });
 
   it("导入 JSON 文件并打开新的未保存草稿", async () => {
@@ -232,9 +233,10 @@ describe("useWorkflowTransferActions", () => {
       secondRequest = result.current.duplicateWorkflow("source");
     });
 
+    // 第二次调用在确认前被同步拒绝；首次确认在微任务中继续推进
+    await expect(secondRequest).resolves.toBeNull();
     expect(current.confirmDiscardUnsavedChanges).toHaveBeenCalledOnce();
     expect(current.client.getWorkflow).toHaveBeenCalledOnce();
-    await expect(secondRequest).resolves.toBeNull();
     await act(async () => {
       pending.resolve(workflow("source"));
       await firstRequest;

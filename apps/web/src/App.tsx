@@ -1,28 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "./api/client";
+import { AppLoadingSkeleton } from "./components/AppLoadingSkeleton";
 import { CanvasEmptyState, type CanvasTemplateCard } from "./components/CanvasEmptyState";
 import { CommandPalette } from "./components/CommandPalette";
-import { ConfigPanel } from "./components/ConfigPanel";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { FlowCanvas } from "./components/FlowCanvas";
 import { ManualRunDialog } from "./components/ManualRunDialog";
-import { NodePackageAttentionNotice } from "./components/NodePackageManager";
 import { nodePackageAttentionCount } from "./lib/nodePackageDisplay";
 import { NodePalette } from "./components/NodePalette";
 import { RunDrawer } from "./components/RunDrawer";
 import { RunPanel } from "./components/RunPanel";
+import { StatusNotifications } from "./components/StatusNotifications";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { WorkflowIssuePanel } from "./components/WorkflowIssuePanel";
 import { WorkflowConflictDialog } from "./components/WorkflowConflictDialog";
-import { WorkflowManager } from "./components/WorkflowManager";
 import { WorkflowSettingsMenu } from "./components/WorkflowSettingsMenu";
 import { WorkflowTopbar } from "./components/WorkflowTopbar";
 import { WorkflowWorkbenchLayout } from "./components/WorkflowWorkbenchLayout";
-import { WorkspaceResourceDialogs } from "./components/WorkspaceResourceDialogs";
 import {
   WorkspaceResourceMenu,
 } from "./components/WorkspaceResourceMenu";
+import {
+  LazyConfigPanel,
+  LazyNodePackageAttentionNotice,
+  LazyWorkflowManager,
+  LazyWorkspaceResourcePage,
+} from "./lazyComponents";
 import { useWorkspaceResources } from "./hooks/useWorkspaceResources";
 import { useCommandPaletteController } from "./hooks/useCommandPaletteController";
+import { useConfirmDialog } from "./hooks/useConfirmDialog";
+import { useStatusNotifications } from "./hooks/useStatusNotifications";
 import { useWorkflowCatalogController } from "./hooks/useWorkflowCatalogController";
 import { useCanvasOperations } from "./hooks/useCanvasOperations";
 import { useNodeCatalogController } from "./hooks/useNodeCatalogController";
@@ -53,6 +60,8 @@ import { useWorkflowReleaseActions } from "./hooks/useWorkflowReleaseActions";
 import { useWorkflowRunActions } from "./hooks/useWorkflowRunActions";
 import { formatApiError as formatError } from "./lib/apiError";
 import { buildWorkspaceCommands } from "./lib/workspaceCommands";
+import { resourceRouteSectionForKind } from "./lib/workspaceResources";
+import type { ResourceRouteSection, WorkflowRoute } from "./lib/workflowRoute";
 import {
   createEmptyWorkflow,
   getEditableWorkflow,
@@ -60,7 +69,6 @@ import {
   scopeLabel,
   workflowErrorWorkflowId,
   workflowEnvironmentId,
-  workflowTimeoutSeconds,
   workflowVariables,
 } from "./lib/workflow";
 import { localizeNodeType } from "./lib/display";
@@ -81,10 +89,6 @@ import {
 import { buildWorkflowSaveActionState } from "./lib/saveState";
 import { buildWorkflowReleaseActionStates } from "./lib/workflowRelease";
 import { buildWorkflowVariableIssues } from "./lib/workflowVariables";
-import {
-  MAX_WORKFLOW_TIMEOUT_SECONDS,
-  MIN_WORKFLOW_TIMEOUT_SECONDS,
-} from "./lib/workflowSettings";
 import { WORKFLOW_TEMPLATES, createWorkflowFromTemplate, templateAvailability } from "./lib/workflowTemplates";
 import { formatNodeUpgradeDetails, formatNodeUpgradeSummary } from "./lib/nodeVersionUpgrades";
 import { initialRunDrawerState, reduceRunDrawer } from "./lib/workbenchLayout";
@@ -107,15 +111,74 @@ import type { WorkflowDocument } from "./types";
 const RUN_POLL_INTERVAL_MS = 1000;
 const MAX_RUN_POLL_ATTEMPTS = 120;
 const AUTO_SAVE_STORAGE_KEY = "node-flow:auto-save-enabled";
+// 命中该模式的画布消息（删除连线）会附带“撤销删除”操作按钮
+const EDGE_UNDO_MESSAGE_PATTERN = /已删除.*连线/;
 
 type VisiblePreRunIssueMode = "none" | "all" | "settings";
+
+/**
+ * ConfigPanel 懒加载占位：复用真实面板的 panel/config-panel 容器类名，
+ * 保持同尺寸骨架，避免 chunk 加载期间右侧插槽布局跳动与闪白。
+ */
+function ConfigPanelFallback() {
+  return (
+    <aside aria-label="配置面板加载中" className="panel config-panel lazy-panel-skeleton" role="status">
+      <div className="app-skeleton-bar app-skeleton-heading" />
+      <div className="app-skeleton-bar app-skeleton-line-long" />
+      <div className="app-skeleton-bar app-skeleton-line-short" />
+      <div className="app-skeleton-bar app-skeleton-line-long" />
+      <div className="app-skeleton-bar app-skeleton-line-short" />
+    </aside>
+  );
+}
+
+/**
+ * WorkflowManager 懒加载占位：复用触发按钮类名保持同尺寸，
+ * 避免顶栏按钮位在 chunk 加载期间塌陷。
+ */
+function WorkflowManagerFallback() {
+  return (
+    <button className="workflow-manager-trigger" disabled type="button">
+      工作流加载中
+    </button>
+  );
+}
+
 type WorkflowSettingsFocusRequest = {
   field?: string;
   key: number;
 };
 export default function App() {
-  const [message, setMessage] = useState("正在加载节点类型...");
-  const nodeCatalogController = useNodeCatalogController({ onMessage: setMessage });
+  const {
+    dismiss: dismissStatusNotification,
+    notifications: statusNotifications,
+    push: pushStatusNotification,
+  } = useStatusNotifications();
+  // 兼容既有 onMessage 调用点：状态消息统一进入通知队列，tone 由文案关键词判定
+  const setMessage = useCallback((text: string) => {
+    pushStatusNotification(text);
+  }, [pushStatusNotification]);
+  // 节点目录首次加载完成前，画布与节点库以骨架屏占位（替代原先的加载 toast）
+  const [isInitialCatalogReady, setIsInitialCatalogReady] = useState(false);
+  const handleNodeCatalogMessage = useCallback((text: string) => {
+    setIsInitialCatalogReady(true);
+    pushStatusNotification(text);
+  }, [pushStatusNotification]);
+  // 统一确认弹窗服务：替换节点包与丢弃未保存修改等场景的原生 window.confirm
+  const confirmDialog = useConfirmDialog();
+  const confirmNodeCatalogAction = useCallback(
+    (message: string) => confirmDialog.confirm({
+      confirmLabel: "执行操作",
+      danger: true,
+      description: message,
+      title: "节点包操作确认",
+    }),
+    [confirmDialog.confirm],
+  );
+  const nodeCatalogController = useNodeCatalogController({
+    confirmAction: confirmNodeCatalogAction,
+    onMessage: handleNodeCatalogMessage,
+  });
   const { isNodeTypesReloading, nodePackageScan, nodeTypes, reloadNodeTypes } = nodeCatalogController;
   const {
     catalogError: workflowCatalogError,
@@ -199,13 +262,15 @@ export default function App() {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(readAutoSavePreference);
   const workspaceResources = useWorkspaceResources({ onMessage: setMessage });
   const {
-    activeResourceManager,
     credentialTypes,
     credentials,
-    openResource: openWorkspaceResource,
     projectEnvironments,
     projectVariables,
   } = workspaceResources;
+  // 资源页面当前分区：非空时表示处于 /resources/{section} 路由页面
+  const [resourceSection, setResourceSection] = useState<ResourceRouteSection | null>(null);
+  // 编辑器分区附带的节点类型 ID（仅 /resources/editor/{nodeTypeId} 时有效）
+  const [resourceNodeTypeId, setResourceNodeTypeId] = useState<string | undefined>(undefined);
   const [isPageBusy, setIsBusy] = useState(false);
   const isAutoSavingMutation =
     workflowMutationOperation === "save" && workflowSaveMode === "auto";
@@ -223,10 +288,7 @@ export default function App() {
     runView,
     showHistoricalRun,
     trackCurrentRun,
-  } = useWorkflowExecutionController({
-    maxPollAttempts: MAX_RUN_POLL_ATTEMPTS,
-    pollIntervalMs: RUN_POLL_INTERVAL_MS,
-  });
+  } = useWorkflowExecutionController();
   const [runDrawerState, setRunDrawerState] = useState(() => initialRunDrawerState);
   const [isCanvasFocusMode, setIsCanvasFocusMode] = useState(false);
 
@@ -250,7 +312,6 @@ export default function App() {
     hasMore: hasMoreWorkflowRuns,
     isLoading: isWorkflowRunHistoryLoading,
     loadMore: loadMoreWorkflowRunHistory,
-    refresh: refreshWorkflowRunHistory,
     retry: retryWorkflowRunHistory,
     runs: selectedWorkflowRuns,
     statusFilter: runHistoryStatusFilter,
@@ -292,11 +353,13 @@ export default function App() {
     isCommandPaletteOpen,
     openCommandPalette,
   } = useCommandPaletteController({
-    blocked: Boolean(activeResourceManager) || isManualRunDialogOpen,
+    blocked: isManualRunDialogOpen,
     onBeforeOpen: closeWorkflowSettingsForCommandPalette,
   });
   const [workflowSettingsFocusRequest, setWorkflowSettingsFocusRequest] =
     useState<WorkflowSettingsFocusRequest | null>(null);
+  // 设置弹层输入框注册版本号：懒加载输入框挂载后递增，用于重试待处理的聚焦请求
+  const [workflowSettingsInputRegistrationKey, setWorkflowSettingsInputRegistrationKey] = useState(0);
   const isRollingBackWorkflowVersion = workflowMutationOperation === "rollback";
   const mountedRef = useRef(true);
   const workflowTimeoutInputRef = useRef<HTMLInputElement>(null);
@@ -304,9 +367,37 @@ export default function App() {
   const workflowVariableNameRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const workflowNavigationActionsRef = useRef<WorkflowNavigationActions | null>(null);
   const workflowRouteController = useWorkflowRouteController({
-    onRouteRequested: (route, source) =>
-      workflowNavigationActionsRef.current?.handleRouteRequest(route, source) ?? null,
+    onRouteRequested: async (route, source) => {
+      // 资源页面路由不加载工作流，直接接受并记录分区
+      if (route.kind === "resources") {
+        setResourceSection(route.section);
+        setResourceNodeTypeId(route.nodeTypeId);
+        return route;
+      }
+      const acceptedRoute = await (
+        workflowNavigationActionsRef.current?.handleRouteRequest(route, source) ?? null
+      );
+      if (acceptedRoute) {
+        setResourceSection(null);
+        setResourceNodeTypeId(undefined);
+      }
+      return acceptedRoute;
+    },
   });
+  // 统一路由导航入口：同步资源页分区状态，保证从资源页离开时页面即时切回工作区
+  const navigateWorkflowRoute = useCallback((
+    route: WorkflowRoute,
+    options?: { replace?: boolean },
+  ) => {
+    if (route.kind === "resources") {
+      setResourceSection(route.section);
+      setResourceNodeTypeId(route.nodeTypeId);
+    } else {
+      setResourceSection(null);
+      setResourceNodeTypeId(undefined);
+    }
+    workflowRouteController.navigate(route, options);
+  }, [workflowRouteController.navigate]);
   const {
     clearWorkflowConflict,
     closeWorkflowConflict,
@@ -617,6 +708,25 @@ export default function App() {
     updateActivation: mutateWorkflowActivation,
     upsertWorkflowSummary,
   });
+  // 连线删除通知的“撤销删除”操作由 useCanvasOperations 提供，先用 ref 打破循环依赖
+  const undoDeletedEdgesRef = useRef<() => void>(() => {});
+  const edgeUndoNotificationIdRef = useRef<string | null>(null);
+  const handleCanvasMessage = useCallback((text: string) => {
+    if (!EDGE_UNDO_MESSAGE_PATTERN.test(text)) {
+      pushStatusNotification(text);
+      return;
+    }
+    // 已有旧的删除连线通知时先丢弃，保证同一时间只保留一个撤销入口
+    if (edgeUndoNotificationIdRef.current !== null) {
+      dismissStatusNotification(edgeUndoNotificationIdRef.current);
+    }
+    edgeUndoNotificationIdRef.current = pushStatusNotification(text, {
+      action: {
+        label: "撤销删除",
+        onClick: () => undoDeletedEdgesRef.current(),
+      },
+    });
+  }, [dismissStatusNotification, pushStatusNotification]);
   const {
     addCanvasAnnotation,
     addNode,
@@ -646,12 +756,37 @@ export default function App() {
     editableWorkflow,
     editScope,
     isEditorLocked,
-    onMessage: setMessage,
+    onMessage: handleCanvasMessage,
     selectNode: selectNodeForPanel,
   });
+
+  useEffect(() => {
+    undoDeletedEdgesRef.current = undoDeletedEdges;
+  }, [undoDeletedEdges]);
+
+  useEffect(() => {
+    // 撤销栈被清空（已撤销、切换文档或被其他操作清除）时，移除附带“撤销删除”的通知
+    if (canUndoDeletedEdges || edgeUndoNotificationIdRef.current === null) {
+      return;
+    }
+    dismissStatusNotification(edgeUndoNotificationIdRef.current);
+    edgeUndoNotificationIdRef.current = null;
+  }, [canUndoDeletedEdges, dismissStatusNotification]);
   const navigateToSavedWorkflow = useCallback((workflowId: string) => {
-    workflowRouteController.navigate({ kind: "workflow", workflowId });
-  }, [workflowRouteController.navigate]);
+    navigateWorkflowRoute({ kind: "workflow", workflowId });
+  }, [navigateWorkflowRoute]);
+  // 进入资源页面指定分区（顶栏菜单 / 命令面板 / 快捷入口共用）
+  const openResourceSection = useCallback((section: ResourceRouteSection, nodeTypeId?: string) => {
+    navigateWorkflowRoute({ kind: "resources", section, nodeTypeId });
+  }, [navigateWorkflowRoute]);
+  // 从资源页面返回当前选中工作流（无选中时回到新建工作流）
+  const leaveResourcePage = useCallback(() => {
+    navigateWorkflowRoute(
+      selectedWorkflowId
+        ? { kind: "workflow", workflowId: selectedWorkflowId }
+        : { kind: "new" },
+    );
+  }, [navigateWorkflowRoute, selectedWorkflowId]);
   const showSettingsSaveIssues = useCallback(() => {
     setVisiblePreRunIssueMode("settings");
   }, []);
@@ -681,7 +816,7 @@ export default function App() {
     editScopeActive: Boolean(editScope?.length),
     loadComparisonRun,
     loadHistoricalRun,
-    navigate: workflowRouteController.navigate,
+    navigate: navigateWorkflowRoute,
     onClearPreRunIssues: () => setVisiblePreRunIssueMode("none"),
     onExpandRunDrawer: (manuallyPinned) =>
       setRunDrawerState({ expanded: true, manuallyPinned }),
@@ -704,7 +839,7 @@ export default function App() {
     isIssueInCurrentScope: (path) => isIssuePathInCurrentEditScope(path, editScope),
     isOperationActive: isActiveRun,
     maxPollAttempts: MAX_RUN_POLL_ATTEMPTS,
-    navigate: workflowRouteController.navigate,
+    navigate: navigateWorkflowRoute,
     onClearHistoricalRunWorkflow: clearHistoricalRunWorkflow,
     onExpandRunDrawer: () =>
       setRunDrawerState({ expanded: true, manuallyPinned: false }),
@@ -712,7 +847,6 @@ export default function App() {
     onPageBusyChange: setIsBusy,
     onSelectIssueNode: (nodeId) => selectNodeForPanel(nodeId, "config"),
     onShowPreRunIssues: () => setVisiblePreRunIssueMode("all"),
-    refreshWorkflowRunHistory,
     runView,
     saveWorkflow,
     shouldSaveBeforeRun: workflowSaveState.shouldSaveBeforeRun,
@@ -720,12 +854,13 @@ export default function App() {
     workflow,
   });
   const workflowNavigationActions = useWorkflowNavigationActions({
+    confirmDiscard: confirmDialog.confirm,
     createWorkflowFromTemplate,
     hasActiveOperation,
     isBusy,
     isCancelling,
     isWorkflowDirty,
-    navigate: workflowRouteController.navigate,
+    navigate: navigateWorkflowRoute,
     onApplyDocument: applyWorkflowNavigationDocument,
     onBusyChange: setIsBusy,
     onMessage: setMessage,
@@ -752,7 +887,7 @@ export default function App() {
     confirmDiscardUnsavedChanges,
     currentWorkflow: workflow,
     documentId: workflow.id,
-    navigateToNew: () => workflowRouteController.navigate({ kind: "new" }),
+    navigateToNew: () => navigateWorkflowRoute({ kind: "new" }),
     onBusyChange: setIsBusy,
     onMessage: setMessage,
     onOpenDraft: (draft, message) => applyWorkflowNavigationDocument({
@@ -789,7 +924,7 @@ export default function App() {
     currentWorkflow: workflow,
     isPageBusy,
     isWorkflowMutating,
-    navigate: workflowRouteController.navigate,
+    navigate: navigateWorkflowRoute,
     onBusyChange: setIsBusy,
     onClearIssues: clearWorkflowIssues,
     onMessage: setMessage,
@@ -838,7 +973,7 @@ export default function App() {
       cancelRun: () => void cancelRun(),
       fitCanvas: requestCanvasFit,
       newWorkflow: startNewWorkflow,
-      openResource: (kind) => void openWorkspaceResource(kind),
+      openResource: (kind) => openResourceSection(resourceRouteSectionForKind(kind)),
       openWorkflowSettings: () => setIsWorkflowSettingsOpen(true),
       redo: redoWorkflowChange,
       reloadNodeTypes: () => void reloadNodeTypes(),
@@ -864,6 +999,10 @@ export default function App() {
   }, [isWorkflowDirty]);
 
   useEffect(() => {
+    // 资源页面期间不同步工作流/执行 URL，返回后依赖项变化会自动重新同步
+    if (resourceSection) {
+      return;
+    }
     if (run) {
       const routeNodeId = !editScope?.length && selectedNodeId
         && runDisplayWorkflow.nodes.some((node) => node.id === selectedNodeId)
@@ -895,7 +1034,7 @@ export default function App() {
       },
       { replace: true },
     );
-  }, [editScope, run, runDisplayWorkflow.nodes, selectedNodeId, selectedWorkflowId, workflow.nodes]);
+  }, [editScope, resourceSection, run, runDisplayWorkflow.nodes, selectedNodeId, selectedWorkflowId, workflow.nodes]);
 
   useEffect(() => {
     function handleSaveShortcut(event: KeyboardEvent) {
@@ -1111,14 +1250,21 @@ export default function App() {
       return;
     }
 
+    // 输入框位于懒加载的设置弹层内，未挂载时保留请求，等注册回调触发后重试
     if (workflowSettingsFocusRequest.field === "timeout_seconds") {
-      workflowTimeoutInputRef.current?.focus();
+      if (!workflowTimeoutInputRef.current) {
+        return;
+      }
+      workflowTimeoutInputRef.current.focus();
       setWorkflowSettingsFocusRequest(null);
       return;
     }
 
     if (workflowSettingsFocusRequest.field === "max_concurrent_runs") {
-      workflowConcurrencyInputRef.current?.focus();
+      if (!workflowConcurrencyInputRef.current) {
+        return;
+      }
+      workflowConcurrencyInputRef.current.focus();
       setWorkflowSettingsFocusRequest(null);
       return;
     }
@@ -1133,10 +1279,30 @@ export default function App() {
     }
     variableNameInput.focus();
     setWorkflowSettingsFocusRequest(null);
-  }, [isWorkflowSettingsOpen, workflowSettingsFocusRequest]);
+  }, [isWorkflowSettingsOpen, workflowSettingsFocusRequest, workflowSettingsInputRegistrationKey]);
+
+  // 设置弹层输入框注册回调需保持引用稳定：
+  // 内联 ref 回调每次渲染都会以 null 卸载再重挂，会触发循环渲染；
+  // 稳定身份后只在真正挂载时递增注册版本号，用于重试待处理的聚焦请求
+  const registerWorkflowSettingsTimeoutInput = useCallback((element: HTMLInputElement | null) => {
+    workflowTimeoutInputRef.current = element;
+    if (element) {
+      setWorkflowSettingsInputRegistrationKey((current) => current + 1);
+    }
+  }, []);
+  const registerWorkflowSettingsConcurrencyInput = useCallback((element: HTMLInputElement | null) => {
+    workflowConcurrencyInputRef.current = element;
+    if (element) {
+      setWorkflowSettingsInputRegistrationKey((current) => current + 1);
+    }
+  }, []);
 
   return (
-    <div className="app-shell" data-focus={isCanvasFocusMode ? "true" : undefined}>
+    <div
+      className="app-shell"
+      data-focus={isCanvasFocusMode ? "true" : undefined}
+      data-resource={resourceSection ?? undefined}
+    >
       <WorkflowTopbar
         actions={{
           onCancelRun: cancelRun,
@@ -1152,7 +1318,6 @@ export default function App() {
           onToggleActivation: () => void updateWorkflowActivation(),
           onUndo: undoWorkflowChange,
           onUpdateName: updateWorkflowName,
-          onUpdateTimeout: updateWorkflowTimeoutSeconds,
           onValidateWorkflow: () => void validateWorkflow(),
         }}
         identity={{
@@ -1167,10 +1332,6 @@ export default function App() {
             title: autoSaveController.lastError ?? workflowSavePresentation.title,
           },
           selectedWorkflowId,
-          timeoutInputRef: workflowTimeoutInputRef,
-          timeoutMaximum: MAX_WORKFLOW_TIMEOUT_SECONDS,
-          timeoutMinimum: MIN_WORKFLOW_TIMEOUT_SECONDS,
-          timeoutSeconds: workflowTimeoutSeconds(workflow),
         }}
         operationState={{
           activation: workflowReleaseActionStates.activation,
@@ -1187,10 +1348,11 @@ export default function App() {
             credentialCount={credentials.length}
             disabled={isEditorLocked}
             environmentCount={projectEnvironments.length}
+            nodeCount={nodeTypes.length}
             packageAttentionCount={nodePackageAttentionCount(nodePackageScan)}
             packageCount={nodePackageScan?.packages.length ?? 0}
             variableCount={projectVariables.length}
-            onSelect={(kind) => void openWorkspaceResource(kind)}
+            onSelect={(kind) => openResourceSection(resourceRouteSectionForKind(kind))}
           />
         )}
         settingsMenu={(
@@ -1210,9 +1372,8 @@ export default function App() {
               onEnvironmentChange: updateWorkflowEnvironment,
               onErrorWorkflowChange: updateErrorWorkflow,
               onMaxConcurrentRunsChange: updateWorkflowMaxConcurrentRuns,
-              onRegisterConcurrencyInput: (element) => {
-                workflowConcurrencyInputRef.current = element;
-              },
+              onRegisterConcurrencyInput: registerWorkflowSettingsConcurrencyInput,
+              onRegisterTimeoutInput: registerWorkflowSettingsTimeoutInput,
               onRegisterVariableNameInput: (name, element) => {
                 if (element) {
                   workflowVariableNameRefs.current.set(name, element);
@@ -1227,6 +1388,7 @@ export default function App() {
               onRollbackTargetChange: setRollbackTargetVersion,
               onRollbackVersion: (version) => void rollbackWorkflowVersion(version),
               onTagInputChange: setWorkflowTagInput,
+              onTimeoutChange: updateWorkflowTimeoutSeconds,
               onToggleTriggers: toggleWorkflowTriggers,
               onToggleVersions: toggleWorkflowVersions,
               onVariableValueChange: updateWorkflowVariableValue,
@@ -1267,31 +1429,33 @@ export default function App() {
         )}
         themeToggle={<ThemeToggle />}
         workflowManager={(
-          <WorkflowManager
-            currentWorkflowName={selectedWorkflowId ? workflow.name : undefined}
-            disabled={isBusy}
-            hasMoreRunHistory={hasMoreWorkflowRuns}
-            isCurrentWorkflowDirty={isWorkflowDirty}
-            runHistoryError={workflowRunHistoryError}
-            runHistoryLoading={isWorkflowRunHistoryLoading}
-            runHistoryStatus={runHistoryStatusFilter}
-            saveActionState={workflowSaveActionState}
-            selectedWorkflowId={selectedWorkflowId}
-            selectedWorkflowRuns={selectedWorkflowRuns}
-            workflows={workflows}
-            onCreateWorkflow={startNewWorkflow}
-            onDeleteWorkflow={deleteWorkflow}
-            onDuplicateWorkflow={(workflowId) => void duplicateWorkflow(workflowId)}
-            onExportWorkflow={exportWorkflow}
-            onImportWorkflow={(file) => void importWorkflow(file)}
-            onLoadMoreRunHistory={loadMoreWorkflowRunHistory}
-            onLoadWorkflow={(workflowId) => void loadWorkflow(workflowId)}
-            onOpenRun={(runId) => void openHistoricalRun(runId)}
-            onReloadRunHistory={retryWorkflowRunHistory}
-            onRunHistoryStatusChange={changeRunHistoryStatusFilter}
-            onSaveWorkflow={() => void saveWorkflow()}
-            onValidateWorkflow={() => void validateWorkflow()}
-          />
+          <Suspense fallback={<WorkflowManagerFallback />}>
+            <LazyWorkflowManager
+              currentWorkflowName={selectedWorkflowId ? workflow.name : undefined}
+              disabled={isBusy}
+              hasMoreRunHistory={hasMoreWorkflowRuns}
+              isCurrentWorkflowDirty={isWorkflowDirty}
+              runHistoryError={workflowRunHistoryError}
+              runHistoryLoading={isWorkflowRunHistoryLoading}
+              runHistoryStatus={runHistoryStatusFilter}
+              saveActionState={workflowSaveActionState}
+              selectedWorkflowId={selectedWorkflowId}
+              selectedWorkflowRuns={selectedWorkflowRuns}
+              workflows={workflows}
+              onCreateWorkflow={startNewWorkflow}
+              onDeleteWorkflow={deleteWorkflow}
+              onDuplicateWorkflow={(workflowId) => void duplicateWorkflow(workflowId)}
+              onExportWorkflow={exportWorkflow}
+              onImportWorkflow={(file) => void importWorkflow(file)}
+              onLoadMoreRunHistory={loadMoreWorkflowRunHistory}
+              onLoadWorkflow={(workflowId) => void loadWorkflow(workflowId)}
+              onOpenRun={(runId) => void openHistoricalRun(runId)}
+              onReloadRunHistory={retryWorkflowRunHistory}
+              onRunHistoryStatusChange={changeRunHistoryStatusFilter}
+              onSaveWorkflow={() => void saveWorkflow()}
+              onValidateWorkflow={() => void validateWorkflow()}
+            />
+          </Suspense>
         )}
       />
 
@@ -1319,14 +1483,11 @@ export default function App() {
         }}
       />
 
-      <div className="message-bar" role="status">
-        <span>{message}</span>
-        {canUndoDeletedEdges ? (
-          <button disabled={isEditorLocked} type="button" onClick={undoDeletedEdges}>
-            撤销删除
-          </button>
-        ) : null}
-      </div>
+      <StatusNotifications
+        actionsDisabled={isEditorLocked}
+        notifications={statusNotifications}
+        onDismiss={dismissStatusNotification}
+      />
 
       {nodeUpgradePreview ? (
         <section aria-label="节点升级" className="node-upgrade-review">
@@ -1379,12 +1540,13 @@ export default function App() {
         onSelectIssue={selectWorkflowIssue}
       />
 
-      <NodePackageAttentionNotice
-        scan={nodePackageScan}
-        onOpen={() => void openWorkspaceResource("packages")}
-      />
-
-      <WorkspaceResourceDialogs nodeCatalog={nodeCatalogController} resources={workspaceResources} />
+      {/* 仅在扫描结果需要提示时才渲染内容的通知，懒加载时以空占位过渡 */}
+      <Suspense fallback={null}>
+        <LazyNodePackageAttentionNotice
+          scan={nodePackageScan}
+          onOpen={() => openResourceSection("packages")}
+        />
+      </Suspense>
 
       {workflowConflict && isWorkflowConflictOpen ? (
         <WorkflowConflictDialog
@@ -1402,8 +1564,33 @@ export default function App() {
         />
       ) : null}
 
+      {confirmDialog.request ? (
+        <ConfirmDialog
+          cancelLabel={confirmDialog.request.cancelLabel}
+          confirmLabel={confirmDialog.request.confirmLabel ?? "确认"}
+          danger={confirmDialog.request.danger}
+          description={confirmDialog.request.description}
+          title={confirmDialog.request.title}
+          onCancel={() => confirmDialog.settle(false)}
+          onConfirm={() => confirmDialog.settle(true)}
+        />
+      ) : null}
+
+      {/* 资源页面路由：替代画布工作区主区域，懒加载保持原有 chunk 拆分 */}
+      {resourceSection ? (
+        <Suspense fallback={<AppLoadingSkeleton variant="canvas" />}>
+          <LazyWorkspaceResourcePage
+            nodeCatalog={nodeCatalogController}
+            nodeTypeId={resourceNodeTypeId}
+            resources={workspaceResources}
+            section={resourceSection}
+            onBack={leaveResourcePage}
+            onSelectSection={openResourceSection}
+          />
+        </Suspense>
+      ) : (
       <WorkflowWorkbenchLayout
-        canvas={(
+        canvas={isInitialCatalogReady ? (
           <FlowCanvas
             disabled={isEditorLocked}
             edgeIssues={edgeIssuesByEditableEdgeId}
@@ -1421,6 +1608,7 @@ export default function App() {
             workflow={canvasWorkflow}
             onAddAnnotationAt={addCanvasAnnotation}
             onAddNodeAt={addNodeAt}
+            onConfigChange={updateNodeConfig}
             onCopyNodes={copySelectedNodes}
             onDeleteEdge={removeWorkflowEdge}
             onDuplicateNodes={duplicateSelectedNodes}
@@ -1440,48 +1628,52 @@ export default function App() {
               onApplyTemplate={applyTemplate}
             />
           </FlowCanvas>
+        ) : (
+          <AppLoadingSkeleton variant="canvas" />
         )}
         inspector={(
-          <ConfigPanel
-            connectedInputHandles={selectedNodeConnectedInputHandles}
-            connectedOutputHandles={selectedNodeConnectedOutputHandles}
-            credentialTypes={credentialTypes}
-            credentials={credentials}
-            currentWorkflowId={selectedWorkflowId || undefined}
-            disabled={isEditorLocked}
-            expressionReferences={expressionReferences}
-            fieldFocusRequest={
-              configPanelTabRequest.field
-                ? { field: configPanelTabRequest.field, key: configPanelTabRequest.key }
-                : undefined
-            }
-            initialTab={configPanelTabRequest.tab}
-            node={selectedNode}
-            nodeType={selectedNodeType}
-            runDetail={selectedRunDetail}
-            runtimeNavigationScope={runtimeNavigationScope}
-            runtimeNavigationSource={runtimeNavigationSource}
-            runtimeState={selectedRuntimeState}
-            runFromNodeUnavailableReason={runFromNodeUnavailableReason}
-            tabRequestKey={configPanelTabRequest.key}
-            webhookTestListener={webhookTestListener}
-            webhookTestListenerChanging={isWebhookTestListenerChanging}
-            workflowOptions={workflows}
-            onConfigChange={updateNodeConfig}
-            onConfigRemove={removeNodeConfig}
-            onDisabledChange={updateNodeDisabled}
-            onExecutionPolicyChange={updateNodeFailurePolicy}
-            onLabelChange={updateNodeLabel}
-            onNotesChange={updateNodeNotes}
-            onOpenCredentialManager={() => void openWorkspaceResource("credentials")}
-            onOpenSubflow={openSubflow}
-            onPinnedDataChange={updateNodePinnedData}
-            onRunFromNode={editScope?.length ? undefined : (nodeId) => void runWorkflow(nodeId)}
-            onStartWebhookTestListener={(nodeId) => void startWebhookTestListener(nodeId)}
-            onStopWebhookTestListener={(nodeId) => void stopWebhookTestListener(nodeId)}
-          />
+          <Suspense fallback={<ConfigPanelFallback />}>
+            <LazyConfigPanel
+              connectedInputHandles={selectedNodeConnectedInputHandles}
+              connectedOutputHandles={selectedNodeConnectedOutputHandles}
+              credentialTypes={credentialTypes}
+              credentials={credentials}
+              currentWorkflowId={selectedWorkflowId || undefined}
+              disabled={isEditorLocked}
+              expressionReferences={expressionReferences}
+              fieldFocusRequest={
+                configPanelTabRequest.field
+                  ? { field: configPanelTabRequest.field, key: configPanelTabRequest.key }
+                  : undefined
+              }
+              initialTab={configPanelTabRequest.tab}
+              node={selectedNode}
+              nodeType={selectedNodeType}
+              runDetail={selectedRunDetail}
+              runtimeNavigationScope={runtimeNavigationScope}
+              runtimeNavigationSource={runtimeNavigationSource}
+              runtimeState={selectedRuntimeState}
+              runFromNodeUnavailableReason={runFromNodeUnavailableReason}
+              tabRequestKey={configPanelTabRequest.key}
+              webhookTestListener={webhookTestListener}
+              webhookTestListenerChanging={isWebhookTestListenerChanging}
+              workflowOptions={workflows}
+              onConfigChange={updateNodeConfig}
+              onConfigRemove={removeNodeConfig}
+              onDisabledChange={updateNodeDisabled}
+              onExecutionPolicyChange={updateNodeFailurePolicy}
+              onLabelChange={updateNodeLabel}
+              onNotesChange={updateNodeNotes}
+              onOpenCredentialManager={() => openResourceSection("credentials")}
+              onOpenSubflow={openSubflow}
+              onPinnedDataChange={updateNodePinnedData}
+              onRunFromNode={editScope?.length ? undefined : (nodeId) => void runWorkflow(nodeId)}
+              onStartWebhookTestListener={(nodeId) => void startWebhookTestListener(nodeId)}
+              onStopWebhookTestListener={(nodeId) => void stopWebhookTestListener(nodeId)}
+            />
+          </Suspense>
         )}
-        nodeLibrary={(
+        nodeLibrary={isInitialCatalogReady ? (
           <NodePalette
             disabled={isEditorLocked}
             isReloadingNodeTypes={isNodeTypesReloading}
@@ -1489,6 +1681,8 @@ export default function App() {
             onAddNode={addNode}
             onReloadNodeTypes={() => void reloadNodeTypes()}
           />
+        ) : (
+          <AppLoadingSkeleton variant="node-library" />
         )}
         focusMode={isCanvasFocusMode}
         onToggleFocusMode={() => setIsCanvasFocusMode((current) => !current)}
@@ -1541,6 +1735,7 @@ export default function App() {
           </RunDrawer>
         )}
       />
+      )}
     </div>
   );
 }

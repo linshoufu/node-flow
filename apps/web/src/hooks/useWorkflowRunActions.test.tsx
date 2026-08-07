@@ -61,7 +61,6 @@ function options(overrides: Record<string, unknown> = {}) {
     onPageBusyChange: vi.fn(),
     onSelectIssueNode: vi.fn(),
     onShowPreRunIssues: vi.fn(),
-    refreshWorkflowRunHistory: vi.fn().mockResolvedValue([]),
     runView: emptyRunView(),
     saveWorkflow: vi.fn().mockResolvedValue(currentWorkflow),
     shouldSaveBeforeRun: false,
@@ -111,7 +110,6 @@ describe("useWorkflowRunActions", () => {
       workflowId: "workflow-1",
       executionId: "run-1",
     });
-    expect(current.refreshWorkflowRunHistory).toHaveBeenCalledWith({ preserveExistingOnError: true });
     expect(current.onMessage).toHaveBeenLastCalledWith("运行成功。");
     expect(current.onPageBusyChange).toHaveBeenLastCalledWith(false);
   });

@@ -1,0 +1,332 @@
+.node-upgrade-review {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(320px, 1.8fr) auto;
+  align-items: start;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-success-border);
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+  padding: 12px 18px;
+}
+
+.node-upgrade-review strong {
+  font-size: 14px;
+}
+
+.node-upgrade-review p {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.node-upgrade-review-list,
+.node-upgrade-review-notes,
+.node-upgrade-review-changes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.node-upgrade-review-item {
+  display: grid;
+  gap: 5px;
+  border-left: 3px solid var(--color-success-border);
+  padding-left: 10px;
+}
+
+.node-upgrade-review-item > span {
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.node-upgrade-review-notes {
+  color: var(--color-success-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.node-upgrade-review-changes {
+  color: var(--color-success-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.node-upgrade-review-unchanged {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.node-upgrade-review-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pre-run-issues {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-danger-border);
+  background: var(--color-danger-soft);
+  padding: 10px 18px;
+}
+
+.pre-run-issues-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pre-run-issues-heading h2 {
+  margin: 0;
+  color: var(--color-danger-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pre-run-issues-heading span {
+  color: var(--color-danger-text);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.pre-run-issue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pre-run-issue {
+  display: grid;
+  justify-items: start;
+  min-height: 42px;
+  border-color: var(--color-danger-border);
+  background: var(--color-bg-surface);
+  color: var(--color-danger-strong);
+  padding: 7px 10px;
+  text-align: left;
+  white-space: normal;
+}
+
+.pre-run-issue:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.pre-run-issue strong,
+.pre-run-issue span,
+.pre-run-issue-meta em {
+  overflow-wrap: anywhere;
+}
+
+.pre-run-issue span {
+  color: var(--color-danger-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pre-run-issue-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.pre-run-issue-meta em {
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-full);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+  padding: 1px 6px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.workflow-issue-panel {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-primary-softer);
+  padding: 12px 18px;
+}
+
+.workflow-issue-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workflow-issue-panel-heading h2 {
+  margin: 0;
+  color: var(--color-primary-text);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.workflow-issue-panel-heading span {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workflow-issue-panel-counts,
+.workflow-issue-card-badges,
+.workflow-issue-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workflow-issue-panel-counts button {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.workflow-issue-panel-counts button[aria-pressed="true"] {
+  border-color: var(--color-border-strong);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+
+.workflow-issue-panel-counts button:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-primary-softer);
+}
+
+.workflow-issue-panel-counts .workflow-issue-panel-bulk-action {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+}
+
+.workflow-issue-panel-counts .workflow-issue-panel-bulk-action:hover:not(:disabled) {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+}
+
+.workflow-issue-panel-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.workflow-issue-card {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-height: 88px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  animation: dialog-pop-in 0.16s ease;
+  color: var(--color-text-primary);
+  padding: 9px 11px;
+  text-align: left;
+  white-space: normal;
+}
+
+.workflow-issue-card:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-primary-softer);
+}
+
+.workflow-issue-card-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.workflow-issue-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workflow-issue-card strong,
+.workflow-issue-card span,
+.workflow-issue-card-meta em {
+  overflow-wrap: anywhere;
+}
+
+.workflow-issue-card strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.workflow-issue-card-main > span:not(.workflow-issue-card-header) {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workflow-issue-card-action {
+  justify-self: start;
+  min-height: 28px;
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.workflow-issue-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.workflow-issue-card-repair-button {
+  min-height: 28px;
+  border-color: var(--color-border-strong);
+  background: var(--color-primary-softer);
+  color: var(--color-primary-text);
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.workflow-issue-card-repair-empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workflow-issue-card-badges {
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.workflow-issue-card-badges em,
+.workflow-issue-card-meta em {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--color-primary-softer);
+  color: var(--color-text-secondary);
+  padding: 1px 7px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.workflow-issue-card-meta {
+  margin-top: 2px;
+}
+

@@ -1,8 +1,12 @@
-"""运行管理路由：创建、查询、取消、重试。"""
+"""运行管理路由：创建、查询、取消、重试与事件流。"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import asyncio
+import time
+
+from fastapi import APIRouter, HTTPException, Query
+from starlette.responses import StreamingResponse
 
 from ..node_registry import NodeRegistry
 from ..run_dispatcher import WorkflowRunDispatcher
@@ -16,6 +20,18 @@ from ..schemas import (
 from ..storage import Storage, utc_now
 from ..validation import manual_run_entry_issues
 
+# 运行终态：到达后不会再产生新事件（与 schemas.RunStatus 定义保持一致）
+TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
+# SSE 游标 tail 的轮询间隔（秒）
+SSE_POLL_INTERVAL_SECONDS = 0.25
+# SSE 空闲心跳间隔（秒），防止代理或客户端断开空闲连接
+SSE_HEARTBEAT_INTERVAL_SECONDS = 15.0
+
+
+def _sse_event_frame(event: RunEvent) -> str:
+    """构造单条 SSE 事件帧：id 为事件自增 id，data 为事件完整 JSON。"""
+    return f"id: {event.id}\ndata: {event.model_dump_json()}\n\n"
+
 
 def build_run_router(
     storage: Storage,
@@ -24,6 +40,36 @@ def build_run_router(
     validate_workflow_document,
 ) -> APIRouter:
     router = APIRouter()
+
+    async def _stream_run_events(run_id: str):
+        """SSE 事件流：先回放已有事件，再基于 after_id 游标 tail SQLite 增量推送。
+
+        直接查询 run_events 表，同时兼容 embedded 与独立 worker 两种执行模式。
+        """
+        last_id = 0
+        last_send_at = time.monotonic()
+        try:
+            while True:
+                # 拉取游标之后的新增事件并逐条推送
+                for event in storage.list_events(run_id, after_id=last_id):
+                    yield _sse_event_frame(event)
+                    if event.id is not None:
+                        last_id = event.id
+                    last_send_at = time.monotonic()
+                run = storage.get_run(run_id)
+                if run is None or run.status in TERMINAL_RUN_STATUSES:
+                    # 到达终态（或 run 被删除）：再拉一次保证尾部事件不丢失，然后关闭流
+                    for event in storage.list_events(run_id, after_id=last_id):
+                        yield _sse_event_frame(event)
+                    return
+                if time.monotonic() - last_send_at >= SSE_HEARTBEAT_INTERVAL_SECONDS:
+                    # 注释行心跳，客户端会忽略但可保活连接
+                    yield ": keep-alive\n\n"
+                    last_send_at = time.monotonic()
+                await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            # 客户端断开时任务被取消，干净退出
+            return
 
     @router.get("/api/workflows/{workflow_id}/runs")
     def list_workflow_runs(workflow_id: str, limit: int = 10, offset: int = 0, status: RunStatus | None = None):
@@ -82,10 +128,25 @@ def build_run_router(
         return dispatcher.queue_status(run_id)
 
     @router.get("/api/runs/{run_id}/events")
-    def list_run_events(run_id: str):
+    def list_run_events(
+        run_id: str,
+        after_id: int | None = Query(default=None, ge=0, description="仅返回 id 大于该值的事件"),
+        limit: int | None = Query(default=None, ge=1, description="返回条数上限"),
+    ):
         if storage.get_run(run_id) is None:
             raise HTTPException(status_code=404, detail="Run not found")
-        return storage.list_events(run_id)
+        return storage.list_events(run_id, after_id=after_id, limit=limit)
+
+    @router.get("/api/runs/{run_id}/events/stream")
+    async def stream_run_events(run_id: str):
+        """SSE 实时事件流：回放已有事件后持续推送增量，运行到达终态后自动关闭。"""
+        if storage.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return StreamingResponse(
+            _stream_run_events(run_id),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @router.post("/api/runs/{run_id}/cancel")
     def cancel_run(run_id: str):

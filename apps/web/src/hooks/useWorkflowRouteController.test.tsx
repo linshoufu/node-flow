@@ -35,6 +35,18 @@ describe("useWorkflowRouteController", () => {
     expect(window.location.pathname).toBe("/workflow/wf-1/node%201");
   });
 
+  it("pushes resource section routes", () => {
+    const { result } = renderHook(() => useWorkflowRouteController({
+      onRouteRequested: vi.fn().mockResolvedValue({ kind: "new" }),
+    }));
+
+    act(() => result.current.navigate({ kind: "resources", section: "credentials" }));
+    expect(window.location.pathname).toBe("/resources/credentials");
+
+    act(() => result.current.navigate({ kind: "resources", section: "variables" }));
+    expect(window.location.pathname).toBe("/resources/variables");
+  });
+
   it("accepts browser navigation and restores the previous route when rejected", async () => {
     window.history.replaceState(null, "", "/workflow/wf-1");
     const onRouteRequested = vi.fn()

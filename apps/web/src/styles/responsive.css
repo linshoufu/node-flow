@@ -1,0 +1,225 @@
+@media (max-width: 960px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
+    grid-template-rows: auto auto;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 10px;
+  }
+
+  .brand,
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .brand {
+    flex-wrap: wrap;
+  }
+
+  .workflow-name {
+    flex: 1;
+    width: auto;
+  }
+
+  .breadcrumbs {
+    flex: 1 1 100%;
+  }
+
+  .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .topbar-action-group {
+    flex-wrap: wrap;
+  }
+
+  .workspace-resource-trigger {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .workflow-picker {
+    min-width: 0;
+  }
+
+  .workflow-picker select {
+    width: 100%;
+  }
+
+  .workspace-grid {
+    grid-template-columns: 1fr;
+    /* 画布行随空画布模板内容自然撑高，避免在小盒子里嵌套滚动、四周留白 */
+    grid-template-rows: minmax(280px, 38vh) minmax(420px, auto) 260px auto;
+    overflow: visible;
+  }
+
+  /* 窄窗口下再略压节点卡片，保证列表一屏能看到足够多的节点 */
+  .palette-node {
+    min-height: 30px;
+    padding: 3px 7px;
+  }
+
+  .workspace-grid[data-focus="true"] {
+    grid-template-rows: minmax(420px, 70vh);
+    padding: 0;
+  }
+
+  .workspace-rail-toggle {
+    flex-direction: row;
+    padding: 0;
+  }
+
+  .workspace-rail-label {
+    writing-mode: horizontal-tb;
+    letter-spacing: 0.08em;
+  }
+
+  /* 窄屏画布改为“背景层+内容层”：React Flow 退为背景，
+     空画布时模板内容按自身高度撑开画布行，有节点时保持最小高度 */
+  .canvas-shell > .react-flow {
+    /* xyflow 自带样式会把 .react-flow 设为 relative，这里需要强制脱离文档流 */
+    position: absolute !important;
+    inset: 0;
+  }
+
+  .canvas-empty-overlay {
+    position: relative;
+    inset: auto;
+    align-items: start;
+    overflow: visible;
+  }
+
+  .template-card-list {
+    grid-template-columns: 1fr;
+  }
+
+  .run-drawer {
+    grid-column: auto;
+  }
+
+  .run-drawer[data-expanded="true"] {
+    height: min(52vh, 460px);
+    min-height: 300px;
+  }
+
+  .run-event {
+    grid-template-columns: 80px 1fr;
+  }
+
+  .test-report-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .test-case-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .test-case-duration {
+    grid-column: 1 / -1;
+  }
+
+  .run-event em,
+  .run-event code {
+    grid-column: 1 / -1;
+  }
+
+  .credential-manager-backdrop {
+    align-items: start;
+    overflow: auto;
+    padding: 12px;
+  }
+
+  .credential-manager {
+    max-height: none;
+  }
+
+  .credential-manager-body {
+    grid-template-columns: 1fr;
+  }
+
+  .credential-list {
+    max-height: 280px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  .environment-credential-mapping-add {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .brand {
+    align-items: flex-start;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .breadcrumbs {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .workflow-name {
+    width: 100%;
+  }
+
+  .topbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-action-group {
+    border-bottom: 1px solid var(--color-border-subtle);
+    border-right: 0;
+    justify-content: flex-start;
+    padding: 0 0 8px;
+  }
+
+  .topbar-action-group:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .workspace-resource-popover {
+    /* 窄屏下限宽，避免比视口还宽；具体位置由 JS 夹紧到视口内 */
+    min-width: min(300px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+  }
+
+  .workflow-picker {
+    grid-column: 1 / -1;
+  }
+
+  .workspace-grid {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .environment-credential-mapping-add {
+    grid-template-columns: 1fr;
+  }
+}
+

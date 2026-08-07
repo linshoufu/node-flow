@@ -1,0 +1,84 @@
+/* ==========================================================================
+   渲染提速优化（运行日志窗口化 / payload 截断 / 大 JSON 折叠）
+   仅在文件末尾追加的新分区，不改动上方既有样式
+   ========================================================================== */
+
+/* 运行事件 payload 单元格：截断文本 + 展开/复制小按钮同行展示 */
+.run-event-payload {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.run-event-payload code {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 展开后允许换行查看完整 JSON */
+.run-event-payload.is-expanded {
+  align-items: start;
+}
+
+.run-event-payload.is-expanded code {
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.run-event-payload-actions {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+}
+
+.run-event-payload-actions button {
+  min-height: 20px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-bg-raised);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* 运行事件窗口化：固定行高占位 + 绝对定位可视行 */
+.run-event-virtual-spacer {
+  position: relative;
+}
+
+.run-event-virtual-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  overflow-y: auto;
+}
+
+/* 节点运行面板：大 JSON 折叠块的展开/复制操作行 */
+.runtime-collapsible-pre {
+  min-width: 0;
+}
+
+.runtime-collapsible-pre pre {
+  margin: 0;
+}
+
+.runtime-collapsible-pre-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.runtime-collapsible-pre-actions button {
+  min-height: 22px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xs);
+  background: var(--color-bg-raised);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+

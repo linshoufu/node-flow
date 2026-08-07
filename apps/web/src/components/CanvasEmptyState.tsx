@@ -27,6 +27,9 @@ export function CanvasEmptyState({ templates, actionsDisabled = false, onApplyTe
         <p className="canvas-empty-kicker">空画布</p>
         <h2>从模板开始</h2>
         <p>选择通用或测试工作流模板快速搭好流程，也可以继续从左侧节点库拖拽或点击添加节点。</p>
+        <p className="canvas-empty-tips">
+          高效操作：双击画布空白处可快速搜索并添加节点，按 Ctrl+K 可打开命令面板。
+        </p>
       </div>
 
       <div className="template-section-list">

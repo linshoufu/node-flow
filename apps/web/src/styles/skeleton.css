@@ -1,0 +1,96 @@
+/* ==========================================================================
+   初始加载骨架屏
+   节点目录首次加载完成前，画布与节点库分区的纯 CSS 骨架占位；
+   仅在文件末尾追加的新分区，不改动上方既有样式
+   ========================================================================== */
+
+.app-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  padding: 20px;
+}
+
+/* 骨架占位条：基于现有背景色令牌的微光流动效果 */
+.app-skeleton-bar {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-inset) 25%,
+    var(--color-bg-active) 45%,
+    var(--color-bg-inset) 65%
+  );
+  background-size: 220% 100%;
+  animation: app-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.app-skeleton-heading {
+  height: 14px;
+  width: 42%;
+  margin-bottom: 4px;
+}
+
+.app-skeleton-line-long {
+  height: 10px;
+  width: 100%;
+}
+
+.app-skeleton-line-short {
+  height: 10px;
+  width: 56%;
+}
+
+/* 节点库骨架：标题 + 列表卡片 */
+.app-skeleton-node-library {
+  min-height: 0;
+}
+
+.app-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  padding: 12px;
+}
+
+/* 画布骨架：居中模拟两个节点与一条连线 */
+.app-skeleton-canvas {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.app-skeleton-node {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(180px, 30%);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  padding: 14px;
+}
+
+.app-skeleton-edge {
+  width: min(72px, 12%);
+  height: 2px;
+  background: var(--color-border-default);
+}
+
+@keyframes app-skeleton-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+

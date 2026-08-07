@@ -1,5 +1,5 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeType, WorkflowDocument } from "../types";
 import { FlowCanvas } from "./FlowCanvas";
@@ -36,7 +36,8 @@ vi.mock("@xyflow/react", () => ({
   Position: { Left: "left", Right: "right" },
   ReactFlow: (props: Record<string, unknown>) => {
     reactFlowProps.current = props;
-    const nodeTypes = props.nodeTypes as Record<string, (nodeProps: Record<string, unknown>) => ReactNode> | undefined;
+    // 节点组件可能经过 memo 包装，不能当普通函数直接调用，统一用 JSX 渲染
+    const nodeTypes = props.nodeTypes as Record<string, ComponentType<Record<string, unknown>>> | undefined;
     const nodes = props.nodes as Array<Record<string, unknown>> | undefined;
 
     return (
@@ -45,7 +46,9 @@ vi.mock("@xyflow/react", () => ({
         {nodes?.map((node) => {
           const NodeComponent = nodeTypes?.[String(node.type)];
           return NodeComponent ? (
-            <div key={String(node.id)}>{NodeComponent({ ...node, data: node.data, selected: node.selected })}</div>
+            <div key={String(node.id)}>
+              <NodeComponent {...node} data={node.data} selected={node.selected} />
+            </div>
           ) : null;
         })}
       </div>
@@ -629,7 +632,16 @@ describe("FlowCanvas", () => {
     expect(screen.queryByRole("button", { name: "Fit View" })).not.toBeInTheDocument();
   });
 
-  it("shows a navigable minimap only when the user asks for a canvas overview", () => {
+  it("shows a navigable minimap by default and remembers the user's toggle", () => {
+    const storage = new Map<string, string>();
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: vi.fn((key: string) => storage.get(key) ?? null),
+        removeItem: vi.fn((key: string) => storage.delete(key)),
+        setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
+      },
+    });
     render(
       <FlowCanvas
         nodeTypes={[manualTriggerType]}
@@ -640,10 +652,6 @@ describe("FlowCanvas", () => {
       />
     );
 
-    expect(screen.queryByLabelText("画布导航缩略图")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "显示导航缩略图" }));
-
     expect(screen.getByLabelText("画布导航缩略图")).toBeInTheDocument();
     expect(miniMapProps.current).toMatchObject({ pannable: true, zoomable: true });
     expect(screen.getByRole("button", { name: "隐藏导航缩略图" })).toHaveAttribute("aria-pressed", "true");
@@ -651,6 +659,12 @@ describe("FlowCanvas", () => {
     fireEvent.click(screen.getByRole("button", { name: "隐藏导航缩略图" }));
 
     expect(screen.queryByLabelText("画布导航缩略图")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("node-flow.canvas-minimap-visible")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "显示导航缩略图" }));
+
+    expect(screen.getByLabelText("画布导航缩略图")).toBeInTheDocument();
+    expect(window.localStorage.getItem("node-flow.canvas-minimap-visible")).toBe("true");
   });
 
   it("offers a duplicate action only for the selected editable workflow node", () => {

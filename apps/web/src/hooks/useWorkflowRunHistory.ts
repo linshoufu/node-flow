@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiClient } from "../api/client";
 import { apiClient } from "../api/client";
 import { formatApiError } from "../lib/apiError";
+import { onRunTerminal } from "../lib/runTerminalBus";
 import { mergeWorkflowRunHistory } from "../lib/workflowManager";
 import type { RunHistoryStatusFilter, RunRecord } from "../types";
 
@@ -122,6 +123,15 @@ export function useWorkflowRunHistory({
       requestIdRef.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    // 当前工作流的运行到达终态时（stream 终态事件或轮询终态检测）自动刷新历史，无需手动刷新
+    return onRunTerminal((terminalRun) => {
+      if (terminalRun.workflow_id === workflowIdRef.current) {
+        void loadPage({ preserveExistingOnError: true });
+      }
+    });
+  }, [loadPage]);
 
   const refresh = useCallback((options: RefreshRunHistoryOptions = {}) =>
     loadPage({ preserveExistingOnError: options.preserveExistingOnError }), [loadPage]);

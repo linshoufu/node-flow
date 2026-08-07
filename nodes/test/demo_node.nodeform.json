@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "form": {
+    "groups": [
+      {
+        "id": "basic",
+        "label": "基础配置",
+        "fields": [
+          {
+            "key": "title",
+            "control": "text",
+            "label": "标题",
+            "placeholder": "输入任务标题",
+            "placement": "panel"
+          },
+          {
+            "key": "target_url",
+            "control": "text",
+            "label": "目标地址",
+            "placeholder": "https://...12312321",
+            "placement": "inline"
+          },
+          {
+            "key": "retry_count",
+            "control": "url",
+            "label": "重试次数",
+            "placement": "inline"
+          },
+          {
+            "key": "enable_notify",
+            "control": "switch",
+            "label": "开启通知",
+            "placement": "inline"
+          },
+          {
+            "key": "notify_method",
+            "control": "select",
+            "label": "通知方式",
+            "options": [
+              {
+                "value": "email",
+                "label": "邮件通知"
+              },
+              {
+                "value": "webhook",
+                "label": "Webhook"
+              },
+              {
+                "value": "sms",
+                "label": "短信通知"
+              }
+            ],
+            "placement": "inline"
+          },
+          {
+            "key": "remarks",
+            "control": "textarea",
+            "label": "备注说明",
+            "placeholder": "可选备注..."
+          }
+        ]
+      }
+    ]
+  },
+  "placements": {
+    "retry_count": "inline"
+  },
+  "portPresentation": {
+    "inputs": {
+      "data": {
+        "collapsed": false
+      }
+    },
+    "outputs": {
+      "success": {
+        "collapsed": true
+      },
+      "error": {
+        "collapsed": true
+      }
+    }
+  }
+}

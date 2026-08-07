@@ -43,6 +43,48 @@ describe("workflowRoute", () => {
     expect(parseWorkflowRoute("/workflow/wf-1/node-1/extra")).toEqual({ kind: "new" });
   });
 
+  it("parses known resource sections and rejects unknown ones", () => {
+    expect(parseWorkflowRoute("/resources/assets")).toEqual({
+      kind: "resources",
+      section: "assets",
+    });
+    expect(parseWorkflowRoute("/resources/packages")).toEqual({
+      kind: "resources",
+      section: "packages",
+    });
+    expect(parseWorkflowRoute("/resources/credentials")).toEqual({
+      kind: "resources",
+      section: "credentials",
+    });
+    expect(parseWorkflowRoute("/resources/variables")).toEqual({
+      kind: "resources",
+      section: "variables",
+    });
+    expect(parseWorkflowRoute("/resources/environments")).toEqual({
+      kind: "resources",
+      section: "environments",
+    });
+  });
+
+  it("falls back to a new workflow for missing, unknown or overlong resource paths", () => {
+    expect(parseWorkflowRoute("/resources")).toEqual({ kind: "new" });
+    expect(parseWorkflowRoute("/resources/secrets")).toEqual({ kind: "new" });
+    expect(parseWorkflowRoute("/resources/credentials/extra")).toEqual({ kind: "new" });
+  });
+
+  it("builds resource section paths and compares routes", () => {
+    expect(workflowRoutePath({ kind: "resources", section: "credentials" }))
+      .toBe("/resources/credentials");
+    expect(workflowRoutesEqual(
+      { kind: "resources", section: "variables" },
+      parseWorkflowRoute("/resources/variables"),
+    )).toBe(true);
+    expect(workflowRoutesEqual(
+      { kind: "resources", section: "variables" },
+      { kind: "resources", section: "credentials" },
+    )).toBe(false);
+  });
+
   it("builds canonical encoded paths and compares routes", () => {
     const route = { kind: "workflow", workflowId: "wf/1", nodeId: "节点 1" } as const;
     expect(workflowRoutePath(route)).toBe("/workflow/wf%2F1/%E8%8A%82%E7%82%B9%201");

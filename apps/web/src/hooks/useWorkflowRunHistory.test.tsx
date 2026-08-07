@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode, type PropsWithChildren } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { notifyRunTerminal } from "../lib/runTerminalBus";
 import type { RunRecord } from "../types";
 import {
   useWorkflowRunHistory,
@@ -119,5 +120,36 @@ describe("useWorkflowRunHistory", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(client.listWorkflowRuns).not.toHaveBeenCalled();
     expect(result.current.runs).toEqual([]);
+  });
+
+  it("auto refreshes when a tracked run of the current workflow reaches terminal", async () => {
+    const client: WorkflowRunHistoryClient = {
+      listWorkflowRuns: vi.fn()
+        .mockResolvedValueOnce([run("existing", "2026-08-01T01:00:00Z")])
+        .mockResolvedValueOnce([run("finished", "2026-08-01T02:00:00Z")]),
+    };
+    const { result } = renderHook(() => useWorkflowRunHistory({ client, workflowId: "wf_history" }));
+    await waitFor(() => expect(result.current.runs).toHaveLength(1));
+
+    act(() => notifyRunTerminal(run("finished", "2026-08-01T02:00:00Z")));
+
+    await waitFor(() => expect(result.current.runs[0]?.id).toBe("finished"));
+    expect(client.listWorkflowRuns).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores terminal notifications from other workflows", async () => {
+    const client: WorkflowRunHistoryClient = {
+      listWorkflowRuns: vi.fn().mockResolvedValue([run("existing", "2026-08-01T01:00:00Z")]),
+    };
+    renderHook(() => useWorkflowRunHistory({ client, workflowId: "wf_history" }));
+    await waitFor(() => expect(client.listWorkflowRuns).toHaveBeenCalledTimes(1));
+
+    act(() => notifyRunTerminal({
+      ...run("other", "2026-08-01T02:00:00Z"),
+      workflow_id: "wf_other",
+    }));
+    await act(async () => Promise.resolve());
+
+    expect(client.listWorkflowRuns).toHaveBeenCalledTimes(1);
   });
 });

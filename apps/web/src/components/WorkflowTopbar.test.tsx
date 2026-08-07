@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowPublicationStatus } from "../types";
+import { NodeFlowMantineProvider } from "./NodeFlowMantineProvider";
 import {
   WorkflowTopbar,
   type WorkflowTopbarActions,
@@ -25,7 +26,6 @@ function actions(): WorkflowTopbarActions {
     onToggleActivation: vi.fn(),
     onUndo: vi.fn(),
     onUpdateName: vi.fn(),
-    onUpdateTimeout: vi.fn(),
     onValidateWorkflow: vi.fn(),
   };
 }
@@ -43,10 +43,6 @@ function identity(overrides: Partial<WorkflowTopbarIdentity> = {}): WorkflowTopb
       title: "工作流已保存",
     },
     selectedWorkflowId: "workflow-1",
-    timeoutInputRef: null,
-    timeoutMaximum: 3600,
-    timeoutMinimum: 1,
-    timeoutSeconds: 600,
     ...overrides,
   };
 }
@@ -77,32 +73,32 @@ function renderTopbar({
   operation?: WorkflowTopbarOperationState;
 } = {}) {
   return render(
-    <WorkflowTopbar
-      actions={actionSet}
-      identity={identityState}
-      operationState={operation}
-      resourceMenu={<button type="button">资源</button>}
-      settingsMenu={<button type="button">设置</button>}
-      workflowManager={<button type="button">工作流</button>}
-    />,
+    <NodeFlowMantineProvider>
+      <WorkflowTopbar
+        actions={actionSet}
+        identity={identityState}
+        operationState={operation}
+        resourceMenu={<button type="button">资源</button>}
+        settingsMenu={<button type="button">设置</button>}
+        workflowManager={<button type="button">工作流</button>}
+      />
+    </NodeFlowMantineProvider>,
   );
 }
 
 describe("WorkflowTopbar", () => {
-  it("展示工作流身份并提交名称和超时修改", () => {
+  it("展示工作流身份并提交名称修改", () => {
     const actionSet = actions();
     renderTopbar({ actionSet });
 
     fireEvent.change(screen.getByRole("textbox", { name: "工作流名称" }), {
       target: { value: "冒烟测试" },
     });
-    fireEvent.change(screen.getByRole("spinbutton", { name: "运行超时（秒）" }), {
-      target: { value: "90" },
-    });
 
     expect(screen.getByLabelText("保存状态")).toHaveTextContent("已保存");
     expect(actionSet.onUpdateName).toHaveBeenCalledWith("冒烟测试");
-    expect(actionSet.onUpdateTimeout).toHaveBeenCalledWith("90");
+    // 超时等低频设置已移入工作流设置弹层，顶栏不再展示
+    expect(screen.queryByLabelText("运行超时（秒）")).not.toBeInTheDocument();
   });
 
   it("将冲突状态呈现为可处理命令", () => {

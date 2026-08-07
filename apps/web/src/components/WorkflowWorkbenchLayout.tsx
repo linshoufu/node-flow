@@ -48,10 +48,24 @@ export function WorkflowWorkbenchLayout({
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
     () => readWorkbenchLayoutPreference().inspectorCollapsed,
   );
+  // 专注模式下左右面板都以悬浮覆盖层呈现：默认收成贴边轨道，点开时浮在画布上，
+  // 保证全屏编辑时仍能添加节点和编辑节点配置，避免“加完节点还得退出专注才能配置”的流程断点。
+  const [focusPaletteOpen, setFocusPaletteOpen] = useState(false);
+  const [focusInspectorOpen, setFocusInspectorOpen] = useState(false);
 
   useEffect(() => {
     writeWorkbenchLayoutPreference({ inspectorCollapsed, paletteCollapsed });
   }, [inspectorCollapsed, paletteCollapsed]);
+
+  useEffect(() => {
+    if (!focusMode) {
+      setFocusPaletteOpen(false);
+      setFocusInspectorOpen(false);
+    }
+  }, [focusMode]);
+
+  const paletteHidden = focusMode ? !focusPaletteOpen : paletteCollapsed;
+  const inspectorHidden = focusMode ? !focusInspectorOpen : inspectorCollapsed;
 
   return (
     <main
@@ -63,15 +77,21 @@ export function WorkflowWorkbenchLayout({
       <section
         aria-label="节点库区域"
         className="workspace-side workspace-side-left"
-        data-collapsed={paletteCollapsed ? "true" : undefined}
+        data-collapsed={paletteHidden ? "true" : undefined}
       >
-        {paletteCollapsed ? (
+        {paletteHidden ? (
           <button
             aria-label="展开节点库"
             className="workspace-rail-toggle"
-            title="展开节点库"
+            title={focusMode ? "在专注模式中打开节点库" : "展开节点库"}
             type="button"
-            onClick={() => setPaletteCollapsed(false)}
+            onClick={() => {
+              if (focusMode) {
+                setFocusPaletteOpen(true);
+              } else {
+                setPaletteCollapsed(false);
+              }
+            }}
           >
             <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={2.2} />
             <span className="workspace-rail-label">节点库</span>
@@ -91,7 +111,13 @@ export function WorkflowWorkbenchLayout({
               className="workspace-collapse-toggle workspace-collapse-toggle-left"
               title="收起节点库"
               type="button"
-              onClick={() => setPaletteCollapsed(true)}
+              onClick={() => {
+                if (focusMode) {
+                  setFocusPaletteOpen(false);
+                } else {
+                  setPaletteCollapsed(true);
+                }
+              }}
             >
               <PanelLeftClose aria-hidden="true" size={13} strokeWidth={2.4} />
             </button>
@@ -131,15 +157,21 @@ export function WorkflowWorkbenchLayout({
       <section
         aria-label="配置面板区域"
         className="workspace-side workspace-side-right"
-        data-collapsed={inspectorCollapsed ? "true" : undefined}
+        data-collapsed={inspectorHidden ? "true" : undefined}
       >
-        {inspectorCollapsed ? (
+        {inspectorHidden ? (
           <button
             aria-label="展开配置面板"
             className="workspace-rail-toggle"
-            title="展开配置面板"
+            title={focusMode ? "在专注模式中打开配置面板" : "展开配置面板"}
             type="button"
-            onClick={() => setInspectorCollapsed(false)}
+            onClick={() => {
+              if (focusMode) {
+                setFocusInspectorOpen(true);
+              } else {
+                setInspectorCollapsed(false);
+              }
+            }}
           >
             <PanelRightOpen aria-hidden="true" size={16} strokeWidth={2.2} />
             <span className="workspace-rail-label">配置</span>
@@ -159,7 +191,13 @@ export function WorkflowWorkbenchLayout({
               className="workspace-collapse-toggle workspace-collapse-toggle-right"
               title="收起配置面板"
               type="button"
-              onClick={() => setInspectorCollapsed(true)}
+              onClick={() => {
+                if (focusMode) {
+                  setFocusInspectorOpen(false);
+                } else {
+                  setInspectorCollapsed(true);
+                }
+              }}
             >
               <PanelRightClose aria-hidden="true" size={13} strokeWidth={2.4} />
             </button>

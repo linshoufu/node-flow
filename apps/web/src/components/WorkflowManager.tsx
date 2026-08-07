@@ -501,3 +501,6 @@ function formatDuration(run: RunRecord): string {
   const seconds = Math.max(1, Math.round((completedAt - startedAt) / 1000));
   return `${seconds} 秒`;
 }
+
+// default 导出适配：供 React.lazy 懒加载使用，不改变组件内部逻辑
+export default WorkflowManager;

@@ -3,11 +3,14 @@ import { X } from "lucide-react";
 import {
   workflowEnvironmentId,
   workflowErrorWorkflowId,
+  workflowTimeoutSeconds,
   workflowVariables,
 } from "../lib/workflow";
 import {
   MAX_WORKFLOW_CONCURRENT_RUNS,
+  MAX_WORKFLOW_TIMEOUT_SECONDS,
   MIN_WORKFLOW_CONCURRENT_RUNS,
+  MIN_WORKFLOW_TIMEOUT_SECONDS,
 } from "../lib/workflowSettings";
 import {
   buildWorkflowVariableIssues,
@@ -62,6 +65,7 @@ export type WorkflowSettingsActions = {
   onErrorWorkflowChange: (workflowId: string) => void;
   onMaxConcurrentRunsChange: (value: string) => void;
   onRegisterConcurrencyInput: (element: HTMLInputElement | null) => void;
+  onRegisterTimeoutInput: (element: HTMLInputElement | null) => void;
   onRegisterVariableNameInput: (name: string, element: HTMLInputElement | null) => void;
   onRemoveTag: (tag: string) => void;
   onRemoveVariable: (name: string) => void;
@@ -70,6 +74,7 @@ export type WorkflowSettingsActions = {
   onRollbackTargetChange: (version: number | null) => void;
   onRollbackVersion: (version: number) => void;
   onTagInputChange: (value: string) => void;
+  onTimeoutChange: (value: string) => void;
   onToggleTriggers: () => void;
   onToggleVersions: () => void;
   onVariableValueChange: (name: string, value: string) => void;
@@ -280,22 +285,37 @@ export function WorkflowSettingsPopover({
       </div>
 
       <div className="workflow-settings-section">
-        <div className="workflow-settings-section-heading"><strong>运行并发</strong></div>
-        <label className="workflow-error-workflow-field">
-          <span>同时运行上限</span>
-          <input
-            aria-label="工作流同时运行上限"
-            disabled={editor.isLocked}
-            max={MAX_WORKFLOW_CONCURRENT_RUNS}
-            min={MIN_WORKFLOW_CONCURRENT_RUNS}
-            placeholder="不限制"
-            ref={actions.onRegisterConcurrencyInput}
-            type="number"
-            value={workflow.settings?.max_concurrent_runs ?? ""}
-            onChange={(event) => actions.onMaxConcurrentRunsChange(event.currentTarget.value)}
-          />
-        </label>
-        <p className="workflow-settings-hint">留空时只受全局队列限制；设为 1 可让同一工作流串行运行。</p>
+        <div className="workflow-settings-section-heading"><strong>执行设置</strong></div>
+        <div className="workflow-settings-execution-grid">
+          <label className="workflow-error-workflow-field">
+            <span>运行超时（秒）</span>
+            <input
+              aria-label="运行超时（秒）"
+              disabled={editor.isLocked}
+              max={MAX_WORKFLOW_TIMEOUT_SECONDS}
+              min={MIN_WORKFLOW_TIMEOUT_SECONDS}
+              ref={actions.onRegisterTimeoutInput}
+              type="number"
+              value={workflowTimeoutSeconds(workflow)}
+              onChange={(event) => actions.onTimeoutChange(event.currentTarget.value)}
+            />
+          </label>
+          <label className="workflow-error-workflow-field">
+            <span>同时运行上限</span>
+            <input
+              aria-label="工作流同时运行上限"
+              disabled={editor.isLocked}
+              max={MAX_WORKFLOW_CONCURRENT_RUNS}
+              min={MIN_WORKFLOW_CONCURRENT_RUNS}
+              placeholder="不限制"
+              ref={actions.onRegisterConcurrencyInput}
+              type="number"
+              value={workflow.settings?.max_concurrent_runs ?? ""}
+              onChange={(event) => actions.onMaxConcurrentRunsChange(event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        <p className="workflow-settings-hint">超时范围 1 到 86400 秒；同时运行上限留空时只受全局队列限制，设为 1 可让同一工作流串行运行。</p>
       </div>
 
       <div className="workflow-settings-section">
@@ -432,3 +452,6 @@ function workflowVersionActionLabel(version: WorkflowVersionSummary): string {
   }
   return version.active ? "已发布" : "普通保存";
 }
+
+// default 导出适配：供 React.lazy 懒加载使用，不改变组件内部逻辑
+export default WorkflowSettingsPopover;

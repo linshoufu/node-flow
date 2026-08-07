@@ -11,6 +11,10 @@ import type {
   ProjectEnvironment,
   ProjectEnvironmentCreateRequest,
   ProjectEnvironmentUpdateRequest,
+  NodeAssetOpenSourceResult,
+  NodeFormManifest,
+  NodeTypeManifestDeleteResult,
+  NodeTypeManifestSaveResult,
   NodePackageScanResult,
   NodePackageInstallResult,
   NodePackageRevision,
@@ -66,6 +70,38 @@ export class ApiClient {
 
   listNodePackages(): Promise<NodePackageScanResult> {
     return this.request("/api/node-packages");
+  }
+
+  openNodeAssetSource(sourcePath: string): Promise<NodeAssetOpenSourceResult> {
+    return this.request(
+      "/api/node-assets/open-source",
+      this.jsonInit("POST", { source_path: sourcePath }),
+    );
+  }
+
+  getNodeType(nodeTypeId: string): Promise<NodeType> {
+    return this.request(`/api/node-types/${encodeURIComponent(nodeTypeId)}`);
+  }
+
+  getNodeTypeManifest(nodeTypeId: string): Promise<NodeFormManifest> {
+    return this.request(`/api/node-types/${encodeURIComponent(nodeTypeId)}/manifest`);
+  }
+
+  saveNodeTypeManifest(
+    nodeTypeId: string,
+    manifest: NodeFormManifest,
+  ): Promise<NodeTypeManifestSaveResult> {
+    return this.request(
+      `/api/node-types/${encodeURIComponent(nodeTypeId)}/manifest`,
+      this.jsonInit("PUT", manifest),
+    );
+  }
+
+  deleteNodeTypeManifest(nodeTypeId: string): Promise<NodeTypeManifestDeleteResult> {
+    return this.request(
+      `/api/node-types/${encodeURIComponent(nodeTypeId)}/manifest`,
+      { method: "DELETE" },
+    );
   }
 
   updateNodePackageSettings(
@@ -310,6 +346,19 @@ export class ApiClient {
 
   getRunEvents(runId: string): Promise<RunEvent[]> {
     return this.request(`/api/runs/${encodeURIComponent(runId)}/events`);
+  }
+
+  /** 增量拉取游标之后的运行事件（after_id 为 run_events 自增主键） */
+  eventsAfter(runId: string, afterId: number): Promise<RunEvent[]> {
+    const cursor = encodeURIComponent(String(afterId));
+    return this.request(
+      `/api/runs/${encodeURIComponent(runId)}/events?after_id=${cursor}`,
+    );
+  }
+
+  /** 构造运行事件 SSE 流地址（与 baseUrl 拼接方式保持一致） */
+  runEventStreamUrl(runId: string): string {
+    return `${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/events/stream`;
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {

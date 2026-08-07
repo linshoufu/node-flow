@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEmptyWorkflow } from "../lib/workflow";
 import type { WorkflowDocument } from "../types";
@@ -22,6 +22,7 @@ function options(overrides: Record<string, unknown> = {}) {
       deleteWorkflow: vi.fn().mockResolvedValue(undefined),
       getWorkflow: vi.fn().mockResolvedValue(workflow()),
     },
+    confirmDiscard: vi.fn().mockResolvedValue(true),
     createWorkflowFromTemplate: vi.fn().mockReturnValue({ ...workflow("template", 0), name: "模板工作流" }),
     hasActiveOperation: vi.fn().mockReturnValue(false),
     isBusy: false,
@@ -54,47 +55,61 @@ function deferred<T>() {
 }
 
 describe("useWorkflowNavigationActions", () => {
-  it("保护未保存修改并给出中文反馈", () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
-    const current = options({ isWorkflowDirty: true });
+  it("用户拒绝丢弃未保存修改时保留文档并给出中文反馈", async () => {
+    const confirmDiscard = vi.fn().mockResolvedValue(false);
+    const current = options({ confirmDiscard, isWorkflowDirty: true });
     const { result } = renderHook(() => useWorkflowNavigationActions(current));
 
     act(() => result.current.startNewWorkflow());
 
-    expect(window.confirm).toHaveBeenCalledOnce();
+    await waitFor(() => expect(confirmDiscard).toHaveBeenCalledOnce());
     expect(current.onApplyDocument).not.toHaveBeenCalled();
     expect(current.onMessage).toHaveBeenCalledWith("已保留当前未保存修改。");
   });
 
-  it("新建工作流时重置文档并写入新建路由", () => {
+  it("确认丢弃未保存修改后继续新建工作流", async () => {
+    const confirmDiscard = vi.fn().mockResolvedValue(true);
+    const current = options({ confirmDiscard, isWorkflowDirty: true });
+    const { result } = renderHook(() => useWorkflowNavigationActions(current));
+
+    act(() => result.current.startNewWorkflow());
+
+    await waitFor(() => expect(current.onApplyDocument).toHaveBeenCalledWith(expect.objectContaining({
+      baseline: "clean",
+      message: "已新建工作流。",
+    })));
+    expect(current.navigate).toHaveBeenCalledWith({ kind: "new" });
+  });
+
+  it("新建工作流时重置文档并写入新建路由", async () => {
     const current = options();
     const { result } = renderHook(() => useWorkflowNavigationActions(current));
 
     act(() => result.current.startNewWorkflow());
 
-    expect(current.onApplyDocument).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(current.onApplyDocument).toHaveBeenCalledWith(expect.objectContaining({
       baseline: "clean",
       message: "已新建工作流。",
       selectedNodeId: null,
       selectedWorkflowId: "",
-    }));
+    })));
     expect(current.navigate).toHaveBeenCalledWith({ kind: "new" });
   });
 
-  it("将模板打开为脏草稿并选中模板入口节点", () => {
+  it("将模板打开为脏草稿并选中模板入口节点", async () => {
     const current = options();
     const { result } = renderHook(() => useWorkflowNavigationActions(current));
 
     act(() => result.current.applyTemplate("api-template"));
 
-    expect(current.createWorkflowFromTemplate).toHaveBeenCalledWith("api-template");
+    await waitFor(() => expect(current.createWorkflowFromTemplate).toHaveBeenCalledWith("api-template"));
     expect(current.selectTemplateNode).toHaveBeenCalledWith("api-template");
-    expect(current.onApplyDocument).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(current.onApplyDocument).toHaveBeenCalledWith(expect.objectContaining({
       baseline: "dirty",
       message: "已应用模板：模板工作流。",
       selectedNodeId: "node-1",
       selectedWorkflowId: "",
-    }));
+    })));
     expect(current.navigate).toHaveBeenCalledWith({ kind: "new" });
   });
 

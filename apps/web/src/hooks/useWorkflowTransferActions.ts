@@ -16,7 +16,7 @@ export type WorkflowDownload = (content: string, filename: string) => void;
 type UseWorkflowTransferActionsOptions = {
   blocked: boolean;
   client?: WorkflowTransferClient;
-  confirmDiscardUnsavedChanges: () => boolean;
+  confirmDiscardUnsavedChanges: () => Promise<boolean>;
   currentWorkflow: WorkflowDocument;
   documentId: string;
   download?: WorkflowDownload;
@@ -47,6 +47,8 @@ export function useWorkflowTransferActions({
   const documentIdRef = useRef(documentId);
   const activeTransferRef = useRef<ActiveTransfer | null>(null);
   const transferTokenRef = useRef(0);
+  // 异步确认弹窗打开期间阻止重复触发确认，与同步传输租约叠加防连点
+  const confirmPendingRef = useRef(false);
   documentIdRef.current = documentId;
 
   useEffect(() => {
@@ -96,10 +98,19 @@ export function useWorkflowTransferActions({
   }, [onBusyChange]);
 
   const duplicateWorkflow = useCallback(async (workflowId: string) => {
-    if (blocked || activeTransferRef.current !== null) {
+    if (blocked || activeTransferRef.current !== null || confirmPendingRef.current) {
       return null;
     }
-    if (!confirmDiscardUnsavedChanges()) {
+    // 同步记录发起确认的文档：异步确认期间若切换文档，确认后丢弃结果
+    const initiatedDocumentId = documentIdRef.current;
+    confirmPendingRef.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirmDiscardUnsavedChanges();
+    } finally {
+      confirmPendingRef.current = false;
+    }
+    if (!confirmed || documentIdRef.current !== initiatedDocumentId) {
       return null;
     }
     const transfer = beginTransfer();
@@ -137,10 +148,19 @@ export function useWorkflowTransferActions({
   ]);
 
   const importWorkflow = useCallback(async (file: File) => {
-    if (blocked || activeTransferRef.current !== null) {
+    if (blocked || activeTransferRef.current !== null || confirmPendingRef.current) {
       return null;
     }
-    if (!confirmDiscardUnsavedChanges()) {
+    // 同步记录发起确认的文档：异步确认期间若切换文档，确认后丢弃结果
+    const initiatedDocumentId = documentIdRef.current;
+    confirmPendingRef.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirmDiscardUnsavedChanges();
+    } finally {
+      confirmPendingRef.current = false;
+    }
+    if (!confirmed || documentIdRef.current !== initiatedDocumentId) {
       return null;
     }
     const transfer = beginTransfer();

@@ -35,7 +35,6 @@ type UseWorkflowRunActionsOptions = {
   onPageBusyChange: (busy: boolean) => void;
   onSelectIssueNode: (nodeId: string) => void;
   onShowPreRunIssues: () => void;
-  refreshWorkflowRunHistory: (options: { preserveExistingOnError: true }) => Promise<unknown>;
   runView: RunViewState;
   saveWorkflow: () => Promise<WorkflowDocument | null>;
   shouldSaveBeforeRun: boolean;
@@ -67,7 +66,6 @@ export function useWorkflowRunActions({
   onPageBusyChange,
   onSelectIssueNode,
   onShowPreRunIssues,
-  refreshWorkflowRunHistory,
   runView,
   saveWorkflow,
   shouldSaveBeforeRun,
@@ -134,9 +132,7 @@ export function useWorkflowRunActions({
       if (!isOperationActive(runToken)) {
         return;
       }
-      if (isTerminalRunStatus(nextRun.status)) {
-        await refreshWorkflowRunHistory({ preserveExistingOnError: true });
-      }
+      // 运行历史由终态事件总线自动刷新，这里只负责结果提示
       onMessage(
         isTerminalRunStatus(nextRun.status)
           ? `运行${formatRunStatus(nextRun.status)}。`
@@ -166,7 +162,6 @@ export function useWorkflowRunActions({
     onPageBusyChange,
     onSelectIssueNode,
     onShowPreRunIssues,
-    refreshWorkflowRunHistory,
     saveWorkflow,
     shouldSaveBeforeRun,
     trackCurrentRun,
@@ -200,9 +195,7 @@ export function useWorkflowRunActions({
         return;
       }
       nextRun = pollingResult.snapshot.run;
-      if (isTerminalRunStatus(nextRun.status)) {
-        await refreshWorkflowRunHistory({ preserveExistingOnError: true });
-      }
+      // 运行历史由终态事件总线自动刷新，这里只负责结果提示
       onMessage(
         isTerminalRunStatus(nextRun.status)
           ? `运行${formatRunStatus(nextRun.status)}。`
@@ -227,7 +220,6 @@ export function useWorkflowRunActions({
     maxPollAttempts,
     onMessage,
     onPageBusyChange,
-    refreshWorkflowRunHistory,
     runView,
     trackCurrentRun,
   ]);
@@ -264,9 +256,7 @@ export function useWorkflowRunActions({
       if (!isOperationActive(runToken)) {
         return;
       }
-      if (isTerminalRunStatus(nextRun.status)) {
-        await refreshWorkflowRunHistory({ preserveExistingOnError: true });
-      }
+      // 运行历史由终态事件总线自动刷新，这里只负责结果提示
       onMessage(
         isTerminalRunStatus(nextRun.status)
           ? `已基于 v${sourceRun.workflow_version} 重新运行，结果${formatRunStatus(nextRun.status)}。`
@@ -294,7 +284,6 @@ export function useWorkflowRunActions({
     onExpandRunDrawer,
     onMessage,
     onPageBusyChange,
-    refreshWorkflowRunHistory,
     runView,
     trackCurrentRun,
   ]);
