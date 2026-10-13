@@ -40,6 +40,7 @@ class DemoConfig(NodeConfig):
     icon="flask-conical",
     tags=["demo", "test", "示例"],
     keywords=["演示", "测试", "demo"],
+    documentation_url="/docs/nodes/index.html#demo.test",
     form=NodeForm(
         groups=(
             FormGroup(

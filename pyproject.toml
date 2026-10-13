@@ -23,3 +23,16 @@ test = [
 pythonpath = ["."]
 asyncio_mode = "auto"
 addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["outsource", ".qoder", ".nodeflow-packages"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.1",
+]

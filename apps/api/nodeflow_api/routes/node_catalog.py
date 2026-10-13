@@ -254,7 +254,7 @@ def build_node_catalog_router(
         if node_type is None:
             raise HTTPException(status_code=404, detail="节点类型不存在。")
         # 只读保护：已安装包节点不允许编辑
-        if node_type.package is not None and node_type.package.source != "workspace":
+        if node_type.package is not None and node_type.package.source == "installed":
             raise HTTPException(
                 status_code=403,
                 detail="此节点来自已安装包，不支持编辑 manifest。仅本地脚本节点可编辑。",
@@ -286,7 +286,7 @@ def build_node_catalog_router(
         node_type = registry.get_node_type(node_type_id)
         if node_type is None:
             raise HTTPException(status_code=404, detail="节点类型不存在。")
-        if node_type.package is not None and node_type.package.source != "workspace":
+        if node_type.package is not None and node_type.package.source == "installed":
             raise HTTPException(
                 status_code=403,
                 detail="此节点来自已安装包，不支持编辑 manifest。仅本地脚本节点可编辑。",

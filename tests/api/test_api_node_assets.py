@@ -122,6 +122,12 @@ class HttpNode(BaseNode[TempConfig]):
         "/api/node-types/example.http/manifest",
         json={
             "version": 1,
+            "cardStyle": {"accent": "#58d3aa", "density": "compact", "summary": "auto"},
+            "summaryTemplate": {
+                "badge": "{{method}}",
+                "primary": "{{url}}",
+                "secondary": "超时 {{timeout_seconds}} 秒",
+            },
             "portPresentation": {
                 "inputs": {
                     "auth": {"displayName": "认证信息", "description": "可选认证", "collapsed": True, "order": 0},
@@ -133,6 +139,9 @@ class HttpNode(BaseNode[TempConfig]):
     )
 
     assert response.status_code == 200
+    saved_manifest = client.get("/api/node-types/example.http/manifest").json()
+    assert saved_manifest["cardStyle"]["summary"] == "auto"
+    assert saved_manifest["summaryTemplate"]["primary"] == "{{url}}"
     node = client.get("/api/node-types/example.http").json()
     assert list(node["inputs"]) == ["auth", "url"]
     assert node["inputs"]["auth"] == {
@@ -153,3 +162,36 @@ class HttpNode(BaseNode[TempConfig]):
     assert registered is not None
     assert list(registered.node_class.inputs) == ["url", "auth"]
     assert registered.node_class.inputs["auth"].description == "Original auth"
+
+
+def test_builtin_node_manifest_is_editable_but_installed_packages_remain_read_only(
+    tmp_path: Path,
+):
+    builtin_dir = tmp_path / "builtin"
+    builtin_dir.mkdir()
+    (builtin_dir / "nodeflow-package.json").write_text(
+        '''
+{
+  "id": "nodeflow.builtin",
+  "name": "Built-in nodes",
+  "version": "1.0.0",
+  "nodeEntrypoints": ["data.py"]
+}
+'''.lstrip(),
+        encoding="utf-8",
+    )
+    write_node_file(builtin_dir / "data.py", node_id="example.builtin")
+    client = TestClient(create_app(database_path=":memory:", nodes_dir=tmp_path))
+
+    response = client.put(
+        "/api/node-types/example.builtin/manifest",
+        json={
+            "version": 1,
+            "portPresentation": {
+                "outputs": {"success": {"displayName": "Result"}},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert client.get("/api/node-types/example.builtin").json()["outputs"]["success"]["displayName"] == "Result"

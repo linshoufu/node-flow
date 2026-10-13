@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import json
 from typing import Any, Literal
 
 import httpx
@@ -18,17 +20,20 @@ from nodeflow_sdk import (
     node,
 )
 from nodes.builtin._schemas import ANY_JSON_SCHEMA, ERROR_SCHEMA, HTTP_RESPONSE_SCHEMA, STRING_MAP_SCHEMA
+from nodeflow_sdk.expressions import resolve_expression
 
 
 class HttpRequestConfig(NodeConfig):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "GET"
+    http_profile_id: str | None = Field(default=None, title="HTTP Profile")
     url: str = Field(..., title="URL")
     headers: dict[str, str] = Field(default_factory=dict, title="Headers")
     credential_id: str | None = Field(default=None, title="Credential")
     body: Any = Field(default=None, title="Body")
     timeout_seconds: int = Field(default=30, ge=1, le=300)
+    authentication: dict[str, Any] = Field(default_factory=dict, title="Authentication")
 
 
 HTTP_METHOD_OPTIONS = (
@@ -39,7 +44,6 @@ HTTP_METHOD_OPTIONS = (
     SelectOption("DELETE", "DELETE"),
 )
 HTTP_METHODS_WITH_BODY = FormCondition("method", one_of=("POST", "PUT", "PATCH"))
-HTTP_CREDENTIAL_TYPE_IDS = ("http.bearer", "http.basic", "http.header")
 
 
 @node(
@@ -54,6 +58,18 @@ HTTP_CREDENTIAL_TYPE_IDS = ("http.bearer", "http.basic", "http.header")
     documentation_url="/docs/nodes/index.html#http.request",
     form=NodeForm(
         groups=(
+            FormGroup(
+                "profile",
+                "请求配置档",
+                fields=(
+                    FormField(
+                        "http_profile_id",
+                        control="http_profile",
+                        label="HTTP 配置档",
+                        description="继承 Base URL、公共请求头、凭据和超时；节点内配置可覆盖。",
+                    ),
+                ),
+            ),
             FormGroup(
                 "request",
                 "请求",
@@ -79,7 +95,7 @@ HTTP_CREDENTIAL_TYPE_IDS = ("http.bearer", "http.basic", "http.header")
                         "credential_id",
                         control="credential",
                         label="认证凭据",
-                        credential_type_ids=HTTP_CREDENTIAL_TYPE_IDS,
+                        credential_type_ids=(),
                     ),
                 ),
             ),
@@ -97,17 +113,23 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict):
+        session = self._session(ctx)
         credential_headers = self._credential_headers(ctx)
-        headers = {**credential_headers, **self.config.headers, **(inputs.get("headers") or {})}
+        try:
+            await self._ensure_authenticated(ctx, session)
+        except (httpx.RequestError, httpx.TimeoutException, ValueError) as exc:
+            return {"error": {"message": str(exc), "type": exc.__class__.__name__}}
+        headers = {**credential_headers, **session["headers"], **self.config.headers, **(inputs.get("headers") or {})}
         body = inputs.get("body", self.config.body)
         try:
-            async with httpx.AsyncClient(timeout=self.config.timeout_seconds, trust_env=False) as client:
+            async with httpx.AsyncClient(timeout=self.config.timeout_seconds, trust_env=False, cookies=session["cookies"]) as client:
                 response = await client.request(
                     self.config.method,
                     self.config.url,
                     headers=headers,
                     json=body if body is not None else None,
                 )
+                session["cookies"].update(client.cookies)
         except (httpx.RequestError, httpx.TimeoutException) as exc:
             return {
                 "error": {
@@ -153,4 +175,88 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
             return {"Authorization": value}
         if credential.type_id == "http.header":
             return {credential.data["name"]: credential.data["value"]}
+        if self.config.authentication.get("mode") == "login":
+            return {}
         raise ValueError("此节点不支持所选凭据类型。")
+
+    def _session(self, ctx: NodeContext) -> dict[str, Any]:
+        key = json.dumps(
+            {"url": self.config.url, "credential": self.config.credential_id, "auth": self.config.authentication},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        resource_key = f"http.auth.{hashlib.sha256(key.encode()).hexdigest()}"
+        return ctx.get_or_create_run_resource(
+            resource_key, lambda: {"authenticated": False, "headers": {}, "cookies": httpx.Cookies()}
+        )
+
+    async def _ensure_authenticated(self, ctx: NodeContext, session: dict[str, Any]) -> None:
+        authentication = self.config.authentication
+        if authentication.get("mode") != "login" or session["authenticated"]:
+            return
+        login = authentication.get("login")
+        if not isinstance(login, dict):
+            raise ValueError("登录认证策略缺少 login 配置。")
+        credential = ctx.get_credential(self.config.credential_id or "")
+        if credential is None:
+            raise ValueError("登录认证策略需要配置凭据。")
+        private_context = {**ctx.data, "credential": dict(credential.data)}
+        headers = resolve_expression(login.get("headers", {}), private_context)
+        body = resolve_expression(login.get("body"), private_context)
+        path = str(login.get("path", "")).strip()
+        if not path:
+            raise ValueError("登录认证策略缺少登录路径。")
+        login_url = httpx.URL(self.config.url).join(path) if path.startswith("/") else path
+        if path.startswith("/"):
+            from urllib.parse import urlsplit
+            parsed = urlsplit(self.config.url)
+            login_url = f"{parsed.scheme}://{parsed.netloc}{path}"
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds, trust_env=False, cookies=session["cookies"]) as client:
+            response = await client.request(str(login.get("method", "POST")).upper(), login_url, headers=headers, json=body)
+            response.raise_for_status()
+            session["cookies"].update(client.cookies)
+        extracts = login.get("extracts")
+        if extracts is None:
+            legacy_extract = login.get("extract")
+            extracts = [legacy_extract] if legacy_extract else []
+        if not isinstance(extracts, list) or not all(isinstance(item, dict) for item in extracts):
+            raise ValueError("登录认证策略 extracts 必须是对象数组。")
+        if not extracts:
+            session["authenticated"] = True
+            return
+        for extract in extracts:
+            token = self._extract_login_value(response, extract)
+            target = extract.get("target")
+            name = extract.get("name")
+            if not isinstance(name, str) or not name:
+                raise ValueError("登录认证策略缺少认证结果名称。")
+            ctx.register_secret(token)
+            if target == "header":
+                session["headers"][name] = token
+            elif target == "cookie":
+                session["cookies"].set(name, token)
+            else:
+                raise ValueError("登录认证策略 target 只能是 header 或 cookie。")
+        session["authenticated"] = True
+
+    @staticmethod
+    def _extract_login_value(response: httpx.Response, extract: dict[str, Any]) -> str:
+        source = extract.get("source", "json")
+        path = extract.get("path")
+        if not isinstance(path, str) or not path:
+            raise ValueError("登录认证策略缺少认证结果路径。")
+        if source == "header":
+            value = response.headers.get(path)
+        elif source == "cookie":
+            value = response.cookies.get(path)
+        elif source == "json":
+            value: Any = response.json()
+            for part in path.split("."):
+                if not isinstance(value, dict) or part not in value:
+                    raise ValueError(f"登录响应中不存在字段：{path}")
+                value = value[part]
+        else:
+            raise ValueError("登录认证策略 source 只能是 json、header 或 cookie。")
+        if not isinstance(value, str) or not value:
+            raise ValueError("登录认证策略提取的认证结果必须是非空文本。")
+        return value

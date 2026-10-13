@@ -70,19 +70,19 @@ class ExecuteWorkflowNode(BaseNode[ExecuteWorkflowConfig]):
 
 @node(
     id="workflow.return",
-    name="Workflow Return",
+    name="End / Output",
     category="Workflow",
-    description="Return data to the workflow that called this workflow.",
+    description="Set the final workflow output and mark the intended end of the flow.",
     group="action",
     icon="corner-down-left",
-    tags=["workflow", "return"],
-    keywords=["workflow", "return", "result", "subworkflow"],
+    tags=["workflow", "return", "end", "output"],
+    keywords=["workflow", "return", "result", "subworkflow", "end", "finish", "output"],
     documentation_url="/docs/nodes/index.html#workflow.return",
 )
 class WorkflowReturnNode(BaseNode[NodeConfig]):
-    inputs = {"input": Input(display_name="结果", required=False, schema=ANY_JSON_SCHEMA)}
+    inputs = {"input": Input(display_name="最终结果", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {
-        "success": Output(display_name="已返回", description="Returned value", schema=ANY_JSON_SCHEMA)
+        "success": Output(display_name="完成", description="Final workflow output", schema=ANY_JSON_SCHEMA)
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict[str, Any]) -> dict[str, Any]:

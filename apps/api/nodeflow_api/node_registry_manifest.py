@@ -12,14 +12,14 @@ import os
 from pathlib import Path
 from typing import Any
 
-from nodeflow_sdk import FieldPlacement, NodeFormManifest
+from nodeflow_sdk import NodeFormManifest
 
 logger = logging.getLogger(__name__)
 
 MANIFEST_SUFFIX = ".nodeform.json"
 SUPPORTED_CONTROLS = frozenset({
     "text", "textarea", "password", "number", "switch",
-    "select", "json", "dynamic_output_list", "dynamic_input_list",
+    "select", "json", "dynamic_output_list", "dynamic_input_list", "http_profile",
     "url", "credential",
 })
 

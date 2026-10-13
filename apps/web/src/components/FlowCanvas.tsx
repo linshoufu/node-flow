@@ -1,13 +1,15 @@
+import { useCallback, useEffect, useMemo, memo, useRef, useState } from "react";
 import {
   Background,
+  ConnectionLineType,
+  Controls,
   Handle,
-  MarkerType,
   MiniMap,
   Position,
   ReactFlow,
+  ReactFlowInstance,
   ReactFlowProvider,
-  useReactFlow,
-  useUpdateNodeInternals,
+  applyNodeChanges,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -15,1427 +17,453 @@ import {
   type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
-import { ClipboardPaste, Copy, CopyPlus, Map as MapIcon, Maximize2, Minus, Plus, StickyNote, ZoomIn, ZoomOut } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, memo, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { CanvasQuickSearch } from "./CanvasQuickSearch";
-import { buildCanvasConnectionEdge } from "../lib/canvasConnectionEdge";
-import { buildCanvasNodeData, type CanvasNodePortEntry } from "../lib/canvasNodeData";
-import { validateConnection } from "../lib/connectionValidation";
-import { buildEdgeRepairCandidates, type EdgeRepairCandidate } from "../lib/edgeRepairCandidates";
-import { resolveNodeInputPorts, resolveNodeOutputPorts } from "../lib/nodePorts";
-import { portDisplayName, portTooltip } from "../lib/schemaDisplay";
-import { createWorkflowEdge } from "../lib/workflow";
-import type { NodeRunDetail } from "../lib/nodeRunDetail";
-import { buildNodeRuntimeTarget, type NodeRuntimeNavigationTarget } from "../lib/nodeRuntimeNavigation";
-import type { NodeRuntimeState } from "../lib/runState";
-import type { WorkflowIssueItem } from "../lib/workflowIssues";
-import type { CanvasAnnotation, NodePort, NodeType, WorkflowDocument, WorkflowEdge, WorkflowNode } from "../types";
-import { NodeTypeIcon } from "./NodeTypeIcon";
-import { getInlineFields, renderInlineField } from "../lib/inlineFieldControls";
+import { ArrowLeft, Check, Clock3, Crosshair, GitBranch, LoaderCircle, Map as MapIcon, MousePointer2, Search, X, ZoomIn } from "lucide-react";
+import { apiClient } from "@/api/client";
+import { getActiveGraph, useWorkflowStore } from "@/store/workflow";
+import type { HttpProfile, NodeFormManifest, NodePort, NodeSummaryTemplate, NodeType, RunEvent, RunRecord, WorkflowNode as WorkflowNodeDocument } from "@/types";
+import { toast } from "./Toaster";
 
-type FlowCanvasProps = {
-  disabled?: boolean;
-  workflow: WorkflowDocument;
-  nodeTypes: NodeType[];
-  edgeIssues?: Record<string, WorkflowIssueItem[]>;
-  focusedEdgeId?: string | null;
-  focusedEdgeRequestKey?: number;
-  fitRequestKey?: string | number;
-  nodeIssues?: Record<string, WorkflowIssueItem[]>;
-  nodeRunStates?: Record<string, NodeRuntimeState>;
-  nodeRunDetails?: Record<string, NodeRunDetail>;
-  selectedNodeId: string | null;
-  selectedNodeIds?: string[];
-  selectionResetKey?: string;
-  children?: ReactNode;
-  onAddAnnotationAt?: (position: CanvasAnnotation["position"]) => void;
-  onAddNodeAt?: (nodeType: NodeType, position: WorkflowNode["position"]) => void;
-  hasNodeClipboard?: boolean;
-  onCopyNodes?: (nodeIds: string[]) => void;
-  onPasteNodes?: () => void;
-  onDuplicateNodes?: (nodeIds: string[]) => void;
-  onDeleteEdge?: (edgeId: string) => void;
-  onOpenNodeRuntime?: (target: NodeRuntimeNavigationTarget) => void;
-  onNodeDragStateChange?: (isDragging: boolean) => void;
-  onSelectIssue?: (issue: WorkflowIssueItem) => void;
-  onConfigChange?: (nodeId: string, key: string, value: unknown) => void;
-  onWorkflowChange: (workflow: WorkflowDocument) => void;
-  onSelectNode: (nodeId: string | null) => void;
-  onSelectNodes?: (nodeIds: string[], primaryNodeId: string | null) => void;
+const CATEGORY_COLORS: Record<string, string> = {
+  trigger: "#75a7ff", webhook: "#75a7ff", schedule: "#f6c65b", http: "#58d3aa",
+  assertion: "#fb7e8c", control: "#b498ff", data: "#6bc8f8", test: "#ef8fc3",
 };
 
-type EditorNodeData = {
-  workflowNode: WorkflowNode;
-  nodeType?: NodeType;
-  issues?: WorkflowIssueItem[];
-  runtimeState?: NodeRuntimeState;
-  runDetail?: NodeRunDetail;
-  onOpenNodeRuntime?: (target: NodeRuntimeNavigationTarget) => void;
-  onSelectIssue?: (issue: WorkflowIssueItem) => void;
-  /** 内联控件配置变更回调：由上层 useCanvasOperations 提供 */
-  onConfigChange?: (nodeId: string, key: string, value: unknown) => void;
-};
-
-type EditorNode = Node<EditorNodeData, "workflowNode">;
-type AnnotationNodeData = {
-  annotation: CanvasAnnotation;
-  onContentChange: (annotationId: string, patch: Pick<CanvasAnnotation, "content">) => void;
-  onColorChange: (annotationId: string, color: CanvasAnnotation["color"]) => void;
-  onSizeChange: (annotationId: string, size: Pick<CanvasAnnotation, "width" | "height">) => void;
-};
-type AnnotationNode = Node<AnnotationNodeData, "canvasAnnotation">;
-type CanvasEditorNode = EditorNode | AnnotationNode;
-type NodeMeasurement = {
-  measured: {
-    width?: number;
-    height?: number;
-  };
-  width?: number;
-  height?: number;
-};
-
-const FLOW_NODE_INITIAL_WIDTH = 190;
-const FLOW_NODE_INITIAL_HEIGHT = 110;
-
-// 节点类型注册表移到文件末尾声明，因为 WorkflowNodeView 现在由 memo 包装为 const 绑定
-
-export function FlowCanvas({
-  ...props
-}: FlowCanvasProps) {
-  return (
-    <ReactFlowProvider>
-      <FlowCanvasInner {...props} />
-    </ReactFlowProvider>
-  );
+function categoryColor(category: string) {
+  const normalized = category.toLowerCase();
+  return Object.entries(CATEGORY_COLORS).find(([key]) => normalized.includes(key))?.[1] ?? "#70a4ff";
 }
 
-function FlowCanvasInner({
-  disabled = false,
-  workflow,
-  nodeTypes,
-  edgeIssues = {},
-  focusedEdgeId,
-  focusedEdgeRequestKey,
-  fitRequestKey,
-  nodeIssues = {},
-  nodeRunStates = {},
-  nodeRunDetails = {},
-  selectedNodeId,
-  selectedNodeIds,
-  selectionResetKey,
-  children,
-  onAddAnnotationAt,
-  onAddNodeAt,
-  hasNodeClipboard = false,
-  onConfigChange,
-  onCopyNodes,
-  onPasteNodes,
-  onDuplicateNodes,
-  onDeleteEdge,
-  onOpenNodeRuntime,
-  onNodeDragStateChange,
-  onSelectIssue,
-  onWorkflowChange,
-  onSelectNode,
-  onSelectNodes,
-}: FlowCanvasProps) {
-  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(() => new Set());
-  const [nodeMeasurements, setNodeMeasurements] = useState<Record<string, NodeMeasurement>>({});
-  const [showFallbackEdges, setShowFallbackEdges] = useState(false);
-  const [connectionHint, setConnectionHint] = useState<string | null>(null);
-  // 双击画布空白处弹出的快速搜索框位置（屏幕坐标）
-  const [quickSearchScreenPosition, setQuickSearchScreenPosition] = useState<{ x: number; y: number } | null>(null);
-  // 小地图默认开启，帮助定位大画布；用户偏好持久化，关闭后下次仍保持关闭。
-  const [isMinimapVisible, setIsMinimapVisible] = useState(readMinimapPreference);
-  const canvasShellRef = useRef<HTMLElement | null>(null);
+function portColor(port: NodePort, direction: "input" | "output") {
+  if (port.category === "error") return "#fb7185";
+  if (port.category === "control") return "#b498ff";
+  return direction === "input" ? "#91a0b8" : "#58d3aa";
+}
+
+export function FlowCanvas() {
+  return <ReactFlowProvider><FlowCanvasInner /></ReactFlowProvider>;
+}
+
+function FlowCanvasInner() {
+  const workflow = useWorkflowStore((s) => s.workflow);
+  const nodeTypes = useWorkflowStore((s) => s.nodeTypes);
+  const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId);
+  const canvasScope = useWorkflowStore((s) => s.canvasScope);
+  const selectNode = useWorkflowStore((s) => s.selectNode);
+  const enterSubflow = useWorkflowStore((s) => s.enterSubflow);
+  const exitSubflow = useWorkflowStore((s) => s.exitSubflow);
+  const addNode = useWorkflowStore((s) => s.addNode);
+  const updateNodePosition = useWorkflowStore((s) => s.updateNodePosition);
+  const addEdge = useWorkflowStore((s) => s.addEdge);
+  const deleteNode = useWorkflowStore((s) => s.deleteNode);
+  const deleteEdge = useWorkflowStore((s) => s.deleteEdge);
+  const [showMap, setShowMap] = useState(true);
+  const [canvasNodes, setCanvasNodes] = useState<Node[]>([]);
+  const [quickAdd, setQuickAdd] = useState<{ x: number; y: number; query: string } | null>(null);
+  const [manifests, setManifests] = useState<Record<string, NodeFormManifest>>({});
+  const [httpProfiles, setHttpProfiles] = useState<HttpProfile[]>([]);
+  const [runSnapshot, setRunSnapshot] = useState<{ run: RunRecord | null; events: RunEvent[] }>({ run: null, events: [] });
+  const instance = useRef<ReactFlowInstance<Node, Edge> | null>(null);
+  const nodeTypeMap = useMemo(() => new Map(nodeTypes.map((type) => [type.id, type])), [nodeTypes]);
+  const graph = useMemo(() => getActiveGraph(workflow, canvasScope), [workflow, canvasScope]);
+  const scopeKey = canvasScope.map((segment) => `${segment.nodeId}:${segment.key}`).join("/") || "root";
 
   useEffect(() => {
-    writeMinimapPreference(isMinimapVisible);
-  }, [isMinimapVisible]);
-  const connectionHintRef = useRef<string | null>(null);
-  const { fitView, screenToFlowPosition, zoomIn, zoomOut } = useReactFlow();
-  const updateNodeInternals = useUpdateNodeInternals();
-  const nodeTypeById = useMemo(() => new Map(nodeTypes.map((nodeType) => [nodeType.id, nodeType])), [nodeTypes]);
-  const previousEditorNodesRef = useRef<Map<string, EditorNode>>(new Map());
-  const selectedWorkflowNodeIds = useMemo(
-    () => new Set(selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : [])),
-    [selectedNodeId, selectedNodeIds]
-  );
-  const reportNodeSelection = useCallback(
-    (nodeIds: Set<string>, primaryNodeId: string | null) => {
-      const normalizedNodeIds = [...nodeIds];
-      if (onSelectNodes) {
-        onSelectNodes(normalizedNodeIds, primaryNodeId);
-      } else {
-        onSelectNode(primaryNodeId);
-      }
-    },
-    [onSelectNode, onSelectNodes]
-  );
-
-  const updateAnnotation = useCallback(
-    (annotationId: string, patch: Partial<Pick<CanvasAnnotation, "content" | "color" | "width" | "height">>) => {
-      if (disabled) {
-        return;
-      }
-
-      onWorkflowChange({
-        ...workflow,
-        annotations: (workflow.annotations ?? []).map((annotation) =>
-          annotation.id === annotationId ? { ...annotation, ...patch } : annotation
-        ),
-      });
-    },
-    [disabled, onWorkflowChange, workflow]
-  );
+    let disposed = false;
+    void Promise.all(nodeTypes.map(async (nodeType) => {
+      try { return [nodeType.id, await apiClient.getNodeTypeManifest(nodeType.id)] as const; }
+      catch { return [nodeType.id, { version: 1 }] as const; }
+    })).then((entries) => { if (!disposed) setManifests(Object.fromEntries(entries)); });
+    return () => { disposed = true; };
+  }, [nodeTypes]);
 
   useEffect(() => {
-    setSelectedEdgeIds((currentSelectedEdgeIds) =>
-      currentSelectedEdgeIds.size === 0 ? currentSelectedEdgeIds : new Set()
-    );
-  }, [selectionResetKey]);
-
-  useEffect(() => {
-    if (!focusedEdgeId) {
-      return;
-    }
-
-    const edgeExists = workflow.edges.some((edge) => edge.id === focusedEdgeId);
-    if (!edgeExists) {
-      setSelectedEdgeIds((currentSelectedEdgeIds) =>
-        currentSelectedEdgeIds.size === 0 ? currentSelectedEdgeIds : new Set()
-      );
-      return;
-    }
-
-    setSelectedEdgeIds((currentSelectedEdgeIds) => {
-      const nextSelectedEdgeIds = new Set([focusedEdgeId]);
-      return areSetsEqual(currentSelectedEdgeIds, nextSelectedEdgeIds) ? currentSelectedEdgeIds : nextSelectedEdgeIds;
-    });
-  }, [focusedEdgeId, focusedEdgeRequestKey, workflow.edges]);
-
-  const nodes = useMemo<CanvasEditorNode[]>(() => {
-    const previousEditorNodes = previousEditorNodesRef.current;
-    const nextEditorNodes = new Map<string, EditorNode>();
-    const mappedNodes = workflow.nodes.map((node) => {
-      const nodeType = nodeTypeById.get(node.type);
-      const issues = nodeIssues[node.id];
-      const runtimeState = nodeRunStates[node.id];
-      const runDetail = nodeRunDetails[node.id];
-      const measurement = nodeMeasurements[node.id];
-      const selected = selectedWorkflowNodeIds.has(node.id);
-      const previousNode = previousEditorNodes.get(node.id);
-
-      if (
-        previousNode &&
-        previousNode.position.x === node.position.x &&
-        previousNode.position.y === node.position.y &&
-        previousNode.selected === selected &&
-        previousNode.data.workflowNode === node &&
-        previousNode.data.nodeType === nodeType &&
-        previousNode.data.issues === issues &&
-        previousNode.data.runtimeState === runtimeState &&
-        previousNode.data.runDetail === runDetail &&
-        previousNode.data.onOpenNodeRuntime === onOpenNodeRuntime &&
-        previousNode.data.onSelectIssue === onSelectIssue &&
-        previousNode.data.onConfigChange === onConfigChange &&
-        hasSameMeasurement(previousNode, measurement)
-      ) {
-        nextEditorNodes.set(node.id, previousNode);
-        return previousNode;
-      }
-
-      const nextNode: EditorNode = {
-        id: node.id,
-        type: "workflowNode",
-        position: node.position,
-        selected,
-        initialWidth: FLOW_NODE_INITIAL_WIDTH,
-        initialHeight: FLOW_NODE_INITIAL_HEIGHT,
-        data: {
-          workflowNode: node,
-          nodeType,
-          issues,
-          runtimeState,
-          runDetail,
-          onOpenNodeRuntime,
-          onSelectIssue,
-          onConfigChange,
-        },
-        ...(measurement ? measurement : {}),
-      };
-      nextEditorNodes.set(node.id, nextNode);
-      return nextNode;
-    });
-
-    previousEditorNodesRef.current = nextEditorNodes;
-    const annotationNodes: AnnotationNode[] = (workflow.annotations ?? []).map((annotation) => ({
-      id: annotation.id,
-      type: "canvasAnnotation",
-      position: annotation.position,
-      data: {
-        annotation,
-        onContentChange: (annotationId, patch) => updateAnnotation(annotationId, patch),
-        onColorChange: (annotationId, color) => updateAnnotation(annotationId, { color }),
-        onSizeChange: (annotationId, size) => updateAnnotation(annotationId, size),
-      },
-      style: {
-        width: annotation.width,
-        height: annotation.height,
-      },
-    }));
-
-    return [...mappedNodes, ...annotationNodes];
-  }, [
-    nodeIssues,
-    nodeMeasurements,
-    nodeRunDetails,
-    nodeRunStates,
-    nodeTypeById,
-    onOpenNodeRuntime,
-    onSelectIssue,
-    selectedWorkflowNodeIds,
-    updateAnnotation,
-    workflow.annotations,
-    workflow.nodes,
-  ]);
-
-  // 记录上一次各节点的端口结构签名，用于只对实际变化的节点调用 updateNodeInternals
-  const nodeInternalsSignatureRef = useRef<Map<string, string> | null>(null);
-
-  useEffect(() => {
-    if (
-      nodes.length === 0 ||
-      typeof window === "undefined" ||
-      window.navigator.userAgent.toLowerCase().includes("jsdom")
-    ) {
-      return;
-    }
-
-    // 对比前后节点集合：仅新增/删除/端口结构变化的节点才需要重新测量 handle 位置
-    const nextSignatures = new Map(nodes.map((node) => [node.id, nodeInternalsSignature(node)]));
-    const previousSignatures = nodeInternalsSignatureRef.current;
-    nodeInternalsSignatureRef.current = nextSignatures;
-
-    const changedNodeIds = [...nextSignatures.entries()]
-      .filter(([nodeId, signature]) => previousSignatures?.get(nodeId) !== signature)
-      .map(([nodeId]) => nodeId);
-    if (changedNodeIds.length === 0) {
-      return;
-    }
-
-    const animationFrame = window.requestAnimationFrame(() => {
-      updateNodeInternals(changedNodeIds);
-    });
-
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [nodes, updateNodeInternals]);
-
-  useEffect(() => {
-    if (fitRequestKey === undefined || nodes.length === 0) {
-      return;
-    }
-
-    void fitView({ duration: 180, padding: 0.18 });
-  }, [fitRequestKey, fitView, nodes.length]);
-
-  const edges = useMemo<Edge[]>(
-    () =>
-      workflow.edges.map((edge) => {
-        const canvasEdge = buildCanvasConnectionEdge({
-          edge,
-          nodeRunDetails,
-          nodeTypes,
-          selected: selectedEdgeIds.has(edge.id),
-          workflow,
-        });
-
-        return {
-          ...canvasEdge,
-          className: canvasConnectionEdgeClassName(canvasEdge.className, edgeIssues[edge.id]),
-          markerEnd: { type: MarkerType.ArrowClosed },
-        };
-      }),
-    [edgeIssues, nodeRunDetails, nodeTypes, selectedEdgeIds, workflow]
-  );
-  const selectedIssueEdge = useMemo(
-    () => selectedIssueEdgeFromSelection(selectedEdgeIds, edgeIssues, workflow.edges),
-    [edgeIssues, selectedEdgeIds, workflow.edges]
-  );
-  const selectedIssueEdgeRepairCandidates = useMemo(
-    () => (selectedIssueEdge ? buildEdgeRepairCandidates(selectedIssueEdge.edge, workflow, nodeTypes) : []),
-    [nodeTypes, selectedIssueEdge, workflow]
-  );
-
-  useEffect(() => {
-    if (edges.length === 0 || typeof window === "undefined") {
-      setShowFallbackEdges(false);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      const renderedEdgeCount = canvasShellRef.current?.querySelectorAll(".react-flow__edge").length ?? 0;
-      setShowFallbackEdges(renderedEdgeCount < edges.length);
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [edges, nodes]);
-
-  const handleNodesChange = useCallback(
-    (changes: NodeChange<CanvasEditorNode>[]) => {
-      const dimensionChanges = changes.filter(isDimensionChange);
-      const positionChanges = new Map(
-        changes
-          .filter(isPositionChange)
-          .map((change) => [change.id, change.position])
-      );
-      const annotationIds = new Set((workflow.annotations ?? []).map((annotation) => annotation.id));
-      const removedAnnotationIds = new Set(
-        changes.filter(isNodeRemoveChange).map((change) => change.id).filter((id) => annotationIds.has(id))
-      );
-      const removedNodeIds = new Set(
-        changes.filter(isNodeRemoveChange).map((change) => change.id).filter((id) => !annotationIds.has(id))
-      );
-      const nodeChanges = changes.filter(hasNodeChangeId).filter((change) => !annotationIds.has(change.id));
-      const hasNodeSelectionChanges = nodeChanges.some(isNodeSelectChange);
-      const nextSelectedNodeIds = selectedNodeIdsFromChanges(nodeChanges, selectedWorkflowNodeIds);
-      for (const nodeId of removedNodeIds) {
-        nextSelectedNodeIds.delete(nodeId);
-      }
-      const nextSelectedNodeId = primarySelectedNodeId(nodeChanges, nextSelectedNodeIds, selectedNodeId);
-
-      if (disabled) {
-        if (dimensionChanges.length > 0) {
-          setNodeMeasurements((currentMeasurements) =>
-            nextNodeMeasurementsFromChanges(currentMeasurements, dimensionChanges, new Set())
-          );
-        }
-        if (hasNodeSelectionChanges) {
-          reportNodeSelection(nextSelectedNodeIds, nextSelectedNodeId);
-        }
-        return;
-      }
-
-      if (dimensionChanges.length > 0 || removedNodeIds.size > 0) {
-        setNodeMeasurements((currentMeasurements) =>
-          nextNodeMeasurementsFromChanges(currentMeasurements, dimensionChanges, removedNodeIds)
-        );
-      }
-
-      if (positionChanges.size === 0 && removedNodeIds.size === 0 && removedAnnotationIds.size === 0) {
-        if (hasNodeSelectionChanges) {
-          reportNodeSelection(nextSelectedNodeIds, nextSelectedNodeId);
-        }
-        return;
-      }
-
-      const nextNodes = workflow.nodes
-        .filter((node) => !removedNodeIds.has(node.id))
-        .map((node) => {
-          const position = positionChanges.get(node.id);
-          return position ? { ...node, position } : node;
-        });
-      const nextEdges =
-        removedNodeIds.size === 0
-          ? workflow.edges
-          : workflow.edges.filter((edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target));
-      const nextAnnotations = (workflow.annotations ?? [])
-        .filter((annotation) => !removedAnnotationIds.has(annotation.id))
-        .map((annotation) => {
-          const position = positionChanges.get(annotation.id);
-          return position ? { ...annotation, position } : annotation;
-        });
-
-      if (removedNodeIds.size > 0) {
-        const remainingEdgeIds = new Set(nextEdges.map((edge) => edge.id));
-        setSelectedEdgeIds((currentSelectedEdgeIds) => {
-          const nextSelectedEdgeIds = new Set(
-            [...currentSelectedEdgeIds].filter((edgeId) => remainingEdgeIds.has(edgeId))
-          );
-          return areSetsEqual(currentSelectedEdgeIds, nextSelectedEdgeIds) ? currentSelectedEdgeIds : nextSelectedEdgeIds;
-        });
-      }
-
-      onWorkflowChange({
-        ...workflow,
-        nodes: nextNodes,
-        edges: nextEdges,
-        ...(workflow.annotations ? { annotations: nextAnnotations } : {}),
-      });
-
-      if (hasNodeSelectionChanges || removedNodeIds.size > 0) {
-        reportNodeSelection(nextSelectedNodeIds, nextSelectedNodeId);
-      }
-    },
-    [disabled, onWorkflowChange, reportNodeSelection, selectedNodeId, selectedWorkflowNodeIds, workflow]
-  );
-
-  const handleEdgesChange = useCallback(
-    (changes: EdgeChange<Edge>[]) => {
-      if (disabled) {
-        return;
-      }
-
-      const removedEdgeIds = new Set(changes.filter(isEdgeRemoveChange).map((change) => change.id));
-      const hasEdgeSelectionChanges = changes.some(isEdgeSelectChange);
-
-      if (hasEdgeSelectionChanges || removedEdgeIds.size > 0) {
-        setSelectedEdgeIds((currentSelectedEdgeIds) => {
-          const nextSelectedEdgeIds = selectedEdgeIdsFromChanges(changes, currentSelectedEdgeIds);
-
-          for (const edgeId of removedEdgeIds) {
-            nextSelectedEdgeIds.delete(edgeId);
-          }
-
-          return areSetsEqual(currentSelectedEdgeIds, nextSelectedEdgeIds) ? currentSelectedEdgeIds : nextSelectedEdgeIds;
-        });
-      }
-
-      if (removedEdgeIds.size === 0) {
-        return;
-      }
-
-      onWorkflowChange({
-        ...workflow,
-        edges: workflow.edges.filter((edge) => !removedEdgeIds.has(edge.id)),
-      });
-    },
-    [disabled, onWorkflowChange, workflow]
-  );
-
-  const showConnectionHint = useCallback((message: string | null) => {
-    connectionHintRef.current = message;
-    setConnectionHint((currentMessage) => (currentMessage === message ? currentMessage : message));
+    const loadHttpProfiles = () => { void apiClient.listHttpProfiles().then(setHttpProfiles).catch(() => setHttpProfiles([])); };
+    loadHttpProfiles();
+    window.addEventListener("nodeflow:http-profiles-changed", loadHttpProfiles);
+    return () => window.removeEventListener("nodeflow:http-profiles-changed", loadHttpProfiles);
   }, []);
 
-  const isValidConnection = useCallback(
-    (connection: Connection | Edge) => {
-      const result = validateConnection(connection, workflow, nodeTypes);
-      showConnectionHint(result.valid ? null : result.message);
-      return result.valid;
-    },
-    [nodeTypes, showConnectionHint, workflow]
-  );
-
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      if (disabled) {
-        return;
-      }
-
-      const result = validateConnection(connection, workflow, nodeTypes);
-      if (!result.valid) {
-        showConnectionHint(result.message);
-        return;
-      }
-      const { source, sourceHandle, target, targetHandle } = connection;
-      if (!source || !sourceHandle || !target || !targetHandle) {
-        showConnectionHint("请从输出端口拖到输入端口。");
-        return;
-      }
-
-      const nextEdge: WorkflowEdge = createWorkflowEdge(
-        source,
-        sourceHandle,
-        target,
-        targetHandle
-      );
-
-      onWorkflowChange({
-        ...workflow,
-        edges: [...workflow.edges, nextEdge],
-      });
-      showConnectionHint(null);
-    },
-    [disabled, nodeTypes, onWorkflowChange, showConnectionHint, workflow]
-  );
-
-  const handleRepairEdgeTarget = useCallback(
-    (edgeId: string, targetHandle: string) => {
-      if (disabled) {
-        return;
-      }
-
-      onWorkflowChange({
-        ...workflow,
-        edges: workflow.edges.map((edge) => (edge.id === edgeId ? { ...edge, targetHandle } : edge)),
-      });
-      showConnectionHint(null);
-    },
-    [disabled, onWorkflowChange, showConnectionHint, workflow]
-  );
-
-  const handleDragOver = useCallback(
-    (event: DragEvent) => {
-      if (disabled) {
-        event.dataTransfer.dropEffect = "none";
-        return;
-      }
-
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
-    },
-    [disabled]
-  );
-
-  const handleDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault();
-      if (disabled) {
-        return;
-      }
-
-      const nodeTypeId =
-        event.dataTransfer.getData("application/node-flow-node-type") || event.dataTransfer.getData("text/plain");
-      const nodeType = nodeTypeById.get(nodeTypeId);
-      if (!nodeType || !onAddNodeAt) {
-        return;
-      }
-
-      onAddNodeAt(
-        nodeType,
-        screenToFlowPosition({
-          x: event.clientX,
-          y: event.clientY,
-        })
-      );
-    },
-    [disabled, nodeTypeById, onAddNodeAt, screenToFlowPosition]
-  );
-
-  const handleCanvasDoubleClick = useCallback(
-    (event: ReactMouseEvent<HTMLElement>) => {
-      if (disabled || !onAddNodeAt) {
-        return;
-      }
-      const target = event.target as HTMLElement;
-      // 双击节点/连线/按钮等交互元素不触发；仅在空白 pane 或空画布模板遮罩上打开
-      if (target.closest("button, a, .flow-node, .canvas-quick-search")) {
-        return;
-      }
-      if (!target.closest(".react-flow__pane") && !target.closest(".canvas-empty-overlay")) {
-        return;
-      }
-      setQuickSearchScreenPosition({ x: event.clientX, y: event.clientY });
-    },
-    [disabled, onAddNodeAt]
-  );
-
-  return (
-    <section className="canvas-shell" aria-label="画布工作区" onDoubleClick={handleCanvasDoubleClick} ref={canvasShellRef}>
-      <ReactFlow
-        deleteKeyCode={disabled ? [] : ["Delete", "Backspace"]}
-        edges={edges}
-        nodes={nodes}
-        nodeTypes={flowNodeTypes}
-        nodesConnectable={!disabled}
-        nodesDraggable={!disabled}
-        // 双击留给快速搜索框，不再缩放画布
-        zoomOnDoubleClick={false}
-        multiSelectionKeyCode={["Control", "Meta", "Shift"]}
-        proOptions={{ hideAttribution: true }}
-        selectionKeyCode="Shift"
-        isValidConnection={isValidConnection}
-        onConnect={handleConnect}
-        onConnectStart={() => showConnectionHint(null)}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onEdgesChange={handleEdgesChange}
-        onNodeDragStart={() => onNodeDragStateChange?.(true)}
-        onNodeDragStop={() => onNodeDragStateChange?.(false)}
-        onNodesChange={handleNodesChange}
-        onPaneClick={() => {
-          reportNodeSelection(new Set(), null);
-          setSelectedEdgeIds((currentSelectedEdgeIds) =>
-            currentSelectedEdgeIds.size === 0 ? currentSelectedEdgeIds : new Set()
-          );
-        }}
-      >
-        <Background />
-        {isMinimapVisible ? (
-          <MiniMap
-            ariaLabel="画布导航缩略图"
-            className="canvas-minimap"
-            pannable
-            zoomable
-          />
-        ) : null}
-      </ReactFlow>
-      {workflow.nodes.length > 0 ? (
-        <div className="canvas-controls nodrag nopan" role="group" aria-label="画布控制">
-          {onAddAnnotationAt ? (
-            <button
-              aria-label="添加画布说明"
-              disabled={disabled}
-              title="添加画布说明"
-              type="button"
-              onClick={() => {
-                const bounds = canvasShellRef.current?.getBoundingClientRect();
-                onAddAnnotationAt(
-                  bounds
-                    ? screenToFlowPosition({ x: bounds.left + bounds.width / 2 - 160, y: bounds.top + bounds.height / 2 - 90 })
-                    : { x: 120, y: 120 }
-                );
-              }}
-            >
-              <StickyNote aria-hidden="true" size={16} strokeWidth={2.1} />
-            </button>
-          ) : null}
-          {onDuplicateNodes ? (
-            <button
-              aria-label="克隆所选节点"
-              disabled={disabled || selectedWorkflowNodeIds.size === 0}
-              title="克隆所选节点 (Ctrl/Cmd + D)"
-              type="button"
-              onClick={() => onDuplicateNodes([...selectedWorkflowNodeIds])}
-            >
-              <CopyPlus aria-hidden="true" size={16} strokeWidth={2.1} />
-            </button>
-          ) : null}
-          {onCopyNodes ? (
-            <button
-              aria-label="复制所选节点"
-              disabled={disabled || selectedWorkflowNodeIds.size === 0}
-              title="复制所选节点 (Ctrl/Cmd + C)"
-              type="button"
-              onClick={() => onCopyNodes([...selectedWorkflowNodeIds])}
-            >
-              <Copy aria-hidden="true" size={16} strokeWidth={2.1} />
-            </button>
-          ) : null}
-          {onPasteNodes ? (
-            <button
-              aria-label="粘贴节点"
-              disabled={disabled || !hasNodeClipboard}
-              title="粘贴节点 (Ctrl/Cmd + V)"
-              type="button"
-              onClick={onPasteNodes}
-            >
-              <ClipboardPaste aria-hidden="true" size={16} strokeWidth={2.1} />
-            </button>
-          ) : null}
-          <button aria-label="放大画布" title="放大画布" type="button" onClick={() => void zoomIn()}>
-            <ZoomIn aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
-          <button aria-label="缩小画布" title="缩小画布" type="button" onClick={() => void zoomOut()}>
-            <ZoomOut aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
-          <button aria-label="适应画布" title="适应画布" type="button" onClick={() => void fitView()}>
-            <Maximize2 aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
-          <button
-            aria-label={isMinimapVisible ? "隐藏导航缩略图" : "显示导航缩略图"}
-            aria-pressed={isMinimapVisible}
-            title={isMinimapVisible ? "隐藏导航缩略图" : "显示导航缩略图"}
-            type="button"
-            onClick={() => setIsMinimapVisible((current) => !current)}
-          >
-            <MapIcon aria-hidden="true" size={16} strokeWidth={2.1} />
-          </button>
-        </div>
-      ) : null}
-      {connectionHint ? (
-        <div className="connection-hint" role="status">
-          {connectionHint}
-        </div>
-      ) : null}
-      {quickSearchScreenPosition && !disabled && onAddNodeAt ? (
-        <CanvasQuickSearch
-          nodeTypes={nodeTypes}
-          screenPosition={quickSearchScreenPosition}
-          onAdd={(nodeType) => onAddNodeAt(nodeType, screenToFlowPosition(quickSearchScreenPosition))}
-          onClose={() => setQuickSearchScreenPosition(null)}
-        />
-      ) : null}
-      {selectedIssueEdge ? (
-        <SelectedIssueEdgeActionBar
-          disabled={disabled}
-          edgeId={selectedIssueEdge.edge.id}
-          issue={selectedIssueEdge.issue}
-          onDeleteEdge={onDeleteEdge}
-          onRepairTargetHandle={(targetHandle) => handleRepairEdgeTarget(selectedIssueEdge.edge.id, targetHandle)}
-          onSelectIssue={onSelectIssue}
-          repairCandidates={selectedIssueEdgeRepairCandidates}
-        />
-      ) : null}
-      {showFallbackEdges ? (
-        <FallbackEdges
-          edgeIssues={edgeIssues}
-          edges={workflow.edges}
-          nodes={nodes.filter(isWorkflowEditorNode)}
-          selectedEdgeIds={selectedEdgeIds}
-        />
-      ) : null}
-      {workflow.nodes.length === 0 && children ? (
-        <div className="canvas-empty-overlay" onDragOver={handleDragOver} onDrop={handleDrop}>
-          {children}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function isPositionChange(
-  change: NodeChange<CanvasEditorNode>
-): change is Extract<NodeChange<CanvasEditorNode>, { type: "position" }> & { position: { x: number; y: number } } {
-  return change.type === "position" && Boolean(change.position);
-}
-
-function isDimensionChange(
-  change: NodeChange<CanvasEditorNode>
-): change is Extract<NodeChange<CanvasEditorNode>, { type: "dimensions" }> {
-  return change.type === "dimensions";
-}
-
-function isNodeRemoveChange(
-  change: NodeChange<CanvasEditorNode>
-): change is Extract<NodeChange<CanvasEditorNode>, { type: "remove" }> {
-  return change.type === "remove";
-}
-
-function isNodeSelectChange(
-  change: NodeChange<CanvasEditorNode>
-): change is Extract<NodeChange<CanvasEditorNode>, { type: "select" }> {
-  return change.type === "select";
-}
-
-function hasNodeChangeId(
-  change: NodeChange<CanvasEditorNode>
-): change is Exclude<NodeChange<CanvasEditorNode>, { type: "add" }> {
-  return change.type !== "add";
-}
-
-function isWorkflowEditorNode(node: CanvasEditorNode): node is EditorNode {
-  return node.type === "workflowNode";
-}
-
-function selectedNodeIdsFromChanges(changes: NodeChange<CanvasEditorNode>[], currentSelectedNodeIds: Set<string>) {
-  return changes.filter(isNodeSelectChange).reduce((nextSelectedNodeIds, change) => {
-    if (change.selected) {
-      nextSelectedNodeIds.add(change.id);
-    } else {
-      nextSelectedNodeIds.delete(change.id);
-    }
-
-    return nextSelectedNodeIds;
-  }, new Set(currentSelectedNodeIds));
-}
-
-function primarySelectedNodeId(
-  changes: NodeChange<CanvasEditorNode>[],
-  selectedNodeIds: Set<string>,
-  currentSelectedNodeId: string | null
-) {
-  const mostRecentlySelectedNodeId = changes
-    .filter(isNodeSelectChange)
-    .filter((change) => change.selected)
-    .map((change) => change.id)
-    .pop();
-  if (mostRecentlySelectedNodeId && selectedNodeIds.has(mostRecentlySelectedNodeId)) {
-    return mostRecentlySelectedNodeId;
-  }
-
-  if (currentSelectedNodeId && selectedNodeIds.has(currentSelectedNodeId)) {
-    return currentSelectedNodeId;
-  }
-
-  const selectedIds = [...selectedNodeIds];
-  return selectedIds[selectedIds.length - 1] ?? null;
-}
-
-function isEdgeRemoveChange(change: EdgeChange<Edge>): change is Extract<EdgeChange<Edge>, { type: "remove" }> {
-  return change.type === "remove";
-}
-
-function isEdgeSelectChange(change: EdgeChange<Edge>): change is Extract<EdgeChange<Edge>, { type: "select" }> {
-  return change.type === "select";
-}
-
-function selectedEdgeIdsFromChanges(changes: EdgeChange<Edge>[], currentSelectedEdgeIds: Set<string>) {
-  return changes.filter(isEdgeSelectChange).reduce((nextSelectedEdgeIds, change) => {
-    if (change.selected) {
-      nextSelectedEdgeIds.add(change.id);
-    } else {
-      nextSelectedEdgeIds.delete(change.id);
-    }
-
-    return nextSelectedEdgeIds;
-  }, new Set(currentSelectedEdgeIds));
-}
-
-function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
-  if (left.size !== right.size) {
-    return false;
-  }
-
-  for (const value of left) {
-    if (!right.has(value)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function canvasConnectionEdgeClassName(currentClassName: string | undefined, issues: WorkflowIssueItem[] | undefined) {
-  return [currentClassName, issues && issues.length > 0 ? "has-issue" : ""].filter(Boolean).join(" ") || undefined;
-}
-
-function selectedIssueEdgeFromSelection(
-  selectedEdgeIds: Set<string>,
-  edgeIssues: Record<string, WorkflowIssueItem[]>,
-  edges: WorkflowEdge[]
-): { edge: WorkflowEdge; issue: WorkflowIssueItem } | null {
-  for (const edge of edges) {
-    if (!selectedEdgeIds.has(edge.id)) {
-      continue;
-    }
-
-    const firstIssue = edgeIssues[edge.id]?.[0];
-    if (firstIssue) {
-      return { edge, issue: firstIssue };
-    }
-  }
-
-  return null;
-}
-
-function nextNodeMeasurementsFromChanges(
-  currentMeasurements: Record<string, NodeMeasurement>,
-  dimensionChanges: Array<Extract<NodeChange<EditorNode>, { type: "dimensions" }>>,
-  removedNodeIds: Set<string>
-) {
-  let didChange = false;
-  const nextMeasurements = { ...currentMeasurements };
-
-  for (const nodeId of removedNodeIds) {
-    if (nodeId in nextMeasurements) {
-      delete nextMeasurements[nodeId];
-      didChange = true;
-    }
-  }
-
-  for (const change of dimensionChanges) {
-    const dimensions = change.dimensions;
-    if (!dimensions) {
-      continue;
-    }
-
-    const nextMeasurement = nodeMeasurementFromDimensionChange(change, dimensions);
-    if (!areMeasurementsEqual(nextMeasurements[change.id], nextMeasurement)) {
-      nextMeasurements[change.id] = nextMeasurement;
-      didChange = true;
-    }
-  }
-
-  return didChange ? nextMeasurements : currentMeasurements;
-}
-
-function nodeMeasurementFromDimensionChange(
-  change: Extract<NodeChange<EditorNode>, { type: "dimensions" }>,
-  dimensions: { width: number; height: number }
-): NodeMeasurement {
-  const measurement: NodeMeasurement = {
-    measured: {
-      width: dimensions.width,
-      height: dimensions.height,
-    },
-  };
-
-  if (change.setAttributes === true || change.setAttributes === "width") {
-    measurement.width = dimensions.width;
-  }
-
-  if (change.setAttributes === true || change.setAttributes === "height") {
-    measurement.height = dimensions.height;
-  }
-
-  return measurement;
-}
-
-function hasSameMeasurement(node: EditorNode, measurement: NodeMeasurement | undefined) {
-  return (
-    node.measured?.width === measurement?.measured.width &&
-    node.measured?.height === measurement?.measured.height &&
-    node.width === measurement?.width &&
-    node.height === measurement?.height
-  );
-}
-
-function areMeasurementsEqual(left: NodeMeasurement | undefined, right: NodeMeasurement | undefined) {
-  return (
-    left?.measured.width === right?.measured.width &&
-    left?.measured.height === right?.measured.height &&
-    left?.width === right?.width &&
-    left?.height === right?.height
-  );
-}
-
-function SelectedIssueEdgeActionBar({
-  disabled = false,
-  edgeId,
-  issue,
-  onDeleteEdge,
-  onRepairTargetHandle,
-  onSelectIssue,
-  repairCandidates,
-}: {
-  disabled?: boolean;
-  edgeId: string;
-  issue: WorkflowIssueItem;
-  onDeleteEdge?: (edgeId: string) => void;
-  onRepairTargetHandle: (targetHandle: string) => void;
-  onSelectIssue?: (issue: WorkflowIssueItem) => void;
-  repairCandidates: EdgeRepairCandidate[];
-}) {
-  return (
-    <aside aria-label="连线问题" className="edge-issue-action-bar nodrag nopan" role="region">
-      <div>
-        <strong>连线 {edgeId} 有问题</strong>
-        <span>{issue.message}</span>
-      </div>
-      <div className="edge-issue-action-bar-actions">
-        {onSelectIssue ? (
-          <button type="button" onClick={() => onSelectIssue(issue)}>
-            查看问题
-          </button>
-        ) : null}
-        {repairCandidates.length > 0 ? (
-          repairCandidates.map((candidate) => (
-            <button
-              aria-label={`改接到输入端口 ${candidate.label}`}
-              disabled={disabled}
-              key={candidate.handle}
-              type="button"
-              onClick={() => {
-                if (!disabled) {
-                  onRepairTargetHandle(candidate.handle);
-                }
-              }}
-            >
-              改接到 {candidate.label}
-            </button>
-          ))
-        ) : (
-          <span className="edge-issue-action-bar-empty">没有可直接改接的输入端口</span>
-        )}
-        {onDeleteEdge ? (
-          <button
-            className="danger-button"
-            disabled={disabled}
-            type="button"
-            onClick={() => {
-              if (!disabled) {
-                onDeleteEdge(edgeId);
-              }
-            }}
-          >
-            删除连线 {edgeId}
-          </button>
-        ) : null}
-      </div>
-    </aside>
-  );
-}
-
-type FallbackEdgesProps = {
-  edgeIssues: Record<string, WorkflowIssueItem[]>;
-  edges: WorkflowEdge[];
-  nodes: EditorNode[];
-  selectedEdgeIds: Set<string>;
-};
-
-function FallbackEdges({ edgeIssues, edges, nodes, selectedEdgeIds }: FallbackEdgesProps) {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-
-  return (
-    <svg aria-hidden="true" className="canvas-fallback-edges">
-      {edges.map((edge) => {
-        const path = fallbackEdgePath(edge, nodeById);
-        return path ? (
-          <path
-            className={[
-              selectedEdgeIds.has(edge.id) ? "is-selected" : "",
-              edgeIssues[edge.id]?.length ? "has-issue" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            d={path}
-            key={edge.id}
-          />
-        ) : null;
-      })}
-    </svg>
-  );
-}
-
-function fallbackEdgePath(edge: WorkflowEdge, nodeById: Map<string, EditorNode>) {
-  const sourceNode = nodeById.get(edge.source);
-  const targetNode = nodeById.get(edge.target);
-  if (!sourceNode || !targetNode) {
-    return null;
-  }
-
-  const sourcePoint = fallbackPortPoint(sourceNode, edge.sourceHandle, "output");
-  const targetPoint = fallbackPortPoint(targetNode, edge.targetHandle, "input");
-  const controlOffset = Math.max(42, Math.abs(targetPoint.x - sourcePoint.x) * 0.45);
-
-  return [
-    `M ${sourcePoint.x} ${sourcePoint.y}`,
-    `C ${sourcePoint.x + controlOffset} ${sourcePoint.y}`,
-    `${targetPoint.x - controlOffset} ${targetPoint.y}`,
-    `${targetPoint.x} ${targetPoint.y}`,
-  ].join(" ");
-}
-
-function fallbackPortPoint(node: EditorNode, handleId: string, side: "input" | "output") {
-  const width = node.width ?? node.measured?.width ?? node.initialWidth ?? FLOW_NODE_INITIAL_WIDTH;
-  const height = node.height ?? node.measured?.height ?? node.initialHeight ?? FLOW_NODE_INITIAL_HEIGHT;
-  const ports = node.data.nodeType
-    ? side === "input"
-      ? Object.keys(resolveNodeInputPorts(node.data.workflowNode, node.data.nodeType))
-      : Object.keys(resolveNodeOutputPorts(node.data.workflowNode, node.data.nodeType))
-    : [];
-  const portIndex = Math.max(0, ports.indexOf(handleId));
-  const portY = ports.length > 0 ? ((portIndex + 1) / (ports.length + 1)) * height : height / 2;
-
-  return {
-    x: node.position.x + (side === "output" ? width : 0),
-    y: node.position.y + portY,
-  };
-}
-
-function CanvasAnnotationView({ data }: NodeProps<AnnotationNode>) {
-  const { annotation } = data;
-  const [content, setContent] = useState(annotation.content);
+  useEffect(() => {
+    const syncRunState = (event: Event) => {
+      const detail = (event as CustomEvent<{ run: RunRecord | null; events: RunEvent[] }>).detail;
+      if (!detail || (detail.run && detail.run.workflow_id !== workflow.id)) return;
+      setRunSnapshot(detail);
+    };
+    const resetForNewRun = (event: Event) => {
+      const run = (event as CustomEvent<RunRecord>).detail;
+      if (run?.workflow_id === workflow.id) setRunSnapshot({ run, events: [] });
+    };
+    window.addEventListener("nodeflow:run-state", syncRunState);
+    window.addEventListener("nodeflow:run-created", resetForNewRun);
+    return () => {
+      window.removeEventListener("nodeflow:run-state", syncRunState);
+      window.removeEventListener("nodeflow:run-created", resetForNewRun);
+    };
+  }, [workflow.id]);
 
   useEffect(() => {
-    setContent(annotation.content);
-  }, [annotation.content]);
+    const syncManifest = (event: Event) => {
+      const { nodeTypeId, manifest } = (event as CustomEvent<{ nodeTypeId: string; manifest: NodeFormManifest }>).detail;
+      if (!nodeTypeId || !manifest) return;
+      setManifests((current) => ({ ...current, [nodeTypeId]: manifest }));
+    };
+    window.addEventListener("nodeflow:manifest-saved", syncManifest);
+    return () => window.removeEventListener("nodeflow:manifest-saved", syncManifest);
+  }, []);
+
+  const documentNodes = useMemo<Node[]>(() => graph.nodes.map((workflowNode) => {
+    const nodeType = nodeTypeMap.get(workflowNode.type);
+    return {
+      id: workflowNode.id,
+      type: "workflowNode",
+      position: workflowNode.position,
+      selected: workflowNode.id === selectedNodeId,
+      data: {
+        workflowNode,
+        nodeType,
+        manifest: nodeType ? manifests[nodeType.id] : undefined,
+        label: workflowNode.label || nodeType?.displayName || nodeType?.name || workflowNode.type,
+        connectedOutputHandles: graph.edges.filter((edge) => edge.source === workflowNode.id).map((edge) => edge.sourceHandle),
+        runStatus: nodeRunStatus(workflowNode.id, nodeType, runSnapshot.run, runSnapshot.events),
+      },
+    };
+  }), [graph.nodes, graph.edges, nodeTypeMap, selectedNodeId, manifests, runSnapshot]);
+
+  useEffect(() => {
+    setCanvasNodes((previous) => documentNodes.map((node) => {
+      const current = previous.find((candidate) => candidate.id === node.id);
+      return current?.dragging ? { ...node, position: current.position, dragging: true } : node;
+    }));
+  }, [documentNodes]);
+
+  const edges = useMemo<Edge[]>(() => graph.edges.map((edge) => {
+    const itemCount = edgeItemCount(edge.source, edge.sourceHandle, runSnapshot.events);
+    return {
+      ...edge,
+      type: "bezier",
+      animated: false,
+      style: { stroke: "#526176", strokeWidth: 2 },
+      ...(itemCount === null ? {} : {
+        label: `${itemCount} ${itemCount === 1 ? "item" : "items"}`,
+        labelStyle: { fill: "#9eabc0", fontSize: 10, fontWeight: 600 },
+        labelBgStyle: { fill: "#171c27", fillOpacity: 0.96 },
+        labelBgPadding: [5, 3] as [number, number],
+        labelBgBorderRadius: 4,
+      }),
+    };
+  }), [graph.edges, runSnapshot.events]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setCanvasNodes((current) => applyNodeChanges(changes, current));
+    changes
+      .filter((change) => change.type === "remove")
+      .forEach((change) => deleteNode(change.id));
+  }, [deleteNode]);
+
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    changes
+      .filter((change) => change.type === "remove")
+      .forEach((change) => deleteEdge(change.id));
+  }, [deleteEdge]);
+
+  const onNodeDragStop = useCallback((_: MouseEvent | TouchEvent, node: Node) => {
+    updateNodePosition(node.id, node.position);
+  }, [updateNodePosition]);
+
+  const onConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return;
+    addEdge({
+      id: `${connection.source}:${connection.sourceHandle}->${connection.target}:${connection.targetHandle}`,
+      source: connection.source,
+      target: connection.target,
+      sourceHandle: connection.sourceHandle,
+      targetHandle: connection.targetHandle,
+    });
+    toast("已创建连接", "success");
+  }, [addEdge]);
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => selectNode(node.id), [selectNode]);
+  const onPaneClick = useCallback((event: React.MouseEvent) => {
+    selectNode(null);
+    if (event.detail !== 2 || !instance.current) return;
+    const point = instance.current.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    setQuickAdd({ ...point, query: "" });
+  }, [selectNode]);
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => deleteEdge(edge.id), [deleteEdge]);
+  const nodeRenderer = useMemo(() => ({ workflowNode: (props: NodeProps<Node<NodeData>>) => <WorkflowNode {...props} httpProfiles={httpProfiles} onOpenSubflow={(node) => enterSubflow(node.id, "body", node.label || "循环体")} /> }), [enterSubflow, httpProfiles]);
+  const quickAddResults = useMemo(() => {
+    const query = quickAdd?.query.trim().toLowerCase() ?? "";
+    return nodeTypes.filter((nodeType) => (canvasScope.length === 0 || nodeType.group !== "trigger") && (!query || [nodeType.id, nodeType.name, nodeType.displayName, nodeType.description, ...(nodeType.tags ?? [])].filter(Boolean).join(" ").toLowerCase().includes(query))).slice(0, 8);
+  }, [canvasScope.length, nodeTypes, quickAdd?.query]);
+
+  const addQuickNode = useCallback((nodeType: NodeType) => {
+    if (!quickAdd) return;
+    addNode(nodeType, { x: quickAdd.x, y: quickAdd.y });
+    setQuickAdd(null);
+  }, [addNode, quickAdd]);
 
   return (
-    <article className={`canvas-annotation is-${annotation.color}`}>
-      <textarea
-        aria-label="画布说明内容"
-        className="nodrag nowheel"
-        maxLength={5000}
-        placeholder="记录这个阶段的目的、约束或交接信息"
-        value={content}
-        onBlur={() => {
-          if (content !== annotation.content) {
-            data.onContentChange(annotation.id, { content });
-          }
-        }}
-        onChange={(event) => setContent(event.currentTarget.value)}
-      />
-      <div aria-label="说明颜色" className="canvas-annotation-colors" role="group">
-        <button
-          aria-label="缩小画布说明"
-          className="canvas-annotation-size-button"
-          disabled={annotation.width <= 160 || annotation.height <= 100}
-          title="缩小画布说明"
-          type="button"
-          onClick={() =>
-            data.onSizeChange(annotation.id, {
-              width: Math.max(160, annotation.width - 80),
-              height: Math.max(100, annotation.height - 45),
-            })
-          }
-        >
-          <Minus aria-hidden="true" size={14} strokeWidth={2.2} />
-        </button>
-        <button
-          aria-label="放大画布说明"
-          className="canvas-annotation-size-button"
-          disabled={annotation.width >= 1600 || annotation.height >= 1200}
-          title="放大画布说明"
-          type="button"
-          onClick={() =>
-            data.onSizeChange(annotation.id, {
-              width: Math.min(1600, annotation.width + 80),
-              height: Math.min(1200, annotation.height + 45),
-            })
-          }
-        >
-          <Plus aria-hidden="true" size={14} strokeWidth={2.2} />
-        </button>
-        {(["yellow", "blue", "green", "pink"] as const).map((color) => (
-          <button
-            aria-label={`设置为${annotationColorLabel(color)}`}
-            aria-pressed={annotation.color === color}
-            className={`canvas-annotation-color is-${color}`}
-            key={color}
-            title={annotationColorLabel(color)}
-            type="button"
-            onClick={() => data.onColorChange(annotation.id, color)}
-          />
-        ))}
+    <div className="relative h-full w-full">
+      <ReactFlow
+        key={scopeKey}
+        nodes={canvasNodes}
+        edges={edges}
+        nodeTypes={nodeRenderer}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeDragStop={onNodeDragStop}
+        onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        onEdgeClick={onEdgeClick}
+        onInit={(flow) => { instance.current = flow; }}
+        connectionLineType={ConnectionLineType.Bezier}
+        defaultEdgeOptions={{ type: "bezier", style: { stroke: "#526176", strokeWidth: 2 } }}
+        fitView
+        fitViewOptions={{ padding: 0.24, maxZoom: 1.1 }}
+        minZoom={0.2}
+        maxZoom={2}
+        deleteKeyCode={["Backspace", "Delete"]}
+        edgesFocusable
+        className="bg-canvas"
+      >
+        <Background gap={20} size={1} color="#273244" />
+        {showMap && <MiniMap nodeColor={(node) => categoryColor(((node.data as { nodeType?: NodeType }).nodeType?.category) ?? "")} maskColor="rgba(5, 9, 16, 0.72)" className="!rounded-md !border !border-border !bg-surface" />}
+        <Controls showInteractive={false} className="!rounded-md !border !border-border !bg-surface [&_button]:!border-border [&_button]:!bg-surface [&_button]:!text-text" />
+      </ReactFlow>
+
+      <div className="absolute left-4 top-4 flex items-center gap-2 rounded-md border border-border/80 bg-surface/95 px-2.5 py-2 shadow-[0_10px_28px_rgba(0,0,0,.28)]">
+        {canvasScope.length > 0 ? <>
+          <button type="button" onClick={exitSubflow} className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-raised hover:text-text" aria-label="返回上一级流程" title="返回上一级流程"><ArrowLeft size={14} /></button>
+          <GitBranch size={14} className="text-primary" />
+          <span className="max-w-52 truncate text-xs font-medium" title={canvasScope.at(-1)?.label}>{canvasScope.at(-1)?.label}</span>
+          <span className="text-[10px] text-muted">循环体</span>
+        </> : <>
+          <MousePointer2 size={14} className="text-primary" />
+          <span className="text-xs font-medium">主流程</span>
+          <span className="text-[10px] text-muted">拖拽 · 连线 · 双击添加</span>
+        </>}
+      </div>
+      {quickAdd && <div className="absolute left-1/2 top-5 z-20 w-[330px] -translate-x-1/2 overflow-hidden rounded-md border border-border bg-surface shadow-[0_18px_48px_rgba(0,0,0,.42)]" role="dialog" aria-label="快速添加节点">
+        <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2"><Search size={14} className="text-primary" /><input autoFocus value={quickAdd.query} onChange={(event) => setQuickAdd({ ...quickAdd, query: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") setQuickAdd(null); if (event.key === "Enter" && quickAddResults[0]) addQuickNode(quickAddResults[0]); }} placeholder="搜索节点，Enter 添加第一个结果" className="min-w-0 flex-1 bg-transparent text-xs text-text outline-none placeholder:text-muted" /><button onClick={() => setQuickAdd(null)} className="text-muted hover:text-text" aria-label="关闭快速添加"><X size={14} /></button></div>
+        <div className="max-h-72 overflow-y-auto p-1.5">{quickAddResults.length === 0 ? <p className="px-2 py-6 text-center text-xs text-muted">没有匹配的节点</p> : quickAddResults.map((nodeType) => <button key={nodeType.id} onClick={() => addQuickNode(nodeType)} className="flex w-full items-center gap-3 rounded px-2.5 py-2 text-left hover:bg-raised"><span className="h-2 w-2 rounded-full" style={{ background: categoryColor(nodeType.category) }} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{nodeType.displayName ?? nodeType.name}</span><span className="block truncate text-[10px] text-muted">{nodeType.description}</span></span><span className="text-[10px] text-muted">{nodeType.category}</span></button>)}</div>
+      </div>}
+      <div className="absolute bottom-4 right-4 flex items-center gap-1 rounded-md border border-border bg-surface p-1 shadow-xl">
+        <button onClick={() => instance.current?.fitView({ padding: 0.24, duration: 220 })} className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-raised hover:text-text" aria-label="适配画布" title="适配画布"><Crosshair size={14} /></button>
+        <button onClick={() => instance.current?.zoomIn({ duration: 160 })} className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-raised hover:text-text" aria-label="放大" title="放大"><ZoomIn size={14} /></button>
+        <button onClick={() => setShowMap((value) => !value)} className={`grid h-7 w-7 place-items-center rounded ${showMap ? "bg-primary/12 text-primary" : "text-muted hover:bg-raised hover:text-text"}`} aria-label="切换缩略图" title="切换缩略图"><MapIcon size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
+type NodeData = {
+  workflowNode: WorkflowNodeDocument;
+  nodeType?: NodeType;
+  manifest?: NodeFormManifest;
+  label: string;
+  connectedOutputHandles: string[];
+  runStatus: NodeRunStatus | null;
+};
+
+const WorkflowNode = memo(function WorkflowNode({ data, selected, httpProfiles, onOpenSubflow }: NodeProps<Node<NodeData>> & { httpProfiles: HttpProfile[]; onOpenSubflow: (node: WorkflowNodeDocument) => void }) {
+  const { workflowNode, nodeType, manifest, label, connectedOutputHandles, runStatus } = data;
+  const color = manifest?.cardStyle?.accent ?? categoryColor(nodeType?.category ?? "");
+  const compact = manifest?.cardStyle?.density === "compact";
+  const inputs = orderedPorts("inputs", nodeType?.inputs ?? {}, manifest);
+  const outputs = orderedPorts("outputs", nodeType?.outputs ?? {}, manifest);
+  // Node Studio treats an unspecified placement as "panel". Keep this rule here
+  // as well, otherwise the collapsed card looks right but its expanded state
+  // leaks fields that were intentionally kept out of the canvas.
+  const fields = nodeType?.form?.groups.flatMap((group) => group.fields).filter((field) => (manifest?.placements?.[field.key] ?? field.placement ?? "panel") === "inline") ?? [];
+  const visibleFields = fields.slice(0, 3);
+  const summary = manifest?.cardStyle?.summary === "hidden" ? null : nodeSummary(nodeType?.id, workflowNode, httpProfiles, manifest?.summaryTemplate);
+  const updateNodeConfig = useWorkflowStore((s) => s.updateNodeConfig);
+  const visibleInputs = inputs.filter(([id, port]) => shouldShowPort("inputs", id, port, manifest, selected, connectedOutputHandles));
+  const visibleOutputs = outputs.filter(([id, port]) => shouldShowPort("outputs", id, port, manifest, selected, connectedOutputHandles));
+  const hasBodySubflow = Boolean(workflowNode.subflows?.body) || ["control.each_item", "control.foreach", "control.while"].includes(nodeType?.id ?? "");
+  const bodyNodeCount = workflowNode.subflows?.body?.nodes.length ?? 0;
+
+  return (
+    <article className={`min-w-[250px] max-w-[310px] overflow-visible rounded-md border bg-surface shadow-[0_14px_34px_rgba(0,0,0,.34)] ${selected ? "border-primary ring-1 ring-primary/45" : "border-border hover:border-border-hover"} ${workflowNode.disabled ? "opacity-55" : ""}`}>
+      <header className={`flex items-center gap-2 rounded-t-[5px] px-3 ${compact ? "h-8" : "h-9"}`} style={{ background: `${color}22`, borderBottom: `1px solid ${color}4d` }}>
+        <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold" title={label}>{label}</h3>
+        {runStatus && <NodeRunStatusBadge status={runStatus} />}
+      </header>
+      <div className={compact ? "py-0.5" : "py-1.5"}>
+        {visibleInputs.map(([key, port]) => <PortRow key={`in-${key}`} id={key} port={port} direction="input" compact={compact} />)}
+        {summary && <NodeSummaryView summary={summary} compact={compact} />}
+        {hasBodySubflow && <button type="button" className="nodrag nopan nowheel mx-3 my-1.5 flex w-[calc(100%_-_1.5rem)] items-center justify-between rounded border border-border/70 bg-raised/55 px-2 py-1.5 text-[10px] text-text-secondary hover:border-primary/50 hover:text-text focus:outline-none focus:ring-1 focus:ring-primary/50" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenSubflow(workflowNode); }}><span className="flex items-center gap-1.5"><GitBranch size={12} className="text-primary" />编辑循环体</span><span className="text-muted">{bodyNodeCount} 个节点</span></button>}
+        {(visibleInputs.length > 0 || summary) && visibleFields.length > 0 && <div className="mx-3 my-1 border-t border-border/60" />}
+        {visibleFields.map((field) => {
+          const current = workflowNode.config[field.key];
+          return <WidgetRow key={field.key} label={field.label ?? field.key} value={current} control={field.control} options={field.options} httpProfiles={httpProfiles} compact={compact} onChange={(value) => updateNodeConfig(workflowNode.id, field.key, value)} />;
+        })}
+        {fields.length > 3 && <p className="px-3 py-1.5 text-center text-[10px] text-muted">其余 {fields.length - 3} 项在右侧配置</p>}
+        {visibleOutputs.length > 0 && visibleFields.length > 0 && <div className="mx-3 my-1 border-t border-border/60" />}
+        {visibleOutputs.map(([key, port]) => <PortRow key={`out-${key}`} id={key} port={port} direction="output" compact={compact} />)}
+        {!visibleInputs.length && !visibleOutputs.length && !summary && <p className="px-3 py-3 text-[11px] text-muted">此节点未声明端口</p>}
       </div>
     </article>
   );
-}
-
-function annotationColorLabel(color: CanvasAnnotation["color"]) {
-  switch (color) {
-    case "blue":
-      return "蓝色";
-    case "green":
-      return "绿色";
-    case "pink":
-      return "粉色";
-    default:
-      return "黄色";
-  }
-}
-
-// memo 包装：画布重渲染时，data/selected 未变的节点跳过重渲染；
-// 上层 nodes useMemo 已对未变化节点复用同一对象引用，浅比较即可命中
-export function NodeVisualCard({
-  canvasNode,
-  className = "",
-  interactivePorts = true,
-  nodeType,
-  onConfigChange,
-  topContent,
-  workflowNode,
-}: {
-  canvasNode: ReturnType<typeof buildCanvasNodeData>;
-  className?: string;
-  interactivePorts?: boolean;
-  nodeType?: NodeType;
-  onConfigChange?: (nodeId: string, key: string, value: unknown) => void;
-  topContent?: ReactNode;
-  workflowNode: WorkflowNode;
-}) {
-  const inlineFields = useMemo(
-    () => getInlineFields(nodeType),
-    [nodeType],
-  );
-
-  return (
-    <div
-      className={`flow-node${canvasNode.isDisabled ? " is-disabled" : ""}${className ? ` ${className}` : ""}`}
-      data-category={nodeType?.category || "其他"}
-    >
-      <div className="flow-node-header">
-        <NodeTypeIcon className="flow-node-icon" icon={nodeType?.icon} size={15} />
-        <span className="flow-node-title">
-          <strong>
-            {canvasNode.displayName}
-            {canvasNode.hasPinnedData ? <em className="flow-node-pinned-badge">固定输出</em> : null}
-            {canvasNode.isDisabled ? <em className="flow-node-disabled-badge">已禁用</em> : null}
-          </strong>
-          <small title={canvasNode.subtitleTitle}>{canvasNode.subtitle}</small>
-        </span>
-      </div>
-      {topContent}
-      {canvasNode.description ? <p>{canvasNode.description}</p> : null}
-      {canvasNode.notes ? <p className="flow-node-note" title={canvasNode.notes}>{canvasNode.notes}</p> : null}
-      {/* 内联控件：仅 placement="inline" 的字段渲染在卡片上 */}
-      {inlineFields.length > 0 ? (
-        <div className="flow-node-inline-fields nodrag" onClick={(e) => e.stopPropagation()}>
-          {inlineFields.map((field) => {
-            const currentValue = workflowNode.config[field.key];
-            return (
-              <div className="inline-field-row" key={field.key}>
-                {renderInlineField(
-                  field,
-                  currentValue,
-                  (value) => onConfigChange?.(workflowNode.id, field.key, value),
-                  canvasNode.isDisabled,
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-      <PortSection inputPorts={canvasNode.inputPorts} interactive={interactivePorts} outputPorts={canvasNode.outputPorts} />
-    </div>
-  );
-}
-
-// memo 包装：画布重渲染时，data/selected 未变的节点跳过重渲染；
-// 上层 nodes useMemo 已对未变化节点复用同一对象引用，浅比较即可命中
-const WorkflowNodeView = memo(function WorkflowNodeView({ data, selected }: NodeProps<EditorNode>) {
-  const { workflowNode, nodeType, issues, runtimeState, runDetail } = data;
-  const statusClass = runtimeState ? ` run-${runtimeState.status}` : "";
-  const canvasNode = buildCanvasNodeData({ issues, node: workflowNode, nodeType, runDetail, runtimeState });
-
-  return (
-    <NodeVisualCard
-      canvasNode={canvasNode}
-      className={`${selected ? "is-selected" : ""}${statusClass}`}
-      nodeType={nodeType}
-      onConfigChange={data.onConfigChange}
-      workflowNode={workflowNode}
-      topContent={<>
-        {canvasNode.runtimeStatusLabel ? <div className="run-status-badge">{canvasNode.runtimeStatusLabel}</div> : null}
-        <NodeIssueBadge canvasNode={canvasNode} onSelectIssue={data.onSelectIssue} />
-        {canvasNode.runSummary ? (
-          <button
-            aria-label={`查看运行数据：${canvasNode.displayName}，${canvasNode.runSummary.ariaLabel}`}
-            className="run-summary-badges nodrag"
-            title={canvasNode.runSummary.ariaLabel}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              data.onOpenNodeRuntime?.(buildNodeRuntimeTarget(workflowNode.id, "canvas"));
-            }}
-          >
-            {canvasNode.runSummary.badges.map((badge) => <span className={badge.tone ? `is-${badge.tone}` : undefined} key={badge.id}>{badge.label}</span>)}
-          </button>
-        ) : null}
-      </>}
-    />
-  );
 });
 
-function NodeIssueBadge({
-  canvasNode,
-  onSelectIssue,
-}: {
-  canvasNode: ReturnType<typeof buildCanvasNodeData>;
-  onSelectIssue?: (issue: WorkflowIssueItem) => void;
-}) {
-  if (!canvasNode.issues) {
-    return null;
-  }
-
-  const issues = canvasNode.issues;
-  const className = `node-issue-badge ${issues.errorCount > 0 ? "has-error" : "has-warning"}`;
-
-  if (!onSelectIssue) {
-    return (
-      <div className={className} title={issues.title}>
-        {issues.label}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      aria-label={`查看节点问题：${canvasNode.displayName}，${issues.label}`}
-      className={`${className} nodrag`}
-      title={issues.title}
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelectIssue(issues.firstIssue);
-      }}
-    >
-      {issues.label}
-    </button>
-  );
+function PortRow({ id, port, direction, compact }: { id: string; port: NodePort; direction: "input" | "output"; compact: boolean }) {
+  const color = portColor(port, direction);
+  const label = port.displayName ?? id;
+  if (port.collapsed) return null;
+  return <div className={`relative flex items-center px-3 text-[11px] ${compact ? "min-h-6" : "min-h-7"} ${direction === "output" ? "justify-end text-right" : "justify-start"}`}>
+    <Handle type={direction === "input" ? "target" : "source"} position={direction === "input" ? Position.Left : Position.Right} id={id} style={{ background: color }} className="!h-3 !w-3 !border-2 !border-surface transition-transform hover:!scale-125" title={port.description ?? label} />
+    <span className="truncate text-text-secondary">{label}{port.required && <span className="ml-1 text-danger">*</span>}</span>
+  </div>;
 }
 
-type PortSectionProps = {
-  inputPorts: CanvasNodePortEntry[];
-  interactive?: boolean;
-  outputPorts: CanvasNodePortEntry[];
+function WidgetRow({ label, value, control, options, httpProfiles, compact, onChange }: { label: string; value: unknown; control: string; options?: { label: string; value: string }[]; httpProfiles: HttpProfile[]; compact: boolean; onChange: (value: unknown) => void }) {
+  const base = "min-w-0 flex-1 rounded border border-border bg-raised px-2 py-1 text-[11px] text-text outline-none focus:border-primary";
+  const rowHeight = compact ? "min-h-7" : "min-h-8";
+  if (control === "switch") return <label className={`nodrag flex items-center gap-2 px-3 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate">{label}</span><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} className="h-3.5 w-3.5 accent-primary" /></label>;
+  if (control === "select" && options) return <label className={`nodrag flex items-center gap-2 px-3 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate">{label}</span><select value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} className={base}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+  if (control === "http_profile") return <label className={`nodrag flex items-center gap-2 px-3 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate">{label}</span><select aria-label={label} value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)} className={base} title={httpProfiles.find((profile) => profile.id === value)?.base_url ?? ""}><option value="">未设置</option>{httpProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>;
+  return <label className={`nodrag flex items-center gap-2 px-3 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate">{label}</span><input type={control === "number" ? "number" : "text"} value={typeof value === "string" || typeof value === "number" ? String(value) : ""} onChange={(event) => onChange(control === "number" ? Number(event.target.value) : event.target.value)} className={base} /></label>;
+}
+
+function orderedPorts(direction: "inputs" | "outputs", ports: Record<string, NodePort>, manifest?: NodeFormManifest) {
+  return Object.entries(ports).map(([id, port]) => [id, { ...port, ...manifest?.portPresentation?.[direction]?.[id] }] as const).sort(([leftId, left], [rightId, right]) => (left.order ?? 0) - (right.order ?? 0) || leftId.localeCompare(rightId));
+}
+
+type NodeSummary = { badge: string; primary: string; secondary?: string; warning?: boolean };
+type NodeRunStatus = "waiting" | "running" | "succeeded" | "failed" | "skipped";
+
+const NODE_RUN_STATUS: Record<NodeRunStatus, { label: string; className: string; icon: typeof Check }> = {
+  waiting: { label: "等待", className: "bg-raised text-muted", icon: Clock3 },
+  running: { label: "运行中", className: "bg-primary/15 text-primary", icon: LoaderCircle },
+  succeeded: { label: "成功", className: "bg-success/12 text-success", icon: Check },
+  failed: { label: "失败", className: "bg-danger/12 text-danger", icon: X },
+  skipped: { label: "跳过", className: "bg-raised text-muted", icon: X },
 };
 
-function PortSection({ inputPorts, interactive = true, outputPorts }: PortSectionProps) {
-  const rowCount = Math.max(inputPorts.length, outputPorts.length);
+function NodeRunStatusBadge({ status }: { status: NodeRunStatus }) {
+  const definition = NODE_RUN_STATUS[status];
+  const Icon = definition.icon;
+  return <span className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium ${definition.className}`} title={`最近一次运行：${definition.label}`}>
+    <Icon size={10} className={status === "running" ? "animate-spin" : ""} />
+    {definition.label}
+  </span>;
+}
 
-  if (rowCount === 0) {
-    return null;
-  }
-
-  return (
-    <div aria-label="节点端口" className="flow-port-section" role="group">
-      {Array.from({ length: rowCount }, (_, index) => (
-        <div className="flow-port-row" key={index}>
-          <PortCell entry={inputPorts[index]} interactive={interactive} side="input" />
-          <PortCell entry={outputPorts[index]} interactive={interactive} side="output" />
-        </div>
-      ))}
+function NodeSummaryView({ summary, compact }: { summary: NodeSummary; compact: boolean }) {
+  return <div className={`nodrag mx-3 border-y border-border/60 ${compact ? "py-1" : "py-1.5"}`}>
+    <div className="flex min-w-0 items-center gap-1.5 text-[10px]">
+      <span className={`shrink-0 rounded px-1.5 py-0.5 font-semibold ${summary.warning ? "bg-warning/12 text-warning" : "bg-primary/12 text-primary"}`}>{summary.badge}</span>
+      <span className={`min-w-0 truncate ${summary.warning ? "text-warning" : "text-text-secondary"}`} title={summary.primary}>{summary.primary}</span>
     </div>
-  );
+    {summary.secondary && <p className="mt-1 truncate text-[10px] text-muted" title={summary.secondary}>{summary.secondary}</p>}
+  </div>;
 }
 
-function PortCell({ entry, interactive, side }: { entry?: CanvasNodePortEntry; interactive: boolean; side: "input" | "output" }) {
-  if (!entry) {
-    return <span aria-hidden="true" className={`flow-port-cell is-${side} is-empty`} />;
+function shouldShowPort(direction: "inputs" | "outputs", id: string, port: NodePort, manifest: NodeFormManifest | undefined, selected: boolean, connectedOutputs: string[]) {
+  const configured = manifest?.portPresentation?.[direction]?.[id]?.collapsed;
+  if (configured === true || (configured === undefined && port.collapsed)) return false;
+  if (configured === false) return true;
+  if (direction === "outputs" && port.category === "error") return selected || connectedOutputs.includes(id);
+  return true;
+}
+
+function nodeSummary(nodeTypeId: string | undefined, node: WorkflowNodeDocument, httpProfiles: HttpProfile[], template?: NodeSummaryTemplate | null): NodeSummary | null {
+  const config = node.config;
+  if (template?.primary?.trim()) {
+    return {
+      badge: renderSummaryTemplate(template.badge || "摘要", config),
+      primary: renderSummaryTemplate(template.primary, config),
+      secondary: template.secondary?.trim() ? renderSummaryTemplate(template.secondary, config) : undefined,
+    };
   }
-
-  const [portName, port] = entry;
-  const position = side === "input" ? Position.Left : Position.Right;
-  const type = side === "input" ? "target" : "source";
-  const label = portDisplayName(portName, port);
-  const classNames = [
-    "flow-port-label",
-    isMultiConnectionInput(side, port) ? "is-multi-connection" : "",
-    isErrorOutput(side, port) ? "is-error-port" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <span className={`flow-port-cell is-${side}`}>
-      {interactive ? <Handle
-        className={[
-          "flow-handle",
-          isMultiConnectionInput(side, port) ? "is-multi-connection" : "",
-          isErrorOutput(side, port) ? "is-error-port" : "",
-        ].filter(Boolean).join(" ")}
-        id={portName}
-        position={position}
-        title={portTooltip({ direction: side, name: portName, port })}
-        type={type}
-      /> : <span aria-hidden="true" className="flow-handle" />}
-      <span className={classNames} title={label}>
-        {label}
-      </span>
-    </span>
-  );
-}
-
-function isMultiConnectionInput(side: "input" | "output", port: NodePort): boolean {
-  return side === "input" && (port.maxConnections === null || (typeof port.maxConnections === "number" && port.maxConnections > 1));
-}
-
-function isErrorOutput(side: "input" | "output", port: NodePort): boolean {
-  return side === "output" && port.category === "error";
-}
-
-const MINIMAP_PREFERENCE_STORAGE_KEY = "node-flow.canvas-minimap-visible";
-
-function readMinimapPreference(): boolean {
-  try {
-    const stored = window.localStorage.getItem(MINIMAP_PREFERENCE_STORAGE_KEY);
-    if (stored === null) return true;
-    return stored !== "false";
-  } catch {
-    return true;
+  if (nodeTypeId === "http.request") {
+    const method = typeof config.method === "string" ? config.method.toUpperCase() : "GET";
+    const profile = httpProfiles.find((candidate) => candidate.id === config.http_profile_id);
+    const url = typeof config.url === "string" && config.url.trim() ? config.url.trim() : "未设置 URL";
+    return { badge: method, primary: profile?.name ?? "未选择 HTTP 配置档", secondary: url, warning: !profile || url === "未设置 URL" };
   }
+  if (nodeTypeId === "control.each_item") {
+    const maximum = typeof config.max_items === "number" ? config.max_items : 100;
+    const subflowCount = Object.values(node.subflows ?? {}).reduce((count, subflow) => count + subflow.nodes.length, 0);
+    return {
+      badge: "循环",
+      primary: `最多 ${maximum} 项 · ${config.continue_on_error ? "失败后继续" : "遇错停止"}`,
+      secondary: subflowCount > 0 ? `循环体包含 ${subflowCount} 个节点` : "循环体尚未配置",
+      warning: subflowCount === 0,
+    };
+  }
+  if (nodeTypeId === "data.group_items") {
+    const paths = stringList(config.paths);
+    return { badge: "分组", primary: paths.length ? `按 ${paths.join("、")} 分组` : "未设置分组字段", warning: paths.length === 0 };
+  }
+  if (nodeTypeId === "data.json_template") {
+    const template = parsedValue(config.template);
+    if (Array.isArray(template)) return { badge: "JSON", primary: `数组模板 · ${template.length} 项` };
+    if (template && typeof template === "object") return { badge: "JSON", primary: `对象模板 · ${Object.keys(template).length} 个字段`, secondary: Object.keys(template).slice(0, 4).join("、") };
+    return { badge: "JSON", primary: "未配置模板", warning: true };
+  }
+  return null;
 }
 
-function writeMinimapPreference(visible: boolean) {
-  try {
-    window.localStorage.setItem(MINIMAP_PREFERENCE_STORAGE_KEY, String(visible));
-  } catch {
-    // localStorage 不可用时静默降级，仅影响偏好持久化。
-  }
+function renderSummaryTemplate(template: string, config: Record<string, unknown>) {
+  return template.replace(/\{\{\s*(?:config\.)?([\w.-]+)\s*\}\}/g, (_, path: string) => {
+    const value = path.split(".").reduce<unknown>((current, key) => recordValue(current)?.[key], config);
+    if (value === undefined || value === null || value === "") return "未设置";
+    return typeof value === "object" ? JSON.stringify(value) : String(value);
+  });
 }
 
-// 节点类型注册表：依赖 memo 包装的 WorkflowNodeView，故声明在组件定义之后
-const flowNodeTypes = {
-  workflowNode: WorkflowNodeView,
-  canvasAnnotation: CanvasAnnotationView,
-};
+function parsedValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return value; }
+}
 
-// 节点端口结构签名：端口集合变化时才需要 updateNodeInternals 重新测量 handle
-function nodeInternalsSignature(node: CanvasEditorNode): string {
-  if (node.type !== "workflowNode") {
-    return "annotation";
+function stringList(value: unknown): string[] {
+  const parsed = parsedValue(value);
+  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function nodeRunStatus(nodeId: string, nodeType: NodeType | undefined, run: RunRecord | null, events: RunEvent[]): NodeRunStatus | null {
+  if (!run) return null;
+  const nodeEvents = events.filter((event) => event.node_id === nodeId);
+  const latestEvent = nodeEvents.at(-1);
+  const latest = latestEvent?.type ?? "";
+  const outputs = latestEvent?.payload.outputs;
+  if (outputs && typeof outputs === "object" && !Array.isArray(outputs)) {
+    const emittedError = Object.keys(outputs).some((outputId) => nodeType?.outputs[outputId]?.category === "error");
+    if (emittedError) return "failed";
   }
+  if (latest.includes("failed") || latest.includes("error")) return "failed";
+  if (latest.includes("succeeded") || latest.includes("pinned_data_used")) return "succeeded";
+  if (latest.includes("skipped") || latest.includes("disabled")) return "skipped";
+  if (latest.includes("started")) return "running";
+  if (["queued", "running"].includes(run.status)) return "waiting";
+  return null;
+}
 
-  const { workflowNode, nodeType } = node.data;
-  if (!nodeType) {
-    return `unknown:${workflowNode.type}`;
+function edgeItemCount(nodeId: string, outputId: string, events: RunEvent[]): number | null {
+  let total = 0;
+  let matched = false;
+  for (const event of events) {
+    if (event.node_id !== nodeId || !["node_succeeded", "node_error_handled", "node_pinned_data_used"].includes(event.type)) continue;
+    const outputItems = recordValue(event.payload.output_items)?.[outputId];
+    if (Array.isArray(outputItems)) {
+      total += outputItems.length;
+      matched = true;
+      continue;
+    }
+    const output = recordValue(event.payload.outputs)?.[outputId];
+    if (output !== undefined) {
+      total += Array.isArray(output) ? output.length : 1;
+      matched = true;
+    }
   }
+  return matched ? total : null;
+}
 
-  const inputPortIds = Object.keys(resolveNodeInputPorts(workflowNode, nodeType));
-  const outputPortIds = Object.keys(resolveNodeOutputPorts(workflowNode, nodeType));
-  return `${inputPortIds.join(",")}|${outputPortIds.join(",")}`;
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }

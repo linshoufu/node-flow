@@ -934,6 +934,7 @@ def _validate_node_form(form: dict[str, Any], config_schema: dict[str, Any]) -> 
         "json",
         "dynamic_output_list",
         "dynamic_input_list",
+        "http_profile",
         "url",
         "credential",
     }
@@ -950,19 +951,19 @@ def _validate_node_form(form: dict[str, Any], config_schema: dict[str, Any]) -> 
         fields = group.get("fields")
         if not isinstance(fields, list) or not fields:
             raise ValueError(f"分组 {group_id} 必须包含字段")
-        for field in fields:
-            if not isinstance(field, dict):
+        for form_field in fields:
+            if not isinstance(form_field, dict):
                 raise ValueError(f"分组 {group_id} 包含无效字段")
-            key = field.get("key")
+            key = form_field.get("key")
             if not isinstance(key, str) or key not in properties:
                 raise ValueError(f"字段 {key!r} 未在配置模型中声明")
             if key in field_keys:
                 raise ValueError(f"字段 {key} 不能重复出现")
             field_keys.add(key)
-            control = field.get("control")
+            control = form_field.get("control")
             if control not in supported_controls:
                 raise ValueError(f"字段 {key} 使用了不支持的控件 {control!r}")
-            credential_type_ids = field.get("credentialTypeIds", [])
+            credential_type_ids = form_field.get("credentialTypeIds", [])
             if credential_type_ids and (
                 control != "credential"
                 or not isinstance(credential_type_ids, list)
@@ -970,10 +971,10 @@ def _validate_node_form(form: dict[str, Any], config_schema: dict[str, Any]) -> 
                 or len(set(credential_type_ids)) != len(credential_type_ids)
             ):
                 raise ValueError(f"字段 {key} 的凭据类型声明无效")
-            expression = field.get("expression")
+            expression = form_field.get("expression")
             if expression is not None and expression not in {"allowed", "disabled", "required"}:
                 raise ValueError(f"字段 {key} 使用了不支持的表达式模式 {expression!r}")
-            options = field.get("options", [])
+            options = form_field.get("options", [])
             if control == "select" and (not isinstance(options, list) or not options):
                 raise ValueError(f"选择字段 {key} 必须声明选项")
             if options and not all(
@@ -983,7 +984,7 @@ def _validate_node_form(form: dict[str, Any], config_schema: dict[str, Any]) -> 
                 for option in options
             ):
                 raise ValueError(f"字段 {key} 的选项无效")
-            _validate_condition(field.get("visibleWhen"), properties)
+            _validate_condition(form_field.get("visibleWhen"), properties)
 
 
 def _validate_condition(condition: Any, properties: dict[str, Any]) -> None:

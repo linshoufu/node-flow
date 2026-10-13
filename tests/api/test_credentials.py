@@ -34,9 +34,11 @@ def test_credential_type_registry_exposes_supported_http_types_and_required_fiel
         "http.bearer",
         "http.basic",
         "http.header",
+        "http.login",
         "webhook.hmac_sha256",
     ]
     assert credential_type_by_id("http.basic").fields == ("username", "password")
+    assert credential_type_by_id("http.login").fields == ("tenant", "username", "password")
     assert credential_type_by_id("missing") is None
 
 

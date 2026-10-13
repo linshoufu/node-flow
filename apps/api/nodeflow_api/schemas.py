@@ -34,6 +34,8 @@ class NodeFormManifestRequest(BaseModel):
     defaults: dict[str, Any] | None = None
     placements: dict[str, str] | None = None
     portPresentation: dict[str, dict[str, dict[str, Any]]] | None = None
+    cardStyle: dict[str, Any] | None = None
+    summaryTemplate: dict[str, str] | None = None
 
     @field_validator("placements")
     @classmethod
@@ -74,6 +76,45 @@ class NodeFormManifestRequest(BaseModel):
                     raise ValueError(f"端口 {handle} 的 collapsed 必须是布尔值")
                 if "order" in presentation and (not isinstance(presentation["order"], int) or isinstance(presentation["order"], bool)):
                     raise ValueError(f"端口 {handle} 的 order 必须是整数")
+        return value
+
+    @field_validator("cardStyle")
+    @classmethod
+    def validate_card_style(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        unexpected_fields = set(value) - {"accent", "density", "summary"}
+        if unexpected_fields:
+            raise ValueError("节点卡片样式包含不支持的字段")
+        accent = value.get("accent")
+        if accent is not None and (
+            not isinstance(accent, str)
+            or not accent.startswith("#")
+            or len(accent) not in {4, 7}
+        ):
+            raise ValueError("节点卡片主题色必须是 #RGB 或 #RRGGBB")
+        density = value.get("density")
+        if density is not None and density not in {"compact", "comfortable"}:
+            raise ValueError("节点卡片密度必须是 compact 或 comfortable")
+        summary = value.get("summary")
+        if summary is not None and summary not in {"auto", "hidden"}:
+            raise ValueError("节点摘要显示方式必须是 auto 或 hidden")
+        return value
+
+    @field_validator("summaryTemplate")
+    @classmethod
+    def validate_summary_template(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        unexpected_fields = set(value) - {"badge", "primary", "secondary"}
+        if unexpected_fields:
+            raise ValueError("节点摘要模板仅支持 badge、primary 和 secondary")
+        limits = {"badge": 32, "primary": 160, "secondary": 240}
+        for key, text in value.items():
+            if not isinstance(text, str):
+                raise ValueError(f"节点摘要模板 {key} 必须是字符串")
+            if len(text) > limits[key]:
+                raise ValueError(f"节点摘要模板 {key} 不能超过 {limits[key]} 个字符")
         return value
 
 
@@ -374,6 +415,64 @@ class ProjectEnvironmentUpdateRequest(BaseModel):
         if invalid_names:
             raise ValueError("环境变量名只能包含字母、数字和下划线，且不能以数字开头。")
         return value
+
+
+class HttpProfile(BaseModel):
+    id: str
+    name: str
+    base_url: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)
+    credential_id: str | None = None
+    timeout_seconds: int | None = Field(default=None, ge=1, le=300)
+    authentication: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+
+
+class HttpProfileCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    base_url: str = Field(default="", max_length=2048)
+    headers: dict[str, str] = Field(default_factory=dict)
+    credential_id: str | None = None
+    timeout_seconds: int | None = Field(default=None, ge=1, le=300)
+    authentication: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("配置档名称不能为空")
+        return normalized
+
+    @field_validator("base_url")
+    @classmethod
+    def normalize_base_url(cls, value: str) -> str:
+        return value.strip().rstrip("/")
+
+
+class HttpProfileUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    base_url: str | None = Field(default=None, max_length=2048)
+    headers: dict[str, str] | None = None
+    credential_id: str | None = None
+    timeout_seconds: int | None = Field(default=None, ge=1, le=300)
+    authentication: dict[str, Any] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("配置档名称不能为空")
+        return normalized
+
+    @field_validator("base_url")
+    @classmethod
+    def normalize_base_url(cls, value: str | None) -> str | None:
+        return value.strip().rstrip("/") if value is not None else None
 
 
 class WorkflowReference(BaseModel):

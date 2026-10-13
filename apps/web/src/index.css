@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@layer base {
+  @import "@xyflow/react/dist/style.css";
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-canvas: hsl(225 24% 6%);
+  --color-surface: hsl(225 20% 9%);
+  --color-raised: hsl(224 17% 13%);
+  --color-border: hsl(220 14% 19%);
+  --color-border-hover: hsl(220 14% 30%);
+  --color-text: hsl(210 25% 92%);
+  --color-text-secondary: hsl(215 14% 68%);
+  --color-muted: hsl(217 11% 49%);
+  --color-primary: hsl(212 93% 60%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-success: hsl(160 60% 42%);
+  --color-warning: hsl(38 80% 50%);
+  --color-danger: hsl(347 65% 52%);
+
+  --font-sans: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  select {
+    color-scheme: dark;
+  }
+  select option {
+    background-color: var(--color-raised);
+    color: var(--color-text);
+  }
+  .react-flow__node { font-family: var(--font-sans); }
+  .react-flow__attribution { display: none !important; }
+  .react-flow__edge-path { stroke: hsl(215 18% 39%); stroke-width: 1.5; }
+  .react-flow__edge.selected .react-flow__edge-path { stroke: var(--color-primary); }
+  .react-flow__handle { width: 10px; height: 10px; border: 2px solid var(--color-surface); }
+}
+
+::selection { background: hsl(212 93% 60% / 0.28); color: white; }
+.react-flow__background { opacity: 0.72; }
+.react-flow__controls { box-shadow: 0 10px 30px hsl(225 35% 3% / 0.35); }
+.react-flow__controls-button { width: 30px !important; height: 30px !important; }
+.react-flow__minimap { box-shadow: 0 14px 36px hsl(225 35% 3% / 0.42); }
+.react-flow__node { cursor: grab; }
+.react-flow__node.dragging { cursor: grabbing; z-index: 20 !important; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+.event-inspector-scroll,
+.event-json-scroll {
+  scrollbar-gutter: stable;
+}
+.event-inspector-scroll::-webkit-scrollbar,
+.event-json-scroll::-webkit-scrollbar { width: 8px; }
+.event-inspector-scroll::-webkit-scrollbar-track,
+.event-json-scroll::-webkit-scrollbar-track { background: hsl(225 20% 8%); }
+.event-inspector-scroll::-webkit-scrollbar-thumb,
+.event-json-scroll::-webkit-scrollbar-thumb { background: hsl(215 18% 31%); border: 2px solid hsl(225 20% 8%); border-radius: 999px; }
+.event-inspector-scroll::-webkit-scrollbar-thumb:hover,
+.event-json-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }

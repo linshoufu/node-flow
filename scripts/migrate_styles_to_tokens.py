@@ -203,7 +203,7 @@ EXACT_RGBA = {
 
 def hue_family(hex_color: str) -> str:
     r, g, b = rgb_of(hex_color)
-    h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    h, _lightness, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
     deg = h * 360
     # 蓝灰调（深藏青文本/浅灰边框）饱和度偏低时归为中性色；
     # 真正的强调色（primary 蓝、success 绿等）饱和度更高，不受影响。
@@ -254,7 +254,7 @@ def shadow_token_for_layer(layer: str) -> str:
     layer = layer.strip()
     if "inset" in layer:
         if HEX_RE.search(layer) and layer.startswith("inset 3px 0 0"):
-            return f"inset 3px 0 0 var(--color-primary)"
+            return "inset 3px 0 0 var(--color-primary)"
         return "var(--shadow-inset-highlight)"
     match = re.search(r"0 0 0 (\d)px", layer)
     if match:  # 焦点环

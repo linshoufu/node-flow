@@ -19,6 +19,7 @@ from .expressions import resolve_expression
 from .credentials import CredentialVault
 from .credential_references import credential_reference_fields
 from .execution_items import normalize_execution_items, normalize_port_execution_items
+from .http_profiles import resolve_http_request_config
 from .execution_policy import node_execution_error, normalize_node_execution_policy
 from .node_registry import NodeRegistry, NodeRegistrySnapshot
 from .node_ports import resolved_input_ports, resolved_output_ports
@@ -185,6 +186,7 @@ class WorkflowExecutor:
             "workflow_input": execution_context.initial_input,
             "has_initial_input": execution_context.has_initial_input,
             "workflow_return": {},
+            "run_resources": {},
         }
         try:
             self._assert_runtime_node_compatibility(workflow.nodes)
@@ -961,6 +963,7 @@ class WorkflowExecutor:
             data=node_context,
             workflow_id=context["workflow_id"],
             static_data=_active_workflow_static_data.get(),
+            run_resources=context["run_resources"],
         )
         try:
             node_type = self.registry.get(node.type)
@@ -974,6 +977,12 @@ class WorkflowExecutor:
                 resolved_config,
                 context["credential_overrides"],
             )
+            if node.type == "http.request":
+                profile_id = resolved_config.get("http_profile_id")
+                profile = self.storage.get_http_profile(profile_id) if isinstance(profile_id, str) and profile_id else None
+                if isinstance(profile_id, str) and profile_id and profile is None:
+                    raise WorkflowExecutionError("引用的 HTTP 配置档不存在或已删除。")
+                resolved_config = resolve_http_request_config(resolved_config, profile)
             credentials = self._node_credentials(node_type.form, resolved_config)
             ctx = NodeContext(
                 run_id=run_id,
@@ -985,6 +994,7 @@ class WorkflowExecutor:
                 data=node_context,
                 workflow_id=context["workflow_id"],
                 static_data=_active_workflow_static_data.get(),
+                run_resources=context["run_resources"],
             )
             instance = node_type.node_class(config=resolved_config)
             outputs = await instance.execute(ctx, inputs)
@@ -1251,7 +1261,7 @@ class WorkflowExecutor:
         return {output_name: report}
 
     def _node_context(self, context: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
-        return {**context, "inputs": inputs}
+        return {key: value for key, value in context.items() if key != "run_resources"} | {"inputs": inputs}
 
     def _validate_node_outputs(
         self,

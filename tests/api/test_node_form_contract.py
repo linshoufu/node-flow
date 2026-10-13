@@ -100,11 +100,13 @@ def test_http_request_advertises_grouped_form_contract():
 
     form = registry.get("http.request").to_api_dict()["form"]
 
-    assert [group["label"] for group in form["groups"]] == ["请求", "内容", "认证"]
-    body = next(field for field in form["groups"][1]["fields"] if field["key"] == "body")
-    credential = next(field for field in form["groups"][2]["fields"] if field["key"] == "credential_id")
+    assert [group["label"] for group in form["groups"]] == ["请求配置档", "请求", "内容", "认证"]
+    profile = form["groups"][0]["fields"][0]
+    body = next(field for field in form["groups"][2]["fields"] if field["key"] == "body")
+    credential = next(field for field in form["groups"][3]["fields"] if field["key"] == "credential_id")
+    assert profile["control"] == "http_profile"
     assert body["visibleWhen"] == {"field": "method", "oneOf": ["POST", "PUT", "PATCH"]}
-    assert credential["credentialTypeIds"] == ["http.bearer", "http.basic", "http.header"]
+    assert "credentialTypeIds" not in credential
 
 
 def test_webhook_trigger_advertises_sync_and_immediate_response_modes():

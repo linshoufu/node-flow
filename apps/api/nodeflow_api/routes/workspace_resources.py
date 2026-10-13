@@ -18,6 +18,9 @@ from ..schemas import (
     CredentialReference,
     CredentialSummary,
     CredentialUpdateRequest,
+    HttpProfile,
+    HttpProfileCreateRequest,
+    HttpProfileUpdateRequest,
     ProjectEnvironment,
     ProjectEnvironmentCreateRequest,
     ProjectEnvironmentUpdateRequest,
@@ -93,6 +96,22 @@ def build_workspace_resources_router(
                 issues.append({"path": path, "message": "来源凭据和目标凭据必须属于同一类型。", "code": "credential_type_mismatch"})
         if issues:
             raise HTTPException(status_code=422, detail=issues)
+
+    def _validate_http_profile_headers(headers: dict[str, str]) -> None:
+        sensitive_names = {"authorization", "cookie", "proxy-authorization", "x-api-key"}
+        invalid = [name for name in headers if name.strip().lower() in sensitive_names]
+        if invalid:
+            raise HTTPException(
+                status_code=422,
+                detail="公共请求头不能保存认证信息，请使用 HTTP 凭据。",
+            )
+
+    def _validate_http_profile_credential(credential_id: str | None) -> None:
+        if credential_id is None:
+            return
+        credential = storage.get_credential(credential_id)
+        if credential is None:
+            raise HTTPException(status_code=422, detail="HTTP 配置档引用的凭据不存在。")
 
     @router.get("/api/credential-types")
     def credential_types() -> list[dict[str, object]]:
@@ -200,6 +219,45 @@ def build_workspace_resources_router(
     def delete_project_variable(name: str) -> None:
         if not storage.delete_project_variable(name):
             raise HTTPException(status_code=404, detail="项目变量不存在")
+
+    @router.get("/api/http-profiles")
+    def list_http_profiles() -> list[HttpProfile]:
+        return storage.list_http_profiles()
+
+    @router.post("/api/http-profiles", status_code=201)
+    def create_http_profile(request: HttpProfileCreateRequest) -> HttpProfile:
+        _validate_http_profile_headers(request.headers)
+        _validate_http_profile_credential(request.credential_id)
+        try:
+            return storage.create_http_profile(
+                name=request.name, base_url=request.base_url, headers=request.headers,
+                credential_id=request.credential_id, timeout_seconds=request.timeout_seconds,
+                authentication=request.authentication,
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="已存在同名 HTTP 配置档") from exc
+
+    @router.patch("/api/http-profiles/{profile_id}")
+    def update_http_profile(profile_id: str, request: HttpProfileUpdateRequest) -> HttpProfile:
+        if request.headers is not None:
+            _validate_http_profile_headers(request.headers)
+        if "credential_id" in request.model_fields_set:
+            _validate_http_profile_credential(request.credential_id)
+        try:
+            updated = storage.update_http_profile(
+                profile_id,
+                **{field: getattr(request, field) for field in request.model_fields_set},
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="已存在同名 HTTP 配置档") from exc
+        if updated is None:
+            raise HTTPException(status_code=404, detail="HTTP 配置档不存在")
+        return updated
+
+    @router.delete("/api/http-profiles/{profile_id}", status_code=204)
+    def delete_http_profile(profile_id: str) -> None:
+        if not storage.delete_http_profile(profile_id):
+            raise HTTPException(status_code=404, detail="HTTP 配置档不存在")
 
     @router.get("/api/project-environments")
     def list_project_environments() -> list[ProjectEnvironment]:

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any
 
 
-EXPRESSION_RE = re.compile(
-    r"^\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*)\s*\}\}\s*$"
-)
-INLINE_EXPRESSION_RE = re.compile(
-    r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+))*)\s*\}\}"
-)
+_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
+_BRACKET_KEY = r"\[(?:\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')\]"
+_PATH_PART = rf"(?:{_IDENTIFIER}|[0-9]+|{_BRACKET_KEY})"
+_PATH = rf"{_IDENTIFIER}(?:\.{_PATH_PART}|{_BRACKET_KEY})*"
+EXPRESSION_RE = re.compile(rf"^\s*\{{\{{\s*({_PATH})\s*\}}\}}\s*$")
+INLINE_EXPRESSION_RE = re.compile(rf"\{{\{{\s*({_PATH})\s*\}}\}}")
 EXPRESSION_TOKEN_RE = re.compile(r"\{\{.*?\}\}")
+_PATH_TOKEN_RE = re.compile(rf"{_IDENTIFIER}|[0-9]+|{_BRACKET_KEY}")
 
 
 class ExpressionError(ValueError):
@@ -34,7 +36,8 @@ def resolve_expression(value: Any, context: dict[str, Any]) -> Any:
 
 def resolve_path(path: str, context: dict[str, Any]) -> Any:
     current: Any = context
-    for part in path.split("."):
+    for token in _PATH_TOKEN_RE.findall(path):
+        part = _decode_path_token(token)
         if isinstance(current, dict) and part in current:
             current = current[part]
         elif isinstance(current, list) and part.isdigit():
@@ -45,6 +48,13 @@ def resolve_path(path: str, context: dict[str, Any]) -> Any:
         else:
             raise ExpressionError(f"Cannot resolve expression path: {path}")
     return current
+
+
+def _decode_path_token(token: str) -> str:
+    if not token.startswith("["):
+        return token
+    # The expression grammar only permits quoted keys inside brackets.
+    return ast.literal_eval(token[1:-1])
 
 
 def invalid_expression_tokens(value: str) -> list[str]:

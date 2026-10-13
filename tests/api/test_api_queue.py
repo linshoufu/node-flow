@@ -115,7 +115,7 @@ def test_queue_status_explains_when_a_workflow_concurrency_limit_is_blocking_a_r
 
     with TestClient(app) as client:
         assert client.post("/api/workflows", json=workflow).status_code == 200
-        first_run = client.post("/api/workflows/wf_workflow_limit/runs").json()
+        assert client.post("/api/workflows/wf_workflow_limit/runs").status_code == 200
         second_run = client.post("/api/workflows/wf_workflow_limit/runs").json()
         assert client.app.state.storage.claim_next_queued_run("worker_test", lease_seconds=60)
 

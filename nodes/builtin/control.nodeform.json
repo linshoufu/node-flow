@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "placements": {
+    "max_items": "inline",
+    "timeout_seconds": "inline",
+    "continue_on_error": "inline"
+  },
+  "portPresentation": {
+    "inputs": {},
+    "outputs": {}
+  },
+  "cardStyle": {
+    "accent": "#70a4ff"
+  }
+}

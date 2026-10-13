@@ -10,6 +10,7 @@ from ..schemas import (
     CredentialRecord,
     CredentialReference,
     CredentialSummary,
+    HttpProfile,
     ProjectEnvironment,
     ProjectVariable,
     WorkflowDocument,
@@ -18,8 +19,77 @@ from ..schemas import (
 )
 from .base import _workflow_nodes, utc_now
 
+_UNSET = object()
+
 
 class WorkspaceResourceMixin:
+    def list_http_profiles(self) -> list[HttpProfile]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT id, name, base_url, headers_json, credential_id, timeout_seconds, authentication_json, created_at, updated_at
+                FROM http_profiles ORDER BY name COLLATE NOCASE
+                """
+            ).fetchall()
+        return [
+            HttpProfile(
+                id=row["id"], name=row["name"], base_url=row["base_url"],
+                headers=json.loads(row["headers_json"]), credential_id=row["credential_id"],
+                timeout_seconds=row["timeout_seconds"], authentication=json.loads(row["authentication_json"]),
+                created_at=row["created_at"], updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    def get_http_profile(self, profile_id: str) -> HttpProfile | None:
+        return next((profile for profile in self.list_http_profiles() if profile.id == profile_id), None)
+
+    def create_http_profile(self, *, name: str, base_url: str, headers: dict[str, str], credential_id: str | None, timeout_seconds: int | None, authentication: dict) -> HttpProfile:
+        timestamp = utc_now()
+        profile = HttpProfile(
+            id=f"http_{uuid4().hex}", name=name, base_url=base_url, headers=headers,
+            credential_id=credential_id, timeout_seconds=timeout_seconds, created_at=timestamp, updated_at=timestamp,
+            authentication=authentication,
+        )
+        with self._lock:
+            with self._connection:
+                self._connection.execute(
+                    """INSERT INTO http_profiles
+                    (id, name, base_url, headers_json, credential_id, timeout_seconds, authentication_json, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (profile.id, profile.name, profile.base_url, json.dumps(profile.headers), profile.credential_id,
+                     profile.timeout_seconds, json.dumps(profile.authentication), profile.created_at, profile.updated_at),
+                )
+        return profile
+
+    def update_http_profile(self, profile_id: str, *, name: str | object = _UNSET, base_url: str | object = _UNSET, headers: dict[str, str] | object = _UNSET, credential_id: str | None | object = _UNSET, timeout_seconds: int | None | object = _UNSET, authentication: dict | object = _UNSET) -> HttpProfile | None:
+        profile = self.get_http_profile(profile_id)
+        if profile is None:
+            return None
+        updated = profile.model_copy(update={
+            "name": name if name is not _UNSET else profile.name,
+            "base_url": base_url if base_url is not _UNSET else profile.base_url,
+            "headers": headers if headers is not _UNSET else profile.headers,
+            "credential_id": credential_id if credential_id is not _UNSET else profile.credential_id,
+            "timeout_seconds": timeout_seconds if timeout_seconds is not _UNSET else profile.timeout_seconds,
+            "authentication": authentication if authentication is not _UNSET else profile.authentication,
+            "updated_at": utc_now(),
+        })
+        with self._lock:
+            with self._connection:
+                self._connection.execute(
+                    """UPDATE http_profiles SET name = ?, base_url = ?, headers_json = ?, credential_id = ?, timeout_seconds = ?, authentication_json = ?, updated_at = ? WHERE id = ?""",
+                    (updated.name, updated.base_url, json.dumps(updated.headers), updated.credential_id,
+                     updated.timeout_seconds, json.dumps(updated.authentication), updated.updated_at, profile_id),
+                )
+        return updated
+
+    def delete_http_profile(self, profile_id: str) -> bool:
+        with self._lock:
+            with self._connection:
+                result = self._connection.execute("DELETE FROM http_profiles WHERE id = ?", (profile_id,))
+        return result.rowcount > 0
+
     def create_credential(
         self,
         *,

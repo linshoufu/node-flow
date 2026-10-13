@@ -1,246 +1,93 @@
-import { useEffect, useState, type ReactNode } from "react";
-import {
-  Maximize2,
-  Minimize2,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
-import { WorkbenchErrorBoundary } from "./WorkbenchErrorBoundary";
+import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
-export type WorkflowWorkbenchResetKeys = {
-  canvas: string;
-  inspector: string;
-  nodeLibrary: string;
-  runLog: string;
-};
-
-type WorkflowWorkbenchLayoutProps = {
-  canvas: ReactNode;
-  focusMode?: boolean;
-  inspector: ReactNode;
+type Props = {
   nodeLibrary: ReactNode;
-  resetKeys: WorkflowWorkbenchResetKeys;
+  canvas: ReactNode;
+  inspector: ReactNode;
   runLog: ReactNode;
-  onToggleFocusMode?: () => void;
 };
 
-const LAYOUT_STORAGE_KEY = "node-flow.workbench-layout";
+type PaneKey = "library" | "inspector" | "run";
+type PaneSizes = Record<PaneKey, number>;
 
-type WorkbenchLayoutPreference = {
-  inspectorCollapsed: boolean;
-  paletteCollapsed: boolean;
-};
+const DEFAULT_SIZES: PaneSizes = { library: 272, inspector: 320, run: 360 };
+const STORAGE_KEY = "node-flow.workbench-pane-sizes";
 
-export function WorkflowWorkbenchLayout({
-  canvas,
-  focusMode = false,
-  inspector,
-  nodeLibrary,
-  resetKeys,
-  runLog,
-  onToggleFocusMode,
-}: WorkflowWorkbenchLayoutProps) {
-  const [paletteCollapsed, setPaletteCollapsed] = useState(
-    () => readWorkbenchLayoutPreference().paletteCollapsed,
-  );
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(
-    () => readWorkbenchLayoutPreference().inspectorCollapsed,
-  );
-  // 专注模式下左右面板都以悬浮覆盖层呈现：默认收成贴边轨道，点开时浮在画布上，
-  // 保证全屏编辑时仍能添加节点和编辑节点配置，避免“加完节点还得退出专注才能配置”的流程断点。
-  const [focusPaletteOpen, setFocusPaletteOpen] = useState(false);
-  const [focusInspectorOpen, setFocusInspectorOpen] = useState(false);
-
-  useEffect(() => {
-    writeWorkbenchLayoutPreference({ inspectorCollapsed, paletteCollapsed });
-  }, [inspectorCollapsed, paletteCollapsed]);
-
-  useEffect(() => {
-    if (!focusMode) {
-      setFocusPaletteOpen(false);
-      setFocusInspectorOpen(false);
-    }
-  }, [focusMode]);
-
-  const paletteHidden = focusMode ? !focusPaletteOpen : paletteCollapsed;
-  const inspectorHidden = focusMode ? !focusInspectorOpen : inspectorCollapsed;
-
-  return (
-    <main
-      className="workspace-grid"
-      data-focus={focusMode ? "true" : undefined}
-      data-inspector-collapsed={inspectorCollapsed ? "true" : undefined}
-      data-palette-collapsed={paletteCollapsed ? "true" : undefined}
-    >
-      <section
-        aria-label="节点库区域"
-        className="workspace-side workspace-side-left"
-        data-collapsed={paletteHidden ? "true" : undefined}
-      >
-        {paletteHidden ? (
-          <button
-            aria-label="展开节点库"
-            className="workspace-rail-toggle"
-            title={focusMode ? "在专注模式中打开节点库" : "展开节点库"}
-            type="button"
-            onClick={() => {
-              if (focusMode) {
-                setFocusPaletteOpen(true);
-              } else {
-                setPaletteCollapsed(false);
-              }
-            }}
-          >
-            <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={2.2} />
-            <span className="workspace-rail-label">节点库</span>
-          </button>
-        ) : (
-          <>
-            <WorkbenchErrorBoundary
-              area="节点库"
-              compact
-              fallbackClassName="panel palette-panel"
-              resetKey={resetKeys.nodeLibrary}
-            >
-              {nodeLibrary}
-            </WorkbenchErrorBoundary>
-            <button
-              aria-label="收起节点库"
-              className="workspace-collapse-toggle workspace-collapse-toggle-left"
-              title="收起节点库"
-              type="button"
-              onClick={() => {
-                if (focusMode) {
-                  setFocusPaletteOpen(false);
-                } else {
-                  setPaletteCollapsed(true);
-                }
-              }}
-            >
-              <PanelLeftClose aria-hidden="true" size={13} strokeWidth={2.4} />
-            </button>
-          </>
-        )}
-      </section>
-
-      <section aria-label="画布区域" className="workspace-canvas-area">
-        <WorkbenchErrorBoundary
-          area="画布"
-          compact
-          fallbackClassName="canvas-shell"
-          resetKey={resetKeys.canvas}
-        >
-          {canvas}
-        </WorkbenchErrorBoundary>
-        {onToggleFocusMode ? (
-          <button
-            aria-keyshortcuts="Escape"
-            aria-label={focusMode ? "退出专注模式" : "进入专注模式"}
-            aria-pressed={focusMode}
-            className="canvas-focus-toggle"
-            title={focusMode ? "退出专注模式（Esc）" : "进入专注模式：隐藏顶栏和侧边面板"}
-            type="button"
-            onClick={onToggleFocusMode}
-          >
-            {focusMode ? (
-              <Minimize2 aria-hidden="true" size={14} strokeWidth={2.4} />
-            ) : (
-              <Maximize2 aria-hidden="true" size={14} strokeWidth={2.4} />
-            )}
-            <span>{focusMode ? "退出专注" : "专注模式"}</span>
-          </button>
-        ) : null}
-      </section>
-
-      <section
-        aria-label="配置面板区域"
-        className="workspace-side workspace-side-right"
-        data-collapsed={inspectorHidden ? "true" : undefined}
-      >
-        {inspectorHidden ? (
-          <button
-            aria-label="展开配置面板"
-            className="workspace-rail-toggle"
-            title={focusMode ? "在专注模式中打开配置面板" : "展开配置面板"}
-            type="button"
-            onClick={() => {
-              if (focusMode) {
-                setFocusInspectorOpen(true);
-              } else {
-                setInspectorCollapsed(false);
-              }
-            }}
-          >
-            <PanelRightOpen aria-hidden="true" size={16} strokeWidth={2.2} />
-            <span className="workspace-rail-label">配置</span>
-          </button>
-        ) : (
-          <>
-            <WorkbenchErrorBoundary
-              area="节点配置"
-              compact
-              fallbackClassName="panel config-panel"
-              resetKey={resetKeys.inspector}
-            >
-              {inspector}
-            </WorkbenchErrorBoundary>
-            <button
-              aria-label="收起配置面板"
-              className="workspace-collapse-toggle workspace-collapse-toggle-right"
-              title="收起配置面板"
-              type="button"
-              onClick={() => {
-                if (focusMode) {
-                  setFocusInspectorOpen(false);
-                } else {
-                  setInspectorCollapsed(true);
-                }
-              }}
-            >
-              <PanelRightClose aria-hidden="true" size={13} strokeWidth={2.4} />
-            </button>
-          </>
-        )}
-      </section>
-
-      <WorkbenchErrorBoundary
-        area="运行结果"
-        compact
-        fallbackClassName="run-drawer"
-        resetKey={resetKeys.runLog}
-      >
-        {runLog}
-      </WorkbenchErrorBoundary>
-    </main>
-  );
-}
-
-function readWorkbenchLayoutPreference(): WorkbenchLayoutPreference {
+function readPaneSizes(): PaneSizes {
   try {
-    const rawValue = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
-    if (!rawValue) {
-      return { inspectorCollapsed: false, paletteCollapsed: false };
-    }
-    const parsedValue: unknown = JSON.parse(rawValue);
-    if (!parsedValue || typeof parsedValue !== "object") {
-      return { inspectorCollapsed: false, paletteCollapsed: false };
-    }
-    const candidate = parsedValue as Partial<WorkbenchLayoutPreference>;
+    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<PaneSizes>;
     return {
-      inspectorCollapsed: candidate.inspectorCollapsed === true,
-      paletteCollapsed: candidate.paletteCollapsed === true,
+      library: clamp("library", stored.library ?? DEFAULT_SIZES.library),
+      inspector: clamp("inspector", stored.inspector ?? DEFAULT_SIZES.inspector),
+      run: clamp("run", stored.run ?? DEFAULT_SIZES.run),
     };
   } catch {
-    return { inspectorCollapsed: false, paletteCollapsed: false };
+    return DEFAULT_SIZES;
   }
 }
 
-function writeWorkbenchLayoutPreference(preference: WorkbenchLayoutPreference): void {
-  try {
-    window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(preference));
-  } catch {
-    // Layout persistence is best-effort; storage may be unavailable in private browsing.
-  }
+function clamp(pane: PaneKey, value: number) {
+  const bounds: Record<PaneKey, [number, number]> = {
+    library: [208, 420],
+    inspector: [280, 560],
+    run: [220, Math.max(300, window.innerHeight - 190)],
+  };
+  const [min, max] = bounds[pane];
+  return Math.round(Math.min(max, Math.max(min, value)));
+}
+
+export function WorkflowWorkbenchLayout({ nodeLibrary, canvas, inspector, runLog }: Props) {
+  const [sizes, setSizes] = useState<PaneSizes>(readPaneSizes);
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sizes));
+  }, [sizes]);
+
+  const adjust = useCallback((pane: PaneKey, delta: number) => {
+    setSizes((current) => ({ ...current, [pane]: clamp(pane, current[pane] + delta) }));
+  }, []);
+
+  const beginResize = useCallback((pane: PaneKey, direction: 1 | -1, event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startPosition = pane === "run" ? event.clientY : event.clientX;
+    const startSize = sizes[pane];
+
+    const move = (moveEvent: globalThis.MouseEvent) => {
+      const position = pane === "run" ? moveEvent.clientY : moveEvent.clientX;
+      setSizes((current) => ({ ...current, [pane]: clamp(pane, startSize + (position - startPosition) * direction) }));
+    };
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+  }, [sizes]);
+
+  return (
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside style={{ width: sizes.library }} className="shrink-0 border-r border-border/80 bg-surface flex flex-col">{nodeLibrary}</aside>
+        <ResizeHandle ariaLabel="调整节点库宽度" orientation="vertical" value={sizes.library} onMouseDown={(event) => beginResize("library", 1, event)} onKeyDown={(event) => handleKey(event, (delta) => adjust("library", delta))} />
+        <main className="min-w-0 flex-1 relative overflow-hidden bg-canvas">{canvas}</main>
+        <ResizeHandle ariaLabel="调整配置面板宽度" orientation="vertical" value={sizes.inspector} onMouseDown={(event) => beginResize("inspector", -1, event)} onKeyDown={(event) => handleKey(event, (delta) => adjust("inspector", -delta))} />
+        <aside style={{ width: sizes.inspector }} className="shrink-0 border-l border-border/80 bg-surface flex flex-col overflow-hidden">{inspector}</aside>
+      </div>
+
+      <ResizeHandle ariaLabel="调整运行结果高度" orientation="horizontal" value={sizes.run} onMouseDown={(event) => beginResize("run", -1, event)} onKeyDown={(event) => handleKey(event, (delta) => adjust("run", -delta))} />
+      <div style={{ height: sizes.run }} className="shrink-0 min-h-0 overflow-hidden border-t border-border/80 bg-surface">{runLog}</div>
+    </div>
+  );
+}
+
+function handleKey(event: KeyboardEvent<HTMLDivElement>, adjust: (delta: number) => void) {
+  const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? 24 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -24 : 0;
+  if (!delta) return;
+  event.preventDefault();
+  adjust(delta);
+}
+
+function ResizeHandle({ ariaLabel, onKeyDown, onMouseDown, orientation, value }: { ariaLabel: string; onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void; onMouseDown: (event: MouseEvent<HTMLDivElement>) => void; orientation: "vertical" | "horizontal"; value: number }) {
+  const vertical = orientation === "vertical";
+  return <div role="separator" tabIndex={0} aria-label={ariaLabel} aria-orientation={orientation} aria-valuenow={value} onMouseDown={onMouseDown} onKeyDown={onKeyDown} title={`${ariaLabel}（可拖动）`} className={`group relative z-20 shrink-0 touch-none outline-none ${vertical ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize"}`}><span className={`absolute bg-border transition-colors group-hover:bg-primary group-focus:bg-primary ${vertical ? "inset-y-0 left-1/2 w-px -translate-x-1/2" : "inset-x-0 top-1/2 h-px -translate-y-1/2"}`} /></div>;
 }

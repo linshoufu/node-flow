@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Node Flow</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={darkMode:'class',theme:{extend:{colors:{i9:'#0a0b14',i8:'#0f1120',i7:'#161a2e',i6:'#1d2238',i5:'#2a304a',i4:'#3d4564',i3:'#5a6488',i2:'#8892b0',i1:'#c5cce5',brand:'#6366f1'}}}}
+</script>
+<style>
+body{font-family:Inter,'Microsoft YaHei',system-ui,sans-serif}
+.grid-bg{background-image:radial-gradient(#1d2238 1px,transparent 1px);background-size:22px 22px}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#2a304a;border-radius:3px}
+@keyframes ti{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:none}}
+.toast-in{animation:ti .25s ease-out}
+.page{display:none;flex:1}.page.on{display:flex}
+.fn-node{position:absolute;min-width:180px;max-width:220px;background:#0f1120;border:1px solid #1d2238;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,.3);cursor:grab}
+.fn-node:hover{border-color:#2a304a}
+.fn-node.sel{border-color:#6366f1;box-shadow:0 0 0 1px #6366f1,0 8px 28px rgba(99,102,241,.2)}
+.fn-node.drag{cursor:grabbing;box-shadow:0 12px 36px rgba(99,102,241,.3)!important;z-index:10}
+.fn-hd{position:absolute;width:11px;height:11px;border-radius:50%;border:2px solid #0f1120;z-index:5;cursor:crosshair}
+.fn-hd:hover{transform:scale(1.4)}
+</style>
+</head>
+<body class="h-screen w-screen overflow-hidden bg-i9 text-i1 flex flex-col select-none">
+
+<header class="h-12 shrink-0 flex items-center gap-3 px-4 bg-i8 border-b border-i6 z-40">
+  <div class="flex items-center gap-2 font-bold text-sm text-white">
+    <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-purple-500 flex items-center justify-center text-white text-[10px] font-bold">NF</div>
+    <span>节点流</span>
+  </div>
+  <div class="w-px h-5 bg-i5"></div>
+  <nav class="flex gap-1" id="navTabs">
+    <button data-p="editor" class="nt px-2.5 py-1 rounded text-sm bg-brand/20 text-brand">编辑器</button>
+    <button data-p="run" class="nt px-2.5 py-1 rounded text-sm text-i3 hover:bg-i7 hover:text-i1">运行结果</button>
+    <button data-p="res" class="nt px-2.5 py-1 rounded text-sm text-i3 hover:bg-i7 hover:text-i1">资源中心</button>
+    <button data-p="def" class="nt px-2.5 py-1 rounded text-sm text-i3 hover:bg-i7 hover:text-i1">节点定义</button>
+    <button data-p="mgr" class="nt px-2.5 py-1 rounded text-sm text-i3 hover:bg-i7 hover:text-i1">工作流管理</button>
+  </nav>
+  <div class="flex-1"></div>
+  <button id="thBtn" class="w-8 h-8 rounded-lg hover:bg-i7 flex items-center justify-center text-i3 text-sm">☾</button>
+</header>
+
+<div class="flex-1 flex overflow-hidden relative" id="pageWrap">
+
+<div id="p-editor" class="page on flex-col flex relative">
+  <div class="h-10 shrink-0 flex items-center gap-2 px-4 bg-i8 border-b border-i6">
+    <input id="wfName" value="接口回归测试" class="bg-transparent text-sm font-medium px-2 py-1 rounded hover:bg-i7 focus:outline-none w-52">
+    <span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-xs text-i3" id="saveL">已保存</span>
+    <div class="flex-1"></div>
+    <button onclick="runFlow()" class="px-4 h-7 rounded-md bg-brand text-white text-xs font-semibold hover:opacity-90 flex items-center gap-1.5 transition">▶ 运行</button>
+    <button onclick="toast('已保存','succ');saveFlash()" class="px-3 h-7 rounded-md hover:bg-i7 text-xs transition">💾 保存</button>
+  </div>
+  <div class="flex-1 flex overflow-hidden">
+    <aside class="w-56 shrink-0 bg-i8 border-r border-i6 flex flex-col">
+      <div class="p-3 border-b border-i6"><input id="palS" type="search" placeholder="搜索节点…" class="w-full bg-i7 text-sm rounded-lg px-3 py-1.5 border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"></div>
+      <div class="flex gap-1 p-2 border-b border-i6" id="palF">
+        <button class="pf text-xs px-2 py-0.5 rounded bg-brand/20 text-brand font-medium on" data-c="all">全部 6</button>
+        <button class="pf text-xs px-2 py-0.5 rounded text-i3 hover:text-i1 hover:bg-i7" data-c="触发器">触发</button>
+        <button class="pf text-xs px-2 py-0.5 rounded text-i3 hover:text-i1 hover:bg-i7" data-c="操作">操作</button>
+        <button class="pf text-xs px-2 py-0.5 rounded text-i3 hover:text-i1 hover:bg-i7" data-c="控制">控制</button>
+      </div>
+      <div id="palList" class="flex-1 overflow-y-auto"></div>
+    </aside>
+    <main id="canvas" class="flex-1 relative grid-bg overflow-hidden">
+      <svg id="edges" class="absolute inset-0 w-full h-full pointer-events:none"></svg>
+      <div id="nlayer" class="absolute inset-0"></div>
+      <div id="empty" class="absolute inset-0 flex flex-col items-center justify-center text-i4 pointer-events-none">
+        <div class="text-5xl opacity-15 mb-3">📐</div><div class="text-base font-semibold text-i2">空画布</div>
+        <div class="text-xs mt-1">从左侧点击或拖拽节点添加 · 双击画布快速添加</div>
+      </div>
+      <div class="absolute bottom-4 right-4 flex gap-1 bg-i8 border border-i6 rounded-lg p-1 shadow-xl z-20">
+        <button onclick="zoom(-1)" class="w-7 h-7 rounded flex items-center justify-center hover:bg-i7 text-i3">−</button>
+        <span id="zLabel" class="w-10 h-7 flex items-center justify-center text-[10px] text-i4">100%</span>
+        <button onclick="zoom(1)" class="w-7 h-7 rounded flex items-center justify-center hover:bg-i7 text-i3">+</button>
+        <div class="w-px h-5 my-1 bg-i6"></div>
+        <button onclick="zoomReset()" class="w-7 h-7 rounded flex items-center justify-center hover:bg-i7 text-i3 text-xs">⤢</button>
+      </div>
+    </main>
+    <aside class="w-80 shrink-0 bg-i8 border-l border-i6 flex flex-col">
+      <div id="cfgH" class="px-4 py-3 border-b border-i6"></div>
+      <div id="cfgB" class="flex-1 overflow-y-auto"></div>
+      <div class="flex border-t border-i6">
+        <button onclick="cfgTab('form',this)" class="ct flex-1 py-2 text-xs font-medium border-b-2 border-brand text-brand">配置</button>
+        <button onclick="cfgTab('ports',this)" class="ct flex-1 py-2 text-xs border-b-2 border-transparent text-i3 hover:text-i1">端口</button>
+        <button onclick="cfgTab('run',this)" class="ct flex-1 py-2 text-xs border-b-2 border-transparent text-i3 hover:text-i1">运行</button>
+      </div>
+    </aside>
+  </div>
+  <div onclick="show('run')" class="h-8 shrink-0 bg-i8 border-t border-i6 flex items-center gap-2 px-4 cursor-pointer hover:bg-i7 transition z-20">
+    <span class="text-xs font-semibold uppercase tracking-wider text-i4">运行结果</span>
+    <span id="rbadge" class="hidden text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">✓</span>
+    <span id="rtext" class="text-xs text-i4"></span>
+  </div>
+</div>
+
+<div id="p-run" class="page flex-col flex">
+  <div class="h-10 flex items-center gap-2 px-4 bg-i8 border-b border-i6">
+    <button onclick="show('editor')" class="text-xs text-i3 hover:text-i1">← 返回</button><div class="w-px h-4 bg-i6"></div>
+    <span class="text-sm font-semibold">运行结果</span>
+    <span class="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-medium">✓ 通过</span>
+    <span class="text-xs text-i4">3 个节点 · 1.2s</span>
+    <div class="flex-1"></div>
+    <button onclick="runFlow();show('editor')" class="px-3 h-7 rounded text-xs hover:bg-i7">🔄 重跑</button>
+  </div>
+  <div class="flex bg-i8 border-b border-i6">
+    <button onclick="runTab('report',this)" class="px-4 py-2 text-xs font-medium border-b-2 border-brand text-brand">测试报告</button>
+    <button onclick="runTab('data',this)" class="px-4 py-2 text-xs text-i3 border-b-2 border-transparent hover:text-i1">执行数据</button>
+    <button onclick="runTab('events',this)" class="px-4 py-2 text-xs text-i3 border-b-2 border-transparent hover:text-i1">运行事件</button>
+  </div>
+  <div id="runP" class="flex-1 overflow-y-auto p-6"></div>
+</div>
+
+<div id="p-res" class="page flex">
+  <nav class="w-52 shrink-0 bg-i8 border-r border-i6 flex flex-col">
+    <div class="p-3 border-b border-i6"><div class="text-sm font-semibold">资源中心</div><div class="text-xs text-i4 mt-0.5">管理依赖</div></div>
+    <div class="flex-1 p-2 flex flex-col gap-1">
+      <button onclick="resTab('cred',this)" class="rt text-left px-3 py-2 rounded-lg text-xs bg-brand/15 text-brand font-medium">🔑 凭据</button>
+      <button onclick="resTab('pkg',this)" class="rt text-left px-3 py-2 rounded-lg text-xs text-i3 hover:text-i1 hover:bg-i7">📦 节点包</button>
+      <button onclick="resTab('var',this)" class="rt text-left px-3 py-2 rounded-lg text-xs text-i3 hover:text-i1 hover:bg-i7">📝 变量</button>
+      <button onclick="resTab('env',this)" class="rt text-left px-3 py-2 rounded-lg text-xs text-i3 hover:text-i1 hover:bg-i7">⚙️ 环境</button>
+    </div>
+    <button onclick="show('editor')" class="p-3 border-t border-i6 text-xs text-i4 hover:text-i1">← Esc 返回</button>
+  </nav>
+  <div id="resP" class="flex-1 overflow-y-auto p-6"></div>
+</div>
+
+<div id="p-def" class="page flex">
+  <aside class="w-60 shrink-0 bg-i8 border-r border-i6 flex flex-col">
+    <div class="p-3 border-b border-i6"><input type="search" placeholder="搜索…" class="w-full bg-i7 rounded-lg px-3 py-1.5 text-sm border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"></div>
+    <div class="px-3 py-2 border-b border-i6 text-xs font-semibold uppercase tracking-wider text-i4">资产 · 6 个</div>
+    <div id="defList" class="flex-1 overflow-y-auto"></div>
+  </aside>
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <div class="h-10 flex items-center gap-2 px-4 bg-i8 border-b border-i6">
+      <button onclick="show('editor')" class="text-xs text-i3">← 返回</button><div class="w-px h-4 bg-i6"></div>
+      <span id="defTtl" class="text-sm font-semibold">节点定义</span><span class="text-xs px-1.5 py-0.5 rounded bg-i6 text-i3">v2.1</span>
+      <div class="flex-1"></div><button onclick="toast('导入待实现')" class="px-3 h-7 rounded text-xs hover:bg-i7">📥 导入</button>
+    </div>
+    <div class="flex bg-i8 border-b border-i6">
+      <button onclick="defTab('form',this)" class="px-4 py-2 text-xs font-medium border-b-2 border-brand text-brand">📋 表单</button>
+      <button onclick="defTab('ports',this)" class="px-4 py-2 text-xs text-i3 border-b-2 border-transparent hover:text-i1">🔌 端口</button>
+      <button onclick="defTab('info',this)" class="px-4 py-2 text-xs text-i3 border-b-2 border-transparent hover:text-i1">ℹ️ 信息</button>
+    </div>
+    <div id="defP" class="flex-1 overflow-y-auto p-6"></div>
+  </div>
+  <aside class="w-64 shrink-0 bg-i8 border-l border-i6 flex flex-col">
+    <div class="p-3 border-b border-i6"><div class="text-sm font-semibold">诊断</div><div class="text-xs text-i4">契约校验</div></div>
+    <div id="diagP" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2"></div>
+  </aside>
+</div>
+
+<div id="p-mgr" class="page flex">
+  <aside class="w-64 shrink-0 bg-i8 border-r border-i6 flex flex-col">
+    <div class="p-3 border-b border-i6"><input type="search" placeholder="搜索工作流…" class="w-full bg-i7 rounded-lg px-3 py-1.5 text-sm border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"></div>
+    <div id="wfL" class="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5"></div>
+    <button onclick="toast('新建待实现')" class="m-2 px-3 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:opacity-90">+ 新建</button>
+  </aside>
+  <div id="mgrP" class="flex-1 overflow-y-auto p-6"></div>
+</div>
+
+</div>
+<div id="toasts" class="fixed top-14 right-4 z-50 flex flex-col gap-2 w-80"></div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
+function ce(t,c,h){const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;}
+
+// Toast
+function toast(msg,t='info'){
+  const el=ce('div','toast-in rounded-lg border px-4 py-3 shadow-xl flex items-center gap-2 text-sm',`<span>${t==='succ'?'✅':t==='err'?'❌':'ℹ️'}</span><span>${msg}</span>`);
+  el.style.borderColor=t==='err'?'#f43f5e55':t==='succ'?'#22c55e44':'#3d4564';
+  el.style.background='#161a2e';
+  $('#toasts').appendChild(el);
+  setTimeout(()=>{el.style.transition='.3s';el.style.opacity='0';el.style.transform='translateX(40px)';setTimeout(()=>el.remove(),300)},3000);
+}
+
+// Theme
+$('#thBtn').onclick=()=>{
+  const d=document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark',!d);
+  document.documentElement.classList.toggle('light',d);
+  $('#thBtn').textContent=d?'☀':'☾';
+};
+
+// Navigation
+function show(p){
+  ['editor','run','res','def','mgr'].forEach(x=>{$('#p-'+x).classList.remove('on');$('#p-'+x).style.display='none';});
+  const tg=$('#p-'+p);tg.classList.add('on');tg.style.display='flex';
+  $$('.nt').forEach(b=>{b.classList.toggle('bg-brand/20',b.dataset.p===p);b.classList.toggle('text-brand',b.dataset.p===p);b.classList.toggle('text-i3',b.dataset.p!==p);});
+}
+$$('.nt').forEach(b=>b.onclick=()=>show(b.dataset.p));
+
+// Save flash
+function saveFlash(){$('#saveL').textContent='保存中…';setTimeout(()=>$('#saveL').textContent='已保存',500);}
+
+// Node types
+const TYPES=[
+  {id:'webhook',icon:'🔗',name:'Webhook',cat:'触发器',desc:'HTTP请求触发',color:'#60a5fa',outs:[{id:'trg',name:'触发'}],fields:[{key:'path',label:'路径',type:'text',val:'/hook/my-flow',mono:1}]},
+  {id:'http',icon:'🌐',name:'HTTP请求',cat:'操作',desc:'发送HTTP请求',color:'#34d399',ins:[{id:'body',name:'body'}],outs:[{id:'ok',name:'success',c:'#34d399'},{id:'err',name:'error',c:'#f43f5e'}],fields:[{key:'method',label:'方法',type:'select',val:'GET',opts:['GET','POST','PUT','DELETE']},{key:'url',label:'URL',type:'text',val:'https://api.example.com/users',mono:1,req:1},{key:'timeout',label:'超时秒',type:'number',val:30},{key:'retry',label:'重试',type:'switch',val:true}]},
+  {id:'assert',icon:'⚠️',name:'断言',cat:'断言',desc:'校验状态码',color:'#fb7185',ins:[{id:'r',name:'response'}],fields:[{key:'op',label:'操作符',type:'select',val:'equals',opts:['equals','contains','gt','lt']},{key:'val',label:'期望值',type:'text',val:'200'}]},
+  {id:'dxform',icon:'🔄',name:'数据转换',cat:'操作',desc:'JSON映射',color:'#fbbf24',ins:[{id:'in',name:'input'}],outs:[{id:'out',name:'output'}],fields:[{key:'map',label:'映射',type:'textarea',val:'{"id":"$.id"}'}]},
+  {id:'branch',icon:'🔀',name:'条件分支',cat:'控制',desc:'IF/ELSE',color:'#22d3ee',ins:[{id:'in',name:'input'}],outs:[{id:'t',name:'真',c:'#34d399'},{id:'f',name:'假',c:'#f43f5e'}],fields:[{key:'expr',label:'条件',type:'text',val:'{{status}}===200',mono:1}]},
+  {id:'loop',icon:'🔁',name:'循环',cat:'控制',desc:'遍历列表',color:'#fb923c',ins:[{id:'l',name:'list'}],outs:[{id:'i',name:'item'}],fields:[{key:'fld',label:'字段',type:'text',val:'{{items}}',mono:1}]},
+];
+
+// Palette
+let palFilter='all';
+function renderPal(){
+  const cats={},f=$('#palS').value;
+  TYPES.forEach(t=>{
+    if(palFilter!=='all'&&!t.cat.includes(palFilter))return;
+    if(f&&!t.name.includes(f)&&!t.desc.includes(f))return;
+    (cats[t.cat]??=[]).push(t);
+  });
+  const w=$('#palList');w.innerHTML='';
+  for(const[c,list]of Object.entries(cats)){
+    w.appendChild(ce('div','px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-i4 sticky top-0 bg-i8',c));
+    list.forEach(t=>{
+      const b=ce('button','w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-i7 transition group');
+      b.onclick=()=>{addNode(t);toast('已添加 '+t.name,'succ');};
+      b.innerHTML=`<div class="w-7 h-7 rounded-md flex items-center justify-center shrink-0" style="background:${t.color}22">${t.icon}</div><div class="flex-1 min-w-0"><div class="text-xs font-medium truncate">${t.name}</div><div class="text-[10px] text-i4 truncate">${t.desc}</div></div><span class="opacity-0 group-hover:opacity-100 text-i4 text-xs">+</span>`;
+      w.appendChild(b);
+    });
+  }
+}
+$('#palS').oninput=renderPal;
+$('#palF').addEventListener('click',e=>{
+  const b=e.target.closest('.pf');if(!b)return;
+  $$('#palF .pf').forEach(x=>{x.classList.remove('bg-brand/20','text-brand','font-medium','on');x.classList.add('text-i3');});
+  b.classList.add('bg-brand/20','text-brand','font-medium','on');b.classList.remove('text-i3');
+  palFilter=b.dataset.c;renderPal();
+});
+
+// Canvas state
+let nodes=[],edges=[],sel=null,drag=null,conn=null,zm=1,nq=0,eq=0;
+
+function addNode(t,x,y){
+  const n={id:'n'+(++nq),t:t,label:t.name,cfg:{}};
+  (t.fields||[]).forEach(f=>n.cfg[f.key]=f.val);
+  n.x=x||180+Math.random()*220;n.y=y||100+Math.random()*160;
+  nodes.push(n);sel=n;rNodes();rCfg();
+  if(nodes.length)$('#empty').style.display='none';
+  return n;
+}
+function delNode(id){
+  nodes=nodes.filter(n=>n.id!==id);
+  edges=edges.filter(e=>e.src!==id&&e.dst!==id);
+  if(sel&&sel.id===id)sel=null;
+  rNodes();rCfg();
+  if(!nodes.length)$('#empty').style.display='flex';
+}
+function pick(id){sel=nodes.find(n=>n.id===id);rNodes();rCfg();}
+
+function rNodes(){
+  const L=$('#nlayer');L.innerHTML='';
+  nodes.forEach(n=>{
+    const d=ce('div',`fn-node ${sel&&sel.id===n.id?'sel':''}`);
+    d.style.left=n.x+'px';d.style.top=n.y+'px';
+    d.dataset.id=n.id;
+    let hd='';
+    if(n.t.ins&&n.t.ins.length)hd+=`<div class="fn-hd" style="left:-5px;top:50%;transform:translateY(-50%);background:#5a6488" data-dst="${n.id}" data-port="${n.t.ins[0].id}"></div>`;
+    if(n.t.outs&&n.t.outs.length)n.t.outs.forEach((o,i)=>{
+      const tp=26+(i+0.5)*(n.t.outs.length>1?26:16);
+      hd+=`<div class="fn-hd" style="right:-5px;top:${tp}px;background:${o.c||'#6366f1'}" data-src="${n.id}" data-port="${o.id}"></div>`;
+    });
+    d.innerHTML=`<div class="flex items-center gap-2 px-3 py-2 border-b border-i6 rounded-t-lg"><div class="w-5 h-5 rounded flex items-center justify-center text-[11px]" style="background:${n.t.color}22">${n.t.icon}</div><span class="text-xs font-semibold truncate flex-1">${n.label}</span></div><div class="px-3 py-1 text-[10px] text-i4">${n.t.desc}</div>${hd}`;
+    d.onmousedown=e=>{
+      if(e.target.hasAttribute('data-src')||e.target.hasAttribute('data-dst'))return;
+      drag={n:n,dx:e.clientX-n.x,dy:e.clientY-n.y};
+      d.classList.add('drag');
+      e.preventDefault();
+    };
+    d.onclick=e=>{if(!drag&&!conn){pick(n.id);e.stopPropagation();}};
+    L.appendChild(d);
+  });
+  rEdges();
+}
+
+function rEdges(){
+  const s=$('#edges');s.innerHTML='';
+  edges.forEach(e=>{
+    const a=nodes.find(n=>n.id===e.src),b=nodes.find(n=>n.id===e.dst);
+    if(!a||!b)return;
+    const x1=a.x+200,y1=a.y+36,x2=b.x,y2=b.y+36,mx=(x1+x2)/2;
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',`M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`);
+    p.setAttribute('stroke','#6366f1');p.setAttribute('stroke-width','2');p.setAttribute('fill','none');
+    p.style.pointerEvents='stroke';p.style.cursor='pointer';
+    p.onclick=()=>{edges=edges.filter(x=>x!==e);rEdges();toast('已删除连线');};
+    s.appendChild(p);
+  });
+}
+
+// Global mouse handlers
+document.addEventListener('mousemove',e=>{
+  if(!drag)return;
+  const c=$('#canvas'),r=c.getBoundingClientRect();
+  drag.n.x=Math.max(0,e.clientX-r.left-drag.dx);
+  drag.n.y=Math.max(0,e.clientY-r.top-drag.dy);
+  const el=$(`[data-id="${drag.n.id}"]`);
+  if(el){el.style.left=drag.n.x+'px';el.style.top=drag.n.y+'px';}
+  rEdges();
+});
+document.addEventListener('mouseup',()=>{
+  if(drag){
+    const el=$(`[data-id="${drag.n.id}"]`);
+    if(el)el.classList.remove('drag');
+    drag=null;
+  }
+  conn=null;
+});
+
+// Handle connection start
+$('#nlayer').addEventListener('mousedown',e=>{
+  if(e.target.hasAttribute('data-src')){
+    conn={src:e.target.dataset.src,port:e.target.dataset.port};
+    toast('选输出端口 → 点击目标输入端口连接');
+    e.stopPropagation();
+  }
+});
+$('#nlayer').addEventListener('mouseup',e=>{
+  if(conn&&e.target.hasAttribute('data-dst')){
+    const dst=e.target.dataset.dst,dp=e.target.dataset.port;
+    if(conn.src!==dst){
+      edges.push({id:'e'+(++eq),src:conn.src,sport:conn.port,dst:dst,dport:dp});
+      rEdges();toast('已连接','succ');
+    }
+  }
+});
+
+// Double click canvas = add node
+$('#canvas').addEventListener('dblclick',e=>{
+  if(e.target===$('#canvas')||e.target.id==='nlayer'||e.target.id==='edges'||e.target.classList.contains('grid-bg')){
+    const r=$('#canvas').getBoundingClientRect();
+    addNode(TYPES[1],e.clientX-r.left-100,e.clientY-r.top-30);
+    toast('双击创建 HTTP 节点','succ');
+  }
+});
+
+// Click canvas bg = deselect
+$('#canvas').addEventListener('click',e=>{
+  if(e.target.id==='nlayer'||e.target.id==='canvas'||e.target.id==='edges'||e.target.classList.contains('grid-bg')){
+    sel=null;rNodes();rCfg();
+  }
+});
+
+// Zoom
+function zoom(d){zm=Math.max(.3,Math.min(2.5,zm*(d>0?1.15:.85)));applyZoom();}
+function zoomReset(){zm=1;applyZoom();}
+function applyZoom(){
+  $('#nlayer').style.transformOrigin='0 0';$('#nlayer').style.transform=`scale(${zm})`;
+  $('#edges').style.transformOrigin='0 0';$('#edges').style.transform=`scale(${zm})`;
+  $('#zLabel').textContent=Math.round(zm*100)+'%';
+}
+
+// Config panel
+function rCfg(){
+  const H=$('#cfgH'),B=$('#cfgB');
+  if(!sel){
+    H.innerHTML='<div class="text-sm font-semibold">配置</div><div class="text-xs text-i4 mt-0.5">选中节点开始编辑</div>';
+    B.innerHTML='<div class="flex flex-col items-center justify-center h-full text-center p-4 text-i4"><div class="text-4xl opacity-15 mb-2">🖱️</div><div class="text-sm text-i2">未选中节点</div><div class="text-xs mt-1">点击画布节点</div></div>';
+    return;
+  }
+  const n=sel,t=n.t;
+  H.innerHTML=`<div class="flex justify-between items-center"><div><div class="text-sm font-semibold">${t.name}</div><div class="text-xs text-i4 mt-0.5">${t.desc}</div></div><span class="text-xs text-i4">${t.cat}</span></div><div class="flex gap-1 mt-2"><span class="text-[10px] px-1.5 py-0.5 rounded" style="background:${t.color}15">${t.cat}</span><span class="text-[10px] px-1.5 py-0.5 rounded bg-i6 text-i3">v2</span></div>`;
+  let h=`<div class="px-4 py-3 border-b border-i6"><label class="text-xs font-medium text-i3 block mb-1">节点名称</label><input value="${n.label}" oninput="sel.label=this.value;rNodes()" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"><p class="text-[10px] text-i4 mt-1">用于画布和日志</p></div>`;
+  (t.fields||[]).forEach(f=>{
+    const rq=f.req?'<em class="text-rose-400 not-italic text-[10px] ml-1">必填</em>':'';
+    if(f.type==='select')h+=`<div class="px-4 py-3 border-b border-i6"><label class="text-xs font-medium text-i3 block mb-1">${f.label}${rq}</label><select onchange="sel.cfg['${f.key}']=this.value;toast('已更新','succ')" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 focus:outline-none focus:ring-1 focus:ring-brand">${f.opts.map(o=>`<option ${o===n.cfg[f.key]?'selected':''}>${o}</option>`).join('')}</select></div>`;
+    else if(f.type==='switch')h+=`<div class="px-4 py-3 border-b border-i6 flex items-center gap-2"><input type="checkbox" ${n.cfg[f.key]?'checked':''} onchange="sel.cfg['${f.key}']=this.checked" class="w-4 h-4 accent-brand"><label class="text-xs font-medium text-i3">${f.label}</label></div>`;
+    else if(f.type==='number')h+=`<div class="px-4 py-3 border-b border-i6"><label class="text-xs font-medium text-i3 block mb-1">${f.label}</label><input type="number" value="${n.cfg[f.key]}" onchange="sel.cfg['${f.key}']=+this.value" class="w-20 bg-transparent text-xs px-2 py-1.5 rounded border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"></div>`;
+    else if(f.type==='textarea')h+=`<div class="px-4 py-3 border-b border-i6"><label class="text-xs font-medium text-i3 block mb-1">${f.label}</label><textarea rows="3" onchange="sel.cfg['${f.key}']=this.value" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 font-mono focus:outline-none focus:ring-1 focus:ring-brand">${n.cfg[f.key]}</textarea></div>`;
+    else h+=`<div class="px-4 py-3 border-b border-i6"><label class="text-xs font-medium text-i3 block mb-1">${f.label}${rq}</label><input value="${n.cfg[f.key]||''}" onchange="sel.cfg['${f.key}']=this.value" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 ${f.mono?'font-mono':''} focus:outline-none focus:ring-1 focus:ring-brand"></div>`;
+  });
+  h+=`<div class="px-4 py-3"><button onclick="delNode('${n.id}');toast('已删除','succ')" class="text-xs text-rose-400 hover:text-rose-300">🗑 删除节点</button></div>`;
+  B.innerHTML=h;
+}
+
+function cfgTab(t,btn){
+  $$('#p-editor .ct').forEach(b=>{b.classList.remove('border-brand','text-brand');b.classList.add('border-transparent','text-i3');});
+  btn.classList.add('border-brand','text-brand');btn.classList.remove('border-transparent','text-i3');
+}
+
+// Run
+function runFlow(){
+  if(!nodes.length){toast('画布空','err');return;}
+  $('#rbadge').classList.remove('hidden');
+  $('#rtext').textContent=nodes.length+' 个节点 · 1.2s';
+  toast('运行中…','info');
+  setTimeout(()=>{toast('完成：'+nodes.length+' 节点全部通过','succ');runR();},700);
+}
+function runR(){
+  $('#runP').innerHTML=`<div class="grid grid-cols-4 gap-3 mb-6">${[['总计','3','个断言'],['通过','3','100%','#22c55e55',1],['失败','0','无'],['耗时','1.2s','3节点']].map(x=>`<div class="bg-i8 border border-i6 rounded-xl p-4"><div class="text-xs ${x[4]?'text-green-400':'text-i4'}">${x[0]}</div><div class="text-2xl font-bold mt-1 ${x[4]?'text-green-400':''}">${x[1]}</div><div class="text-[10px] text-i4">${x[2]}</div></div>`).join('')}</div><div class="text-base font-semibold mb-3">断言详情</div><div class="space-y-2">${[['状态码等于200','HTTP请求·实际200','120ms'],['响应体包含id','断言·$.id=42','5ms'],['Content-Type','断言·app/json','1ms']].map(a=>`<div class="bg-i8 border border-i6 rounded-lg p-3 flex items-center gap-3"><div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center text-xs text-green-400">✓</div><div class="flex-1"><div class="text-xs font-medium">${a[0]}</div><div class="text-[10px] text-i4">${a[1]}</div></div><span class="text-[10px] text-i4">${a[2]}</span></div>`).join('')}</div>`;
+}
+function runTab(t,btn){
+  $$('#p-run .flex button').forEach(b=>{b.classList.remove('border-brand','text-brand');b.classList.add('border-transparent','text-i3');});
+  if(btn){btn.classList.add('border-brand','text-brand');}
+  if(t!=='report')$('#runP').innerHTML=`<div class="text-center text-i4 py-20">${t==='data'?'📊 执行数据':'📋 运行事件'} 视图</div>`;
+}
+
+// Resources
+function resTab(s,btn){
+  $$('.rt').forEach(b=>{b.classList.remove('bg-brand/15','text-brand','font-medium');b.classList.add('text-i3');});
+  if(btn){btn.classList.add('bg-brand/15','text-brand','font-medium');btn.classList.remove('text-i3');}
+  if(s==='cred'){
+    $('#resP').innerHTML=`<div class="flex justify-between items-center mb-4"><div><div class="text-lg font-semibold">凭据管理</div><div class="text-xs text-i4 mt-1">DPAPI加密·3条</div></div><button onclick="toast('新建待实现')" class="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:opacity-90">+ 新建</button></div><div class="grid grid-cols-2 gap-3">${[['测试Token','API Key','sk-****x42a','#60a5fa'],['生产认证','BasicAuth','admin:****d3f','#34d399'],['OAuth2','OAuth2','ya29.****8k2','#a78bfa']].map(c=>`<div class="bg-i8 border border-i6 rounded-xl p-4"><div class="flex items-center gap-2 mb-2"><div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:${c[3]}22">🔑</div><div class="flex-1"><div class="text-sm font-semibold">${c[0]}</div><div class="text-[10px] text-i4">${c[1]}</div></div></div><div class="bg-i7 rounded px-2 py-1 text-xs font-mono text-i3 mb-2">${c[2]}</div><div class="flex gap-2"><button onclick="toast('编辑待实现')" class="text-[11px] text-brand hover:underline">编辑</button><button onclick="toast('确认删除？','err')" class="text-[11px] text-rose-400">删除</button></div></div>`).join('')}<div onclick="toast('新建待实现')" class="border border-dashed border-i6 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer text-i4 hover:border-brand/40 transition"><div class="text-2xl mb-1">+</div><span class="text-xs">添加凭据</span></div></div>`;
+  } else $('#resP').innerHTML=`<div class="text-center text-i4 py-20">${s==='pkg'?'📦 节点包':s==='var'?'📝 项目变量':'⚙️ 运行环境'} 页面</div>`;
+}
+
+// Node definition
+function rDefList(){
+  const w=$('#defList');w.innerHTML='';
+  TYPES.forEach((t,i)=>{
+    const b=ce('button',`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-i7 transition ${i===1?'bg-brand/10':''}`);
+    b.onclick=()=>{$$('#defList button').forEach(x=>x.classList.remove('bg-brand/10'));b.classList.add('bg-brand/10');rDefForm(t);};
+    b.innerHTML=`<div class="w-7 h-7 rounded-md flex items-center justify-center shrink-0" style="background:${t.color}22">${t.icon}</div><div class="flex-1 min-w-0"><div class="text-xs font-medium truncate">${t.name}</div><div class="text-[10px] text-i4">${t.cat} · v${i+1}</div></div>`;
+    w.appendChild(b);
+  });
+}
+function rDefForm(t){
+  $('#defTtl').textContent='节点定义 · '+t.name;
+  $('#defP').innerHTML=`<div class="bg-i8 border border-i6 rounded-xl p-4 mb-4"><div class="grid grid-cols-3 gap-4"><div><label class="text-[10px] text-i4 block mb-1">ID</label><input value="${t.id}" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 font-mono focus:outline-none focus:ring-1 focus:ring-brand"></div><div><label class="text-[10px] text-i4 block mb-1">名称</label><input value="${t.name}" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"></div><div><label class="text-[10px] text-i4 block mb-1">分类</label><input value="${t.cat}" class="w-full bg-transparent text-xs px-2 py-1.5 rounded border border-i6 focus:outline-none focus:ring-1 focus:ring-brand"></div></div></div><div class="flex justify-between items-center mb-3"><div class="text-sm font-semibold">配置字段 (${t.fields?t.fields.length:0})</div><button onclick="toast('待实现')" class="text-xs text-brand hover:underline">+ 添加</button></div><div class="space-y-2">${(t.fields||[]).map(f=>{const tc={string:'#60a5fa',object:'#a78bfa',integer:'#fbbf24',boolean:'#34d399',number:'#fbbf24'}[f.type]||'#9ca3af';return `<div class="bg-i8 border border-i6 rounded-lg p-3"><div class="flex items-center gap-2 mb-1"><span class="text-i4 cursor-grab">☰</span><code class="text-xs font-mono text-brand">${f.key}</code><span class="text-[10px] px-1.5 py-0.5 rounded" style="background:${tc}22;color:${tc}">${f.type}</span>${f.req?'<span class="text-[10px] text-rose-400">必填</span>':''}<div class="flex-1"></div><button onclick="toast('待实现')" class="text-[10px] text-i3 hover:text-i1">编辑</button></div><div class="ml-5 text-[10px] text-i4">控件: <code>${f.type}</code> · 默认: ${f.val||'—'}</div></div>`;}).join('')}</div><div class="text-sm font-semibold mt-6 mb-3">端口预览</div><div class="grid grid-cols-2 gap-3"><div class="bg-i8 border border-i6 rounded-lg p-3"><div class="text-[10px] font-semibold uppercase text-i4 mb-2">输入</div>${(t.ins||[]).map(p=>`<div class="text-xs mb-1">⬤ <code>${p.name}</code></div>`).join('')||'<div class="text-xs text-i4">无</div>'}</div><div class="bg-i8 border border-i6 rounded-lg p-3"><div class="text-[10px] font-semibold uppercase text-i4 mb-2">输出</div>${(t.outs||[]).map(p=>`<div class="text-xs mb-1"><span style="color:${p.c||'#6366f1'}">⬤</span> <code>${p.name}</code></div>`).join('')||'<div class="text-xs text-i4">无</div>'}</div></div>`;
+  $('#diagP').innerHTML=[['✅','green','节点ID唯一','无重复'],['✅','green','端口定义','声明合法'],['✅','green','声明式表单','控件支持'],['⚠️','amber','凭据类型','建议加前缀'],['✅','green','清单','就绪']].map(d=>`<div class="border border-${d[1]}-500/40 bg-${d[1]}-500/5 rounded-lg p-2.5 flex gap-2"><span>${d[0]}</span><div class="text-[11px]"><strong>${d[2]}</strong><br><span class="text-i4">${d[3]}</span></div></div>`).join('')+`<div class="text-[11px] text-i4 pt-2">4通过·1警告·0错误</div>`;
+}
+function defTab(t,btn){
+  $$('#p-def > div:nth-child(2) > div:nth-child(3) button').forEach(b=>{});
+  $$('#p-def .flex button').forEach(b=>{b.classList.remove('border-brand','text-brand');b.classList.add('border-transparent','text-i3');});
+  if(btn){btn.classList.add('border-brand','text-brand');}
+  if(t!=='form')$('#defP').innerHTML=`<div class="text-center text-i4 py-20">${t==='ports'?'🔌 端口定义':'ℹ️ 基本信息'} 视图</div>`;
+}
+
+// Workflow manager
+const WFS=[{n:'接口回归测试',s:'pub',d:'API回归',r:23,t:'07-01',a:1},{n:'CSV参数化',s:'draft',d:'数据驱动',r:8,t:'07-20',a:0},{n:'审批分支',s:'dirty',d:'人工审批',r:3,t:'08-01',a:0},{n:'Webhook集成',s:'draft',d:'触发器',r:45,t:'06-15',a:0}];
+const HIST=[{st:'pass',t:'手动·全部通过',time:'08-08 14:32',v:'v3',d:'1.2s',p:3,f:0},{st:'fail',t:'自动·1个失败',time:'08-08 10:15',v:'v3',d:'2.8s',p:2,f:1},{st:'pass',t:'手动·全部通过',time:'08-07 16:45',v:'v2',d:'0.9s',p:3,f:0},{st:'cancel',t:'手动·已取消',time:'08-07 16:20',v:'v2',d:'—',p:0,f:0}];
+function rWF(){
+  const w=$('#wfL');w.innerHTML='';
+  WFS.forEach(wf=>{
+    const bg=wf.s==='pub'?'<span class="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">已发布</span>':wf.s==='dirty'?'<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">有更新</span>':'<span class="text-[10px] px-1.5 py-0.5 rounded bg-i6 text-i3">草稿</span>';
+    const d=ce('div',`rounded-lg border p-3 cursor-pointer transition ${wf.a?'border-brand bg-brand/10':'border-i6 hover:bg-i7'}`);
+    d.onclick=()=>{WFS.forEach(x=>x.a=0);wf.a=1;rWF();rMF(wf);};
+    d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="text-sm font-semibold">${wf.n}</span>${bg}</div><div class="text-[10px] text-i4">${wf.d} · ${wf.t} · ${wf.r}次</div>`;
+    w.appendChild(d);
+  });
+}
+function rMF(wf){
+  const bg=wf.s==='pub'?'<span class="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">已发布</span>':'<span class="text-xs px-2 py-0.5 rounded bg-i6 text-i3">草稿</span>';
+  $('#mgrP').innerHTML=`<div class="flex items-center gap-2 mb-2"><h2 class="text-xl font-semibold">${wf.n}</h2>${bg}</div><p class="text-sm text-i4 mb-4">${wf.d} · 3个节点 · 创建${wf.t}</p><div class="flex gap-2 mb-6"><button onclick="show('editor')" class="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:opacity-90">打开编辑器</button><button onclick="toast('已导出','succ')" class="px-3 py-1.5 rounded-lg border border-i6 text-xs hover:bg-i7">📥 导出</button><button onclick="toast('确认删除？','err')" class="px-3 py-1.5 rounded-lg border border-i6 text-xs text-rose-400 hover:bg-rose-500/10">🗑 删除</button></div><div class="text-base font-semibold mb-3">运行历史</div><div class="space-y-2">${HIST.map(r=>{const ic=r.st==='pass'?'✓':r.st==='fail'?'✗':'⊘';const cl=r.st==='pass'?'border-green-500/30 bg-green-500/5 text-green-400':r.st==='fail'?'border-rose-500/30 bg-rose-500/5 text-rose-400':'border-i6 bg-i7 text-i4';return `<div class="bg-i8 border border-i6 rounded-lg p-3 flex items-center gap-3"><div class="w-7 h-7 rounded-full ${cl} flex items-center justify-center text-sm">${ic}</div><div class="flex-1"><div class="text-xs font-medium">${r.t}</div><div class="text-[10px] text-i4">${r.time} · ${r.v} · ${r.d}</div></div><span class="text-[10px] text-i4">${r.p}通过·${r.f}失败</span><button onclick="show('run')" class="text-[11px] text-brand hover:underline">查看</button></div>`;}).join('')}</div>`;
+}
+
+// Init
+renderPal();rCfg();rDefList();rDefForm(TYPES[1]);rWF();rMF(WFS[0]);runR();
+
+// Demo nodes
+setTimeout(()=>{
+  addNode(TYPES[0],30,40);
+  addNode(TYPES[1],280,160);
+  addNode(TYPES[2],560,280);
+  edges.push({id:'e1',src:'n1',sport:'trg',dst:'n2',dport:'body'});
+  edges.push({id:'e2',src:'n2',sport:'ok',dst:'n3',dport:'r'});
+  rNodes();sel=null;rNodes();rCfg();
+  $('#empty').style.display='none';
+},50);
+</script>
+</body>
+</html>

@@ -81,6 +81,7 @@ FormControl = Literal[
     "dynamic_input_list",
     "url",
     "credential",
+    "http_profile",
 ]
 FormExpressionMode = Literal["allowed", "disabled", "required"]
 FieldPlacement = Literal["inline", "panel"]
@@ -197,6 +198,8 @@ class NodeFormManifest(BaseModel):
     defaults: dict[str, Any] | None = None
     placements: dict[str, FieldPlacement] | None = None
     portPresentation: dict[str, dict[str, dict[str, Any]]] | None = None
+    cardStyle: dict[str, Any] | None = None
+    summaryTemplate: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -302,6 +305,7 @@ class NodeContext:
         data: dict[str, Any] | None = None,
         workflow_id: str | None = None,
         static_data: Any | None = None,
+        run_resources: dict[str, Any] | None = None,
     ) -> None:
         self.run_id = run_id
         self.node_id = node_id
@@ -315,6 +319,7 @@ class NodeContext:
         self.data = data or {}
         self.workflow_id = workflow_id
         self._static_data = static_data
+        self._run_resources = run_resources if run_resources is not None else {}
         self.log = NodeLogger(self.logs)
 
     def emit_progress(self, value: float) -> None:
@@ -336,6 +341,12 @@ class NodeContext:
             raise ValueError("Node context variables must be a dictionary")
         variables[name] = value
         return dict(variables)
+
+    def get_or_create_run_resource(self, key: str, factory: Callable[[], Any]) -> Any:
+        """Return private state shared by nodes during one workflow run only."""
+        if key not in self._run_resources:
+            self._run_resources[key] = factory()
+        return self._run_resources[key]
 
     def get_workflow_static_data(self, key: str, default: Any = None) -> Any:
         return self._get_static_data("workflow", key, default)

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "placements": {},
+  "portPresentation": {
+    "inputs": {
+      "input": {
+        "displayName": "数据"
+      }
+    },
+    "outputs": {}
+  }
+}

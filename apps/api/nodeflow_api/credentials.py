@@ -64,6 +64,16 @@ _CREDENTIAL_TYPES = (
         node_type_ids=("http.request", "webhook.trigger"),
     ),
     CredentialType(
+        id="http.login",
+        display_name="HTTP 登录账号",
+        field_definitions=(
+            CredentialField("tenant", "租户 / 组织代码", False),
+            CredentialField("username", "用户名", False),
+            CredentialField("password", "密码", True),
+        ),
+        node_type_ids=("http.request",),
+    ),
+    CredentialType(
         id="webhook.hmac_sha256",
         display_name="Webhook HMAC-SHA256 签名",
         field_definitions=(

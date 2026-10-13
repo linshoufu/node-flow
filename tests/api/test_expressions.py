@@ -13,6 +13,11 @@ def test_resolve_expression_reads_list_index_path():
     assert resolve_expression("{{ items.0.name }}", context) == "Ada"
 
 
+def test_resolve_expression_reads_bracket_key_path_for_csv_headers():
+    context = {"loop": {"item": {"rows": [{"物料编码": "MAT-001"}]}}}
+    assert resolve_expression('{{ loop.item.rows.0["物料编码"] }}', context) == "MAT-001"
+
+
 def test_resolve_expression_returns_literals_without_template():
     assert resolve_expression("hello", {}) == "hello"
 

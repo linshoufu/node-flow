@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any, Literal
 
@@ -210,6 +211,170 @@ class MapItemsNode(BaseNode[MapItemsConfig]):
                 for item in inputs["items"]
             ]
         }
+
+
+class GroupItemsConfig(NodeConfig):
+    paths: list[str] = Field(..., min_length=1, title="Group key paths")
+
+
+@node(
+    id="data.group_items",
+    name="Group Items",
+    category="Data",
+    description="Group execution items by one or more data paths.",
+    group="action",
+    icon="group",
+    tags=["data", "group", "items"],
+    keywords=["group", "aggregate", "batch"],
+    form=NodeForm(groups=(FormGroup("group", "分组", fields=(FormField("paths", control="json", label="分组字段路径", placeholder='["源单单号", "仓库"]'),)),)),
+)
+class GroupItemsNode(BaseNode[GroupItemsConfig]):
+    inputs = {"items": Input(display_name="数据项", required=True, data_mode="items")}
+    outputs = {"items": Output(display_name="分组数据项", schema=EXECUTION_ITEMS_SCHEMA)}
+
+    async def execute(self, ctx: NodeContext, inputs: dict[str, Any]) -> dict[str, Any]:
+        grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+        for item in inputs["items"]:
+            row = item["json"]
+            key = tuple(resolve_data_path(row, path) for path in self.config.paths)
+            grouped.setdefault(key, []).append(row)
+        return {"items": [execution_item({"key": dict(zip(self.config.paths, key)), "key_values": list(key), "rows": rows}) for key, rows in grouped.items()]}
+
+
+class LookupConfig(NodeConfig):
+    records_path: str = Field(default="", title="Records path")
+    record_key_path: str = Field(..., title="Record key path")
+    lookup_value: Any = Field(..., title="Lookup value expression")
+    mode: Literal["first", "one", "all"] = "first"
+
+
+@node(
+    id="data.lookup",
+    name="Lookup Records",
+    category="Data",
+    description="Find records by a configured key path.",
+    group="action",
+    icon="search",
+    tags=["data", "lookup", "match"],
+    keywords=["lookup", "find", "match", "join", "records"],
+    form=NodeForm(
+        groups=(
+            FormGroup(
+                "lookup",
+                "查找",
+                fields=(
+                    FormField("records_path", label="记录列表路径", placeholder="body.data.records"),
+                    FormField("record_key_path", label="记录匹配字段路径", placeholder="materialCode"),
+                    FormField("lookup_value", control="textarea", label="待匹配值", placeholder='{{ loop.item.rows.0["物料编码"] }}', expression="required"),
+                    FormField("mode", control="select", label="匹配模式", options=(SelectOption("first", "第一条"), SelectOption("one", "必须唯一"), SelectOption("all", "全部匹配"))),
+                ),
+            ),
+        )
+    ),
+)
+class LookupNode(BaseNode[LookupConfig]):
+    resolve_config_expressions = False
+    inputs = {"source": Input(display_name="记录来源", required=True, schema=ANY_JSON_SCHEMA)}
+    outputs = {
+        "success": Output(display_name="匹配结果", schema=ANY_JSON_SCHEMA),
+        "error": Output(display_name="查找错误", category="error", schema=ERROR_SCHEMA),
+    }
+
+    async def execute(self, ctx: NodeContext, inputs: dict[str, Any]) -> dict[str, Any]:
+        try:
+            records = resolve_data_path(inputs["source"], self.config.records_path)
+            if not isinstance(records, list):
+                raise ValueError("记录列表路径必须解析为数组。")
+            lookup_value = resolve_expression(self.config.lookup_value, {**ctx.data, "inputs": inputs})
+            matches = [record for record in records if resolve_data_path(record, self.config.record_key_path) == lookup_value]
+            if self.config.mode == "one" and len(matches) != 1:
+                raise ValueError(f"期望唯一匹配，实际得到 {len(matches)} 条。")
+            if self.config.mode in {"first", "one"}:
+                if not matches:
+                    raise ValueError("未找到匹配记录。")
+                return {"success": matches[0]}
+            return {"success": matches}
+        except Exception as exc:
+            return {"error": {"message": str(exc), "type": exc.__class__.__name__}}
+
+
+class JsonTemplateConfig(NodeConfig):
+    template: Any = Field(..., title="JSON template")
+
+
+@node(
+    id="data.json_template",
+    name="JSON Template",
+    category="Data",
+    description="Render any JSON object or array from inputs and workflow expressions.",
+    group="action",
+    icon="braces",
+    tags=["data", "json", "template", "transform"],
+    keywords=["json", "template", "payload", "mapping", "transform"],
+    form=NodeForm(groups=(FormGroup("template", "JSON 模板", fields=(FormField("template", control="json", label="模板", placeholder='{"code": "{{ inputs.order.code }}"}'),)),)),
+)
+class JsonTemplateNode(BaseNode[JsonTemplateConfig]):
+    resolve_config_expressions = False
+    inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
+    outputs = {"success": Output(display_name="JSON 结果", schema=ANY_JSON_SCHEMA), "error": Output(display_name="模板错误", category="error", schema=ERROR_SCHEMA)}
+
+    async def execute(self, ctx: NodeContext, inputs: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return {"success": resolve_expression(self.config.template, {**ctx.data, "inputs": inputs})}
+        except Exception as exc:
+            return {"error": {"message": str(exc), "type": exc.__class__.__name__}}
+
+
+class DecimalMathConfig(NodeConfig):
+    operation: Literal["add", "subtract", "multiply", "divide"] = "multiply"
+    left: Any = Field(..., title="Left operand")
+    right: Any = Field(..., title="Right operand")
+    scale: int = Field(default=2, ge=0, le=12)
+    rounding: Literal["half_up", "half_even", "down", "up"] = "half_up"
+    output_as: Literal["string", "number"] = "string"
+
+
+_ROUNDING = {"half_up": ROUND_HALF_UP, "half_even": ROUND_HALF_EVEN, "down": ROUND_DOWN, "up": ROUND_UP}
+
+
+@node(
+    id="data.decimal_math",
+    name="Decimal Math",
+    category="Data",
+    description="Perform precise decimal arithmetic with explicit scale and rounding.",
+    group="action",
+    icon="calculator",
+    tags=["data", "decimal", "math", "money"],
+    keywords=["decimal", "money", "amount", "tax", "calculate"],
+    form=NodeForm(
+        groups=(
+            FormGroup(
+                "calculation",
+                "精确计算",
+                fields=(
+                    FormField("operation", control="select", label="运算", options=(SelectOption("add", "加"), SelectOption("subtract", "减"), SelectOption("multiply", "乘"), SelectOption("divide", "除"))),
+                    FormField("left", control="textarea", label="左操作数", expression="required"),
+                    FormField("right", control="textarea", label="右操作数", expression="required"),
+                    FormField("scale", control="number", label="小数位数", expression="disabled"),
+                    FormField("rounding", control="select", label="舍入方式", options=(SelectOption("half_up", "四舍五入"), SelectOption("half_even", "银行家舍入"), SelectOption("down", "向下取整"), SelectOption("up", "向上取整"))),
+                ),
+            ),
+        )
+    ),
+)
+class DecimalMathNode(BaseNode[DecimalMathConfig]):
+    resolve_config_expressions = False
+    outputs = {"success": Output(display_name="计算结果", schema=ANY_JSON_SCHEMA), "error": Output(display_name="计算错误", category="error", schema=ERROR_SCHEMA)}
+
+    async def execute(self, ctx: NodeContext, inputs: dict[str, Any]) -> dict[str, Any]:
+        try:
+            left = Decimal(str(resolve_expression(self.config.left, {**ctx.data, "inputs": inputs})))
+            right = Decimal(str(resolve_expression(self.config.right, {**ctx.data, "inputs": inputs})))
+            result = {"add": left + right, "subtract": left - right, "multiply": left * right, "divide": left / right}[self.config.operation]
+            value = result.quantize(Decimal(1).scaleb(-self.config.scale), rounding=_ROUNDING[self.config.rounding])
+            return {"success": float(value) if self.config.output_as == "number" else format(value, "f")}
+        except (InvalidOperation, ZeroDivisionError, ValueError, TypeError) as exc:
+            return {"error": {"message": str(exc), "type": exc.__class__.__name__}}
 
 
 class FilterItemsConfig(NodeConfig):

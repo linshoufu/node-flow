@@ -6,6 +6,8 @@ from apps.api.nodeflow_api.executor import WorkflowExecutor
 from apps.api.nodeflow_api.node_registry import NodeRegistry
 from apps.api.nodeflow_api.schemas import Position, WorkflowDocument, WorkflowEdge, WorkflowNode, WorkflowSubflow
 from apps.api.nodeflow_api.storage import Storage
+from nodeflow_sdk import NodeContext
+from nodes.builtin.data import DecimalMathNode, JsonTemplateNode, LookupNode
 
 
 def make_registry() -> NodeRegistry:
@@ -97,6 +99,27 @@ def test_item_data_nodes_publish_items_port_contracts():
         assert node_type.outputs["items"]["schema"]["type"] == "array"
 
     assert registry.get("data.merge_items").inputs["items"]["maxConnections"] is None
+
+
+@pytest.mark.asyncio
+async def test_generic_lookup_template_and_decimal_nodes_support_purchase_style_data():
+    context = NodeContext(run_id="run", node_id="node", data={"loop": {"item": {"rows": [{"物料编码": "MAT-001", "数量": "3"}]}}})
+    lookup = LookupNode(config={
+        "records_path": "body.data.records",
+        "record_key_path": "materialCode",
+        "lookup_value": '{{ loop.item.rows.0["物料编码"] }}',
+        "mode": "one",
+    })
+    lookup_result = await lookup.execute(context, {"source": {"body": {"data": {"records": [{"materialCode": "MAT-001", "price": "12.50"}]}}}})
+    assert lookup_result == {"success": {"materialCode": "MAT-001", "price": "12.50"}}
+
+    amount = DecimalMathNode(config={"operation": "multiply", "left": '{{ loop.item.rows.0["数量"] }}', "right": "{{ inputs.input.price }}", "scale": 2})
+    amount_result = await amount.execute(context, {"input": lookup_result["success"]})
+    assert amount_result == {"success": "37.50"}
+
+    template = JsonTemplateNode(config={"template": {"material": '{{ inputs.input.materialCode }}', "amount": "{{ nodes.amount.outputs.success }}"}})
+    template_context = NodeContext(run_id="run", node_id="node", data={"nodes": {"amount": {"outputs": amount_result}}})
+    assert await template.execute(template_context, {"input": lookup_result["success"]}) == {"success": {"material": "MAT-001", "amount": "37.50"}}
 
 
 @pytest.mark.asyncio

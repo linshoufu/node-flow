@@ -1,4 +1,4 @@
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+﻿export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export type JsonSchema = {
   [key: string]: unknown;
@@ -51,7 +51,8 @@ export type NodeFormControl =
   | "dynamic_input_list"
   | "dynamic_output_list"
   | "url"
-  | "credential";
+  | "credential"
+  | "http_profile";
 
 export type NodeFormExpressionMode = "allowed" | "disabled" | "required";
 
@@ -191,6 +192,22 @@ export type NodeFormManifest = {
   defaults?: Record<string, unknown> | null;
   placements?: Record<string, "inline" | "panel"> | null;
   portPresentation?: Partial<Record<"inputs" | "outputs", Record<string, NodePortPresentation>>> | null;
+  cardStyle?: NodeCardStyle | null;
+  summaryTemplate?: NodeSummaryTemplate | null;
+};
+
+export type NodeSummaryTemplate = {
+  badge?: string;
+  primary?: string;
+  secondary?: string;
+};
+
+export type NodeCardStyle = {
+  /** A presentation-only accent for the node card; it never changes node execution. */
+  accent?: string;
+  density?: "compact" | "comfortable";
+  /** Semantic summaries are generated from the node type and its current config. */
+  summary?: "auto" | "hidden";
 };
 
 export type NodePortPresentation = {
@@ -325,6 +342,29 @@ export type ProjectEnvironmentUpdateRequest = {
   variables?: Record<string, JsonValue>;
   credential_overrides?: Record<string, string>;
 };
+
+export type HttpProfile = {
+  id: string;
+  name: string;
+  base_url: string;
+  headers: Record<string, string>;
+  credential_id: string | null;
+  timeout_seconds: number | null;
+  authentication: Record<string, JsonValue>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HttpProfileCreateRequest = {
+  name: string;
+  base_url?: string;
+  headers?: Record<string, string>;
+  credential_id?: string | null;
+  timeout_seconds?: number | null;
+  authentication?: Record<string, JsonValue>;
+};
+
+export type HttpProfileUpdateRequest = Partial<HttpProfileCreateRequest>;
 
 export type WorkflowDocument = {
   id: string;

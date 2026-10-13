@@ -157,6 +157,17 @@ class StorageBase:
                       created_at TEXT NOT NULL,
                       updated_at TEXT NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS http_profiles (
+                      id TEXT PRIMARY KEY,
+                      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                      base_url TEXT NOT NULL DEFAULT '',
+                      headers_json TEXT NOT NULL DEFAULT '{}',
+                      credential_id TEXT,
+                      timeout_seconds INTEGER,
+                      authentication_json TEXT NOT NULL DEFAULT '{}',
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL
+                    );
                     CREATE TABLE IF NOT EXISTS workflow_static_data (
                       workflow_id TEXT PRIMARY KEY,
                       data_json TEXT NOT NULL,
@@ -241,6 +252,13 @@ class StorageBase:
                 if "credential_overrides_json" not in environment_columns:
                     self._connection.execute(
                         "ALTER TABLE project_environments ADD COLUMN credential_overrides_json TEXT NOT NULL DEFAULT '{}'"
+                    )
+                http_profile_columns = {
+                    row["name"] for row in self._connection.execute("PRAGMA table_info(http_profiles)").fetchall()
+                }
+                if "authentication_json" not in http_profile_columns:
+                    self._connection.execute(
+                        "ALTER TABLE http_profiles ADD COLUMN authentication_json TEXT NOT NULL DEFAULT '{}'"
                     )
                 if self._connection.execute(
                     "SELECT 1 FROM project_environments WHERE id = 'default'"

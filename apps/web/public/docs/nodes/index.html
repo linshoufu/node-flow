@@ -5,358 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Node Flow 内置节点文档</title>
     <style>
-      :root {
-        color: #1b2430;
-        background: #eef2f6;
-        font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
-      }
-
-      body {
-        margin: 0;
-      }
-
-      main {
-        max-width: 980px;
-        margin: 0 auto;
-        padding: 32px 18px 56px;
-      }
-
-      h1,
-      h2,
-      h3 {
-        margin: 0;
-        color: #172231;
-      }
-
-      h1 {
-        font-size: 28px;
-      }
-
-      h2 {
-        margin-top: 30px;
-        border-bottom: 1px solid #d5dde7;
-        padding-bottom: 8px;
-        font-size: 19px;
-      }
-
-      h3 {
-        font-size: 16px;
-      }
-
-      p,
-      li {
-        color: #425166;
-        font-size: 14px;
-        line-height: 1.7;
-      }
-
-      a {
-        color: #1d5f88;
-        font-weight: 700;
-      }
-
-      .summary {
-        margin-top: 10px;
-        max-width: 760px;
-      }
-
-      .node-list {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 8px;
-        margin: 20px 0 8px;
-        padding: 0;
-        list-style: none;
-      }
-
-      .node-list a {
-        display: block;
-        border: 1px solid #d6dee8;
-        border-radius: 7px;
-        background: #ffffff;
-        padding: 9px 11px;
-        text-decoration: none;
-      }
-
-      section.node-doc {
-        scroll-margin-top: 16px;
-        margin-top: 14px;
-        border: 1px solid #d6dee8;
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 16px;
-      }
-
-      .node-id {
-        display: inline-block;
-        margin-top: 5px;
-        border-radius: 999px;
-        background: #eef3f7;
-        color: #536273;
-        padding: 3px 8px;
-        font-family: Consolas, "Liberation Mono", monospace;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 10px;
-      }
-
-      .meta span {
-        border: 1px solid #d8e2eb;
-        border-radius: 999px;
-        background: #f7fafc;
-        color: #4c5d72;
-        padding: 2px 8px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      code {
-        border-radius: 4px;
-        background: #edf2f7;
-        color: #26384d;
-        padding: 2px 5px;
-      }
+      :root { color: #1b2430; background: #eef2f6; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+      body { margin: 0; }
+      main { max-width: 980px; margin: 0 auto; padding: 32px 18px 56px; }
+      h1, h2, h3 { margin: 0; color: #172231; }
+      h1 { font-size: 28px; }
+      h2 { margin-top: 30px; border-bottom: 1px solid #d5dde7; padding-bottom: 8px; font-size: 19px; }
+      h3 { font-size: 16px; }
+      p, li { color: #425166; font-size: 14px; line-height: 1.7; }
+      a { color: #1d5f88; font-weight: 700; }
+      .summary { margin-top: 10px; max-width: 760px; }
+      .node-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin: 20px 0 8px; padding: 0; list-style: none; }
+      .node-list a { display: block; border: 1px solid #d6dee8; border-radius: 7px; background: #fff; padding: 9px 11px; text-decoration: none; }
+      section.node-doc { scroll-margin-top: 16px; margin-top: 14px; border: 1px solid #d6dee8; border-radius: 8px; background: #fff; padding: 16px; }
+      .node-id { display: inline-block; margin-top: 5px; border-radius: 999px; background: #eef3f7; color: #536273; padding: 3px 8px; font-family: Consolas, monospace; font-size: 12px; font-weight: 700; }
+      .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .meta span { border: 1px solid #d8e2eb; border-radius: 999px; background: #f7fafc; color: #4c5d72; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+      code { border-radius: 4px; background: #edf2f7; color: #26384d; padding: 2px 5px; }
     </style>
   </head>
   <body>
     <main>
       <h1>Node Flow 内置节点文档</h1>
-      <p class="summary">
-        这里记录当前内置节点的用途、常见输入输出和使用提示。节点由 Python 脚本通过
-        <code>@node(...)</code> 注册，前端会根据这些元数据渲染节点库、配置面板、端口和文档入口。
-      </p>
+      <p class="summary">这里记录当前内置节点的用途、常见输入输出和使用提示。节点由 Python 脚本通过 <code>@node(...)</code> 注册，前端会根据这些元数据渲染节点库、配置面板、端口和文档入口。</p>
 
       <ul class="node-list">
-        <li><a href="#manual.trigger">手动触发</a></li>
-        <li><a href="#schedule.trigger">定时触发</a></li>
-        <li><a href="#workflow.trigger">工作流触发</a></li>
-        <li><a href="#workflow.execute">执行工作流</a></li>
-        <li><a href="#workflow.return">工作流返回</a></li>
-        <li><a href="#webhook.trigger">Webhook 触发</a></li>
-        <li><a href="#webhook.respond">Webhook 响应</a></li>
-        <li><a href="#http.request">HTTP 请求</a></li>
-        <li><a href="#data.csv_read">读取 CSV</a></li>
-        <li><a href="#data.map_items">映射数据项</a></li>
-        <li><a href="#data.filter_items">筛选数据项</a></li>
-        <li><a href="#data.merge_items">合并数据项</a></li>
-        <li><a href="#data.collect">命名汇聚</a></li>
-        <li><a href="#control.each_item">逐项循环</a></li>
-        <li><a href="#control.foreach">遍历循环</a></li>
-        <li><a href="#control.while">条件循环</a></li>
-        <li><a href="#logic.if">条件分支</a></li>
-        <li><a href="#logic.switch">路由分支</a></li>
-        <li><a href="#logic.set_variable">设置变量</a></li>
-        <li><a href="#data.extract">提取数据</a></li>
-        <li><a href="#utility.transform">转换数据</a></li>
-        <li><a href="#utility.log">记录日志</a></li>
-        <li><a href="#utility.delay">延迟等待</a></li>
-        <li><a href="#assert.status_code">状态码断言</a></li>
-        <li><a href="#assert.equals">相等断言</a></li>
-        <li><a href="#assert.contains">包含断言</a></li>
-        <li><a href="#test.record_result">记录测试结果</a></li>
-        <li><a href="#test.summary">测试汇总</a></li>
-        <li><a href="#test.write_report">写入测试报告</a></li>
+        <li><a href="#manual.trigger">手动触发</a></li><li><a href="#schedule.trigger">定时触发</a></li><li><a href="#workflow.trigger">工作流触发</a></li><li><a href="#workflow.execute">执行工作流</a></li><li><a href="#workflow.return">工作流返回</a></li><li><a href="#webhook.trigger">Webhook 触发</a></li><li><a href="#webhook.respond">Webhook 响应</a></li><li><a href="#http.request">HTTP 请求</a></li><li><a href="#data.csv_read">读取 CSV</a></li><li><a href="#data.map_items">映射数据项</a></li><li><a href="#data.filter_items">筛选数据项</a></li><li><a href="#data.merge_items">合并数据项</a></li><li><a href="#data.collect">命名汇聚</a></li><li><a href="#control.each_item">逐项循环</a></li><li><a href="#control.foreach">遍历循环</a></li><li><a href="#control.while">条件循环</a></li><li><a href="#logic.if">条件分支</a></li><li><a href="#logic.switch">路由分支</a></li><li><a href="#logic.set_variable">设置变量</a></li><li><a href="#data.extract">提取数据</a></li><li><a href="#utility.transform">转换数据</a></li><li><a href="#utility.log">记录日志</a></li><li><a href="#utility.delay">延迟等待</a></li><li><a href="#assert.status_code">状态码断言</a></li><li><a href="#assert.equals">相等断言</a></li><li><a href="#assert.contains">包含断言</a></li><li><a href="#test.record_result">记录测试结果</a></li><li><a href="#test.summary">测试汇总</a></li><li><a href="#test.write_report">写入测试报告</a></li>
       </ul>
 
-      <h2>触发器</h2>
-      <section class="node-doc" id="manual.trigger">
-        <h3>手动触发</h3>
-        <span class="node-id">manual.trigger</span>
-        <p>从配置中的 payload 产生初始数据，适合手动启动、调试和构造测试输入。</p>
-        <div class="meta"><span>输出：初始数据</span><span>分组：触发器</span></div>
-      </section>
+      <h2>触发器与工作流</h2>
+      <section class="node-doc" id="manual.trigger"><h3>手动触发</h3><span class="node-id">manual.trigger</span><p>从配置中的 payload 产生初始数据，适合手动启动、调试和构造测试输入。</p><div class="meta"><span>输出：初始数据</span><span>分组：触发器</span></div></section>
+      <section class="node-doc" id="schedule.trigger"><h3>定时触发</h3><span class="node-id">schedule.trigger</span><p>按固定间隔自动启动已启用的工作流。首次保存或启用后会等待一个完整间隔，再创建新的运行记录。</p><div class="meta"><span>配置：间隔秒数</span><span>分组：触发器</span></div></section>
+      <section class="node-doc" id="workflow.trigger"><h3>工作流触发</h3><span class="node-id">workflow.trigger</span><p>作为被调用工作流的入口，接收调用方传入的数据。手动运行时会提供空对象。</p><div class="meta"><span>输出：调用输入</span></div></section>
+      <section class="node-doc" id="workflow.execute"><h3>执行工作流</h3><span class="node-id">workflow.execute</span><p>同步调用一个已保存的工作流，等待它通过“工作流返回”节点给出结果。</p><div class="meta"><span>输入：调用数据</span><span>输出：结果、错误</span></div></section>
+      <section class="node-doc" id="workflow.return"><h3>结束 / 输出</h3><span class="node-id">workflow.return</span><p>声明工作流的最终结果，并作为调用方接收的返回值。</p><div class="meta"><span>输入：最终结果</span><span>输出：完成</span></div></section>
+      <section class="node-doc" id="webhook.trigger"><h3>Webhook 触发</h3><span class="node-id">webhook.trigger</span><p>收到匹配方法和路径的 HTTP 请求后启动工作流，并输出请求元数据和请求体。</p><div class="meta"><span>输出：请求数据</span></div></section>
+      <section class="node-doc" id="webhook.respond"><h3>Webhook 响应</h3><span class="node-id">webhook.respond</span><p>为当前 Webhook 请求设置 JSON 响应体、状态码和响应头。</p><div class="meta"><span>输入：响应内容</span><span>输出：已响应</span></div></section>
 
-      <section class="node-doc" id="schedule.trigger">
-        <h2>定时触发</h2>
-        <span class="node-id">schedule.trigger</span>
-        <p>按固定间隔自动启动已启用的工作流。首次保存或启用后会等待一个完整间隔，再创建新的运行记录。</p>
-        <ul>
-          <li>配置“间隔秒数”，范围为 10 秒到 7 天。</li>
-          <li>定时触发必须作为入口节点，不能接收上游连线。</li>
-          <li>同一工作流已有排队或运行中的实例时，会跳过本轮，避免并发重入。</li>
-        </ul>
-      </section>
+      <h2>网络与数据</h2>
+      <section class="node-doc" id="http.request"><h3>HTTP 请求</h3><span class="node-id">http.request</span><p>发送 HTTP 请求并输出状态码、响应头和响应体。</p><div class="meta"><span>输入：请求体、请求头</span><span>输出：响应、错误</span></div></section>
+      <section class="node-doc" id="data.csv_read"><h3>读取 CSV</h3><span class="node-id">data.csv_read</span><p>读取 CSV 文件并输出 headers、rows、columns、row_count 和逐行数据项。数据项可直接连接到逐项循环。</p><div class="meta"><span>输出：数据集、数据项、错误</span></div></section>
+      <section class="node-doc" id="data.extract"><h3>提取数据</h3><span class="node-id">data.extract</span><p>从输入对象中按路径提取一个值，适合把复杂响应整理成下游节点需要的字段。</p><div class="meta"><span>输入：数据</span><span>输出：提取值、错误</span></div></section>
+      <section class="node-doc" id="data.map_items"><h3>映射数据项</h3><span class="node-id">data.map_items</span><p>为每个输入数据项构造新的 JSON 值，同时保留来源配对和二进制元数据。</p><div class="meta"><span>输入：数据项</span><span>输出：数据项</span></div></section>
+      <section class="node-doc" id="data.filter_items"><h3>筛选数据项</h3><span class="node-id">data.filter_items</span><p>读取每个数据项中的值并按比较方式保留匹配项。</p><div class="meta"><span>输入：数据项</span><span>输出：匹配项</span></div></section>
+      <section class="node-doc" id="data.merge_items"><h3>合并数据项</h3><span class="node-id">data.merge_items</span><p>把多个上游数据项流按到达顺序追加为一条流。</p><div class="meta"><span>输入：多路数据项</span><span>输出：合并结果</span></div></section>
+      <section class="node-doc" id="data.collect"><h3>命名汇聚</h3><span class="node-id">data.collect</span><p>为每条上游连线配置独立的输入端口名称，再输出一个以端口标识为键的对象。</p><div class="meta"><span>输入：具名端口</span><span>输出：汇聚结果</span></div></section>
 
-      <section class="node-doc" id="workflow.trigger">
-        <h3>工作流触发</h3>
-        <span class="node-id">workflow.trigger</span>
-        <p>作为被调用工作流的唯一入口，接收调用方传入的数据。手动运行时会提供空对象。</p>
-        <div class="meta"><span>输出：调用输入</span><span>分组：触发器</span></div>
-      </section>
-      <section class="node-doc" id="workflow.execute">
-        <h3>执行工作流</h3>
-        <span class="node-id">workflow.execute</span>
-        <p>同步调用一个已保存的工作流，等待它通过“工作流返回”节点给出结果。调用会继承取消请求和剩余超时。</p>
-        <div class="meta"><span>输入：调用数据</span><span>输出：结果、错误</span></div>
-      </section>
-      <section class="node-doc" id="workflow.return">
-        <h3>工作流返回</h3>
-        <span class="node-id">workflow.return</span>
-        <p>把当前数据显式返回给调用方。未使用该节点的被调用工作流会返回空对象。</p>
-        <div class="meta"><span>输入：结果</span><span>输出：已返回</span></div>
-      </section>
-      <section class="node-doc" id="webhook.trigger">
-        <h3>Webhook 触发</h3>
-        <span class="node-id">webhook.trigger</span>
-        <p>收到匹配方法和路径的 HTTP 请求后启动工作流，并输出请求方法、请求头、查询参数和请求体。</p>
-        <div class="meta"><span>输出：请求数据</span><span>分组：触发器</span></div>
-      </section>
-      <section class="node-doc" id="webhook.respond">
-        <h3>Webhook 响应</h3>
-        <span class="node-id">webhook.respond</span>
-        <p>为当前 Webhook 请求设置 JSON 响应体、响应状态码和响应头。一个请求只能实际设置一次响应。</p>
-        <div class="meta"><span>输入：响应内容</span><span>输出：已响应</span></div>
-      </section>
+      <h2>控制流与逻辑</h2>
+      <section class="node-doc" id="control.each_item"><h3>逐项循环</h3><span class="node-id">control.each_item</span><p>接收标准数据项并逐项执行循环体。循环体内可用 <code>{{ loop.item }}</code> 访问当前项。</p><div class="meta"><span>输入：数据项</span><span>输出：完成、错误</span></div></section>
+      <section class="node-doc" id="control.foreach"><h3>遍历循环</h3><span class="node-id">control.foreach</span><p>对列表或 CSV 行逐项执行循环体。循环体内可用 <code>{{ loop.item }}</code> 引用当前项。</p><div class="meta"><span>输入：循环输入</span><span>输出：完成、错误</span></div></section>
+      <section class="node-doc" id="control.while"><h3>条件循环</h3><span class="node-id">control.while</span><p>在条件表达式为真时重复执行循环体，适合轮询或等待状态变化。</p><div class="meta"><span>输入：循环输入</span><span>输出：完成、达到上限、错误</span></div></section>
+      <section class="node-doc" id="logic.if"><h3>条件分支</h3><span class="node-id">logic.if</span><p>根据条件表达式把数据路由到 true 或 false 输出端口。</p><div class="meta"><span>输入：输入</span><span>输出：为真、为假</span></div></section>
+      <section class="node-doc" id="logic.switch"><h3>路由分支</h3><span class="node-id">logic.switch</span><p>按配置的路由规则匹配输入值，并从对应输出端口继续执行。</p><div class="meta"><span>输入：输入</span><span>输出：规则端口、未匹配</span></div></section>
+      <section class="node-doc" id="logic.set_variable"><h3>设置变量</h3><span class="node-id">logic.set_variable</span><p>写入运行时变量，供后续节点通过 <code>{{ variables.name }}</code> 引用。</p><div class="meta"><span>输入：输入</span><span>输出：变量</span></div></section>
 
-      <h2>网络</h2>
-      <section class="node-doc" id="http.request">
-        <h3>HTTP 请求</h3>
-        <span class="node-id">http.request</span>
-        <p>发送 HTTP 请求并输出状态码、响应头和响应体。请求体和请求头既可以来自配置，也可以来自输入端口。</p>
-        <div class="meta"><span>输入：请求体、请求头</span><span>输出：响应、错误</span></div>
-      </section>
-
-      <h2>数据</h2>
-      <section class="node-doc" id="data.csv_read">
-        <h3>读取 CSV</h3>
-        <span class="node-id">data.csv_read</span>
-        <p>读取 CSV 文件并输出 headers、rows、columns、row_count 和逐行数据项。数据项可直接连接到“逐项循环”。</p>
-        <div class="meta"><span>输出：数据集、数据项、错误</span><span>常用：loop.item.column_name</span></div>
-      </section>
-      <section class="node-doc" id="data.extract">
-        <h3>提取数据</h3>
-        <span class="node-id">data.extract</span>
-        <p>从输入对象中按路径提取一个值，适合把复杂响应整理成下游节点需要的字段。</p>
-        <div class="meta"><span>输入：数据</span><span>输出：提取值、错误</span></div>
-      </section>
-      <section class="node-doc" id="data.map_items">
-        <h3>映射数据项</h3>
-        <span class="node-id">data.map_items</span>
-        <p>为每个输入数据项构造新的 JSON 值，同时保留来源配对和二进制元数据。配置中可用 <code>{{ item.field_name }}</code> 读取当前项，也可以组合成新的对象。</p>
-        <div class="meta"><span>输入：数据项</span><span>输出：数据项</span><span>常用：item.field_name</span></div>
-      </section>
-      <section class="node-doc" id="data.filter_items">
-        <h3>筛选数据项</h3>
-        <span class="node-id">data.filter_items</span>
-        <p>读取每个数据项中的值并按比较方式保留匹配项。值表达式可使用 <code>{{ item.field_name }}</code>；支持相等、不相等、存在、为空和非空比较。</p>
-        <div class="meta"><span>输入：数据项</span><span>输出：匹配项</span><span>常用：item.field_name</span></div>
-      </section>
-      <section class="node-doc" id="data.merge_items">
-        <h3>合并数据项</h3>
-        <span class="node-id">data.merge_items</span>
-        <p>把多个上游数据项流按到达顺序追加为一条流，适合在分支处理后重新汇合，或把多个数据来源交给同一个逐项循环。</p>
-        <div class="meta"><span>输入：多路数据项</span><span>输出：合并结果</span></div>
-      </section>
-      <section class="node-doc" id="data.collect">
-        <h3>命名汇聚</h3>
-        <span class="node-id">data.collect</span>
-        <p>为每条上游连线配置独立的输入端口名称，再输出一个以端口标识为键的对象。适合并行流程汇合后保留每个来源。</p>
-        <div class="meta"><span>输入：可配置的具名端口</span><span>输出：汇聚结果</span></div>
-      </section>
-
-      <h2>控制流</h2>
-      <section class="node-doc" id="control.each_item">
-        <h3>逐项循环</h3>
-        <span class="node-id">control.each_item</span>
-        <p>接收标准数据项并逐项执行循环体。循环体内可用 <code>{{ loop.item }}</code> 访问当前项的 JSON 数据。</p>
-        <div class="meta"><span>输入：数据项</span><span>输出：完成、错误</span></div>
-      </section>
-      <section class="node-doc" id="control.foreach">
-        <h3>遍历循环</h3>
-        <span class="node-id">control.foreach</span>
-        <p>对列表或 CSV 行逐项执行循环体。循环体内可用 <code>{{ loop.item }}</code> 引用当前项。</p>
-        <div class="meta"><span>输入：循环输入</span><span>输出：完成、错误</span></div>
-      </section>
-      <section class="node-doc" id="control.while">
-        <h3>条件循环</h3>
-        <span class="node-id">control.while</span>
-        <p>在条件表达式为真时重复执行循环体，适合轮询或等待状态变化。建议设置合理的最大迭代数。</p>
-        <div class="meta"><span>输入：循环输入</span><span>输出：完成、达到上限、错误</span></div>
-      </section>
-      <section class="node-doc" id="logic.if">
-        <h3>条件分支</h3>
-        <span class="node-id">logic.if</span>
-        <p>根据条件表达式把数据路由到 true 或 false 输出端口。</p>
-        <div class="meta"><span>输入：输入</span><span>输出：为真、为假</span></div>
-      </section>
-      <section class="node-doc" id="logic.switch">
-        <h3>路由分支</h3>
-        <span class="node-id">logic.switch</span>
-        <p>按配置的路由规则匹配输入值，并从对应的规则输出端口继续执行。每条规则的端口标识必须唯一，修改后会同步更新画布端口；未命中时走“未匹配”输出。</p>
-        <div class="meta"><span>输入：输入</span><span>输出：规则端口、未匹配</span><span>配置：规则的端口标识、名称和匹配值</span></div>
-      </section>
-      <section class="node-doc" id="logic.set_variable">
-        <h3>设置变量</h3>
-        <span class="node-id">logic.set_variable</span>
-        <p>写入运行时变量，供后续节点通过 <code>{{ variables.name }}</code> 引用。</p>
-        <div class="meta"><span>输入：输入</span><span>输出：变量</span></div>
-      </section>
-
-      <h2>工具</h2>
-      <section class="node-doc" id="utility.transform">
-        <h3>转换数据</h3>
-        <span class="node-id">utility.transform</span>
-        <p>返回一个表达式或配置值，用于整理字段、构造下游 payload 或临时调试数据形状。</p>
-        <div class="meta"><span>输入：输入</span><span>输出：转换结果</span></div>
-      </section>
-      <section class="node-doc" id="utility.log">
-        <h3>记录日志</h3>
-        <span class="node-id">utility.log</span>
-        <p>向运行日志写入一条消息，并将输入透传给下游。适合调试长工作流。</p>
-        <div class="meta"><span>输入：输入</span><span>输出：继续</span></div>
-      </section>
-      <section class="node-doc" id="utility.delay">
-        <h3>延迟等待</h3>
-        <span class="node-id">utility.delay</span>
-        <p>等待指定秒数后继续执行，常用于接口异步处理、重试前暂停或演示取消运行。</p>
-        <div class="meta"><span>输入：输入</span><span>输出：继续</span></div>
-      </section>
-
-      <h2>断言</h2>
-      <section class="node-doc" id="assert.status_code">
-        <h3>状态码断言</h3>
-        <span class="node-id">assert.status_code</span>
-        <p>检查 HTTP 响应状态码是否等于期望值。通过和失败会走不同输出端口。</p>
-        <div class="meta"><span>输入：响应</span><span>输出：通过、失败</span></div>
-      </section>
-      <section class="node-doc" id="assert.equals">
-        <h3>相等断言</h3>
-        <span class="node-id">assert.equals</span>
-        <p>按路径读取实际值，并和期望值做相等比较。</p>
-        <div class="meta"><span>输入：数据</span><span>输出：通过、失败</span></div>
-      </section>
-      <section class="node-doc" id="assert.contains">
-        <h3>包含断言</h3>
-        <span class="node-id">assert.contains</span>
-        <p>检查字符串、数组或对象值中是否包含期望内容。</p>
-        <div class="meta"><span>输入：数据</span><span>输出：通过、失败</span></div>
-      </section>
+      <h2>工具与断言</h2>
+      <section class="node-doc" id="utility.transform"><h3>转换数据</h3><span class="node-id">utility.transform</span><p>返回一个表达式或配置值，用于整理字段和构造下游 payload。</p><div class="meta"><span>输入：输入</span><span>输出：转换结果</span></div></section>
+      <section class="node-doc" id="utility.log"><h3>记录日志</h3><span class="node-id">utility.log</span><p>向运行日志写入一条消息，并将输入透传给下游。</p><div class="meta"><span>输入：输入</span><span>输出：继续</span></div></section>
+      <section class="node-doc" id="utility.delay"><h3>延迟等待</h3><span class="node-id">utility.delay</span><p>等待指定秒数后继续执行，常用于接口异步处理或重试前暂停。</p><div class="meta"><span>输入：输入</span><span>输出：继续</span></div></section>
+      <section class="node-doc" id="assert.status_code"><h3>状态码断言</h3><span class="node-id">assert.status_code</span><p>检查 HTTP 响应状态码是否等于期望值。</p><div class="meta"><span>输入：响应</span><span>输出：通过、失败</span></div></section>
+      <section class="node-doc" id="assert.equals"><h3>相等断言</h3><span class="node-id">assert.equals</span><p>按路径读取实际值，并和期望值做相等比较。</p><div class="meta"><span>输入：数据</span><span>输出：通过、失败</span></div></section>
+      <section class="node-doc" id="assert.contains"><h3>包含断言</h3><span class="node-id">assert.contains</span><p>检查字符串、数组或对象值中是否包含期望内容。</p><div class="meta"><span>输入：数据</span><span>输出：通过、失败</span></div></section>
 
       <h2>测试报告</h2>
-      <section class="node-doc" id="test.record_result">
-        <h3>记录测试结果</h3>
-        <span class="node-id">test.record_result</span>
-        <p>记录一条断言结果，供后续汇总节点生成测试报告。</p>
-        <div class="meta"><span>输入：断言结果</span><span>输出：记录结果</span></div>
-      </section>
-      <section class="node-doc" id="test.summary">
-        <h3>测试汇总</h3>
-        <span class="node-id">test.summary</span>
-        <p>汇总运行过程中记录的测试结果，生成总数、通过数、失败数和明细。</p>
-        <div class="meta"><span>输入：上游完成</span><span>输出：汇总、失败汇总</span></div>
-      </section>
-      <section class="node-doc" id="test.write_report">
-        <h3>写入测试报告</h3>
-        <span class="node-id">test.write_report</span>
-        <p>把测试报告写成 JSON 文件，适合本地归档或交给其它工具继续处理。</p>
-        <div class="meta"><span>输入：报告</span><span>输出：已写入、错误</span></div>
-      </section>
+      <section class="node-doc" id="test.record_result"><h3>记录测试结果</h3><span class="node-id">test.record_result</span><p>记录一条断言结果，供后续汇总节点生成测试报告。</p><div class="meta"><span>输入：断言结果</span><span>输出：记录结果</span></div></section>
+      <section class="node-doc" id="test.summary"><h3>测试汇总</h3><span class="node-id">test.summary</span><p>汇总运行过程中记录的测试结果，生成总数、通过数、失败数和明细。</p><div class="meta"><span>输入：上游完成</span><span>输出：汇总、失败汇总</span></div></section>
+      <section class="node-doc" id="test.write_report"><h3>写入测试报告</h3><span class="node-id">test.write_report</span><p>把测试报告写成 JSON 文件，适合本地归档或交给其它工具继续处理。</p><div class="meta"><span>输入：报告</span><span>输出：已写入、错误</span></div></section>
+
+      <h2>演示节点</h2>
+      <section class="node-doc" id="demo.test"><h3>演示节点</h3><span class="node-id">demo.test</span><p>用于测试节点表单编辑器和内联控件，包含常用配置控件示例。</p><div class="meta"><span>分组：测试</span></div></section>
     </main>
   </body>
 </html>

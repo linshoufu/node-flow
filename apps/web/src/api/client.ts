@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   NodeType,
   CredentialCreateRequest,
   CredentialReference,
@@ -11,6 +11,9 @@ import type {
   ProjectEnvironment,
   ProjectEnvironmentCreateRequest,
   ProjectEnvironmentUpdateRequest,
+  HttpProfile,
+  HttpProfileCreateRequest,
+  HttpProfileUpdateRequest,
   NodeAssetOpenSourceResult,
   NodeFormManifest,
   NodeTypeManifestDeleteResult,
@@ -204,6 +207,22 @@ export class ApiClient {
     return this.request(`/api/project-environments/${encodeURIComponent(environmentId)}`, { method: "DELETE" });
   }
 
+  listHttpProfiles(): Promise<HttpProfile[]> {
+    return this.request("/api/http-profiles");
+  }
+
+  createHttpProfile(request: HttpProfileCreateRequest): Promise<HttpProfile> {
+    return this.request("/api/http-profiles", this.jsonInit("POST", request));
+  }
+
+  updateHttpProfile(profileId: string, request: HttpProfileUpdateRequest): Promise<HttpProfile> {
+    return this.request(`/api/http-profiles/${encodeURIComponent(profileId)}`, this.jsonInit("PATCH", request));
+  }
+
+  deleteHttpProfile(profileId: string): Promise<void> {
+    return this.request(`/api/http-profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" });
+  }
+
   listWorkflows(): Promise<WorkflowSummary[]> {
     return this.request("/api/workflows");
   }
@@ -348,7 +367,7 @@ export class ApiClient {
     return this.request(`/api/runs/${encodeURIComponent(runId)}/events`);
   }
 
-  /** 增量拉取游标之后的运行事件（after_id 为 run_events 自增主键） */
+  /** 澧為噺鎷夊彇娓告爣涔嬪悗鐨勮繍琛屼簨浠讹紙after_id 涓?run_events 鑷涓婚敭锛?*/
   eventsAfter(runId: string, afterId: number): Promise<RunEvent[]> {
     const cursor = encodeURIComponent(String(afterId));
     return this.request(
@@ -356,7 +375,7 @@ export class ApiClient {
     );
   }
 
-  /** 构造运行事件 SSE 流地址（与 baseUrl 拼接方式保持一致） */
+  /** 鏋勯€犺繍琛屼簨浠?SSE 娴佸湴鍧€锛堜笌 baseUrl 鎷兼帴鏂瑰紡淇濇寔涓€鑷达級 */
   runEventStreamUrl(runId: string): string {
     return `${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/events/stream`;
   }

@@ -1,4 +1,4 @@
-class FallbackDOMMatrixReadOnly {
+﻿class FallbackDOMMatrixReadOnly {
   readonly m22: number;
 
   constructor(transform?: string) {

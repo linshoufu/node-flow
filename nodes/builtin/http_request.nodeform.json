@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "placements": {
+    "http_profile_id": "inline",
+    "method": "inline",
+    "url": "inline"
+  },
+  "portPresentation": {
+    "inputs": {},
+    "outputs": {}
+  }
+}
