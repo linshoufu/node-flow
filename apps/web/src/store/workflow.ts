@@ -9,6 +9,7 @@ import type {
   WorkflowSubflow,
 } from "@/types";
 import { apiClient } from "@/api/client";
+import { createNodeInstance } from "@/lib/nodeInstance";
 
 type WorkflowState = {
   // Document
@@ -195,19 +196,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   addNode: (nodeType, position) => {
     const { workflow: wf, canvasScope } = get();
     const id = `${nodeType.id}.${Date.now().toString(36)}`;
-    const config: Record<string, unknown> = {};
-    const props = nodeType.configSchema?.properties ?? {};
-    for (const [key, schema] of Object.entries(props)) {
-      const s = schema as Record<string, unknown>;
-      if ("default" in s) config[key] = s.default;
-    }
-    const node: WorkflowNode = {
-      id,
-      type: nodeType.id,
-      position,
-      config,
-      ...(["control.each_item", "control.foreach", "control.while"].includes(nodeType.id) ? { subflows: { body: { nodes: [], edges: [] } } } : {}),
-    };
+    const node = createNodeInstance(nodeType, id, position);
     set({
       workflow: updateActiveGraph(wf, canvasScope, (graph) => ({ ...graph, nodes: [...graph.nodes, node] })),
       selectedNodeId: id,

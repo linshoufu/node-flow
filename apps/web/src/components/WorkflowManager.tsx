@@ -1,8 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
+import { FolderOpen, Import, Plus } from "lucide-react";
 import { useWorkflowStore } from "@/store/workflow";
 import { apiClient } from "@/api/client";
 import type { WorkflowDocument } from "@/types";
 import { toast } from "./Toaster";
+
+const RUN_STATUS_LABELS: Record<string, string> = { queued: "排队中", running: "运行中", succeeded: "已完成", failed: "失败", cancelled: "已取消" };
 
 export function WorkflowManager({ onOpen }: { onOpen?: () => void }) {
   const workflows = useWorkflowStore((s) => s.workflows);
@@ -68,14 +71,13 @@ export function WorkflowManager({ onOpen }: { onOpen?: () => void }) {
   }, [loadWorkflows, selectWorkflow]);
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center gap-3 px-4 py-3 border-b">
-        <h2 className="text-sm font-semibold">工作流管理</h2>
-        <span className="text-xs text-muted">{workflows.length} 个工作流</span>
-        <div className="flex-1" />
-        <label className="px-3 py-1 rounded text-xs border border-border hover:bg-raised cursor-pointer transition">
-          📥 导入
-          <input type="file" accept=".json" onChange={handleImport} className="hidden" disabled={importing} />
+    <div className="workflow-manager h-full min-h-0 min-w-0 flex flex-col">
+      <div className="manager-toolbar flex items-center gap-3 px-4 py-3 border-b">
+        <div className="min-w-0 flex-1"><h2 className="whitespace-nowrap text-sm font-semibold">工作流管理</h2><p className="mt-0.5 text-[11px] text-muted">{workflows.length} 个工作流</p></div>
+        <div className="flex shrink-0 items-center gap-2">
+        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border border-border hover:bg-raised cursor-pointer transition focus-within:ring-2 focus-within:ring-primary">
+          <Import size={14} />导入
+          <input aria-label="导入工作流 JSON" type="file" accept=".json" onChange={handleImport} className="sr-only" disabled={importing} />
         </label>
         <button
           onClick={async () => {
@@ -88,20 +90,21 @@ export function WorkflowManager({ onOpen }: { onOpen?: () => void }) {
               onOpen?.();
             } catch { toast("创建失败", "error"); }
           }}
-          className="px-3 py-1 rounded text-xs bg-primary text-white font-medium hover:opacity-90"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-primary text-white font-medium hover:opacity-90"
         >
-          + 新建
+          <Plus size={14} />新建
         </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4">
         {workflows.length === 0 ? (
           <div className="text-center text-muted py-12">
-            <div className="text-3xl mb-2 opacity-20">📂</div>
+            <FolderOpen size={32} className="mx-auto mb-3 opacity-40" />
             <div className="text-sm">暂无工作流</div>
             <div className="text-xs mt-1">点击"新建"或"导入"开始</div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-3">
             {workflows.map((wf) => (
               <div
                 key={wf.id}
@@ -111,7 +114,7 @@ export function WorkflowManager({ onOpen }: { onOpen?: () => void }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{wf.name}</div>
                     <div className="text-[10px] text-muted mt-0.5">
-                      v{wf.version ?? 1} · {wf.last_run_status ?? "从未运行"}
+                      v{wf.version ?? 1} · {RUN_STATUS_LABELS[wf.last_run_status ?? ""] ?? wf.last_run_status ?? "从未运行"}
                     </div>
                   </div>
                   {wf.active && (

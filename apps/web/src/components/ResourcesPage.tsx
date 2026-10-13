@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
+import { Globe, KeyRound, PanelsTopLeft, SlidersHorizontal, Variable } from "lucide-react";
 import { apiClient } from "@/api/client";
 import type { CredentialReference, CredentialSummary, CredentialType, HttpProfile, JsonValue, ProjectVariable, ProjectEnvironment } from "@/types";
 import { toast } from "./Toaster";
 import { NodeStudio } from "./NodeStudio";
+import { NumberInput } from "./NumberInput";
 
 type ResSection = "credentials" | "variables" | "environments" | "httpProfiles" | "nodeStudio";
 
@@ -52,43 +54,41 @@ export function ResourcesPage() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="resources-page flex h-full min-h-0 min-w-0">
       {/* Nav */}
-      <nav className="w-52 shrink-0 border-r bg-surface flex flex-col">
-        <div className="p-3 border-b">
+      <nav aria-label="资源导航" className="resource-nav flex w-44 shrink-0 flex-col border-r bg-surface">
+        <div className="resource-nav-heading p-4 border-b">
           <div className="text-sm font-semibold">资源中心</div>
           <div className="text-xs text-muted mt-0.5">管理依赖</div>
         </div>
       <div className="flex-1 p-2 flex flex-col gap-1">
-          <button
-            onClick={() => setSection("nodeStudio")}
-            className={`text-left px-3 py-2 rounded-lg text-xs transition ${section === "nodeStudio" ? "bg-primary/15 text-primary font-medium" : "text-muted hover:text-text hover:bg-raised"}`}
-          >
-            节点工作室
-          </button>
           {[
-            { k: "credentials" as const, icon: "🔑", label: "凭据管理" },
-            { k: "httpProfiles" as const, icon: "🌐", label: "HTTP 配置档" },
-            { k: "variables" as const, icon: "📝", label: "项目变量" },
-            { k: "environments" as const, icon: "⚙️", label: "运行环境" },
-          ].map(({ k, icon, label }) => (
+            { k: "nodeStudio" as const, Icon: PanelsTopLeft, label: "节点工作室" },
+            { k: "credentials" as const, Icon: KeyRound, label: "凭据管理" },
+            { k: "httpProfiles" as const, Icon: Globe, label: "HTTP 配置档" },
+            { k: "variables" as const, Icon: Variable, label: "项目变量" },
+            { k: "environments" as const, Icon: SlidersHorizontal, label: "运行环境" },
+          ].map(({ k, Icon, label }) => (
             <button
               key={k}
+              aria-label={label}
+              aria-current={section === k ? "page" : undefined}
+              title={label}
               onClick={() => setSection(k)}
-              className={`text-left px-3 py-2 rounded-lg text-xs transition ${
+              className={`flex items-center gap-2.5 text-left px-3 py-2.5 rounded-lg text-xs transition ${
                 section === k
                   ? "bg-primary/15 text-primary font-medium"
                   : "text-muted hover:text-text hover:bg-raised"
               }`}
             >
-              {icon} {label}
+              <Icon size={16} className="shrink-0" /><span className="resource-nav-label">{label}</span>
             </button>
           ))}
         </div>
       </nav>
 
       {/* Content */}
-      <div className={`flex-1 ${section === "nodeStudio" ? "overflow-hidden" : "overflow-y-auto p-6"}`}>
+      <div className={`resource-content min-h-0 min-w-0 flex-1 ${section === "nodeStudio" ? "overflow-hidden" : "resource-page-body overflow-y-auto p-6"}`}>
         {section === "nodeStudio" ? <NodeStudio /> : section === "credentials" ? (
           <div>
             <div className="flex justify-between items-center mb-4">
@@ -111,11 +111,11 @@ export function ResourcesPage() {
                 + 新建
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="resource-cards grid gap-3">
               {credentials.map((c) => (
                 <div key={c.id} className="rounded-xl border border-border bg-surface p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-sm">🔑</div>
+                    <div className="w-8 h-8 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><KeyRound size={16} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold truncate">{c.name}</div>
                       <div className="text-[10px] text-muted">{c.type_id}</div>
@@ -128,7 +128,7 @@ export function ResourcesPage() {
                 </div>
               ))}
               {credentials.length === 0 && (
-                <div className="col-span-2 text-center text-muted py-8 text-xs">暂无凭据，点击"新建"添加</div>
+                <div className="col-span-full text-center text-muted py-8 text-xs">暂无凭据，点击"新建"添加</div>
               )}
             </div>
             {selectedCredential && <CredentialEditor credential={selectedCredential} credentialTypes={credTypes} onClose={() => setSelectedCredential(null)} onSaved={async () => { await loadCredentials(); setSelectedCredential(null); }} />}
@@ -159,7 +159,7 @@ export function ResourcesPage() {
             </div>
             <div className="space-y-2">
               {variables.map((v) => (
-                <div key={v.name} className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
+                <div key={v.name} className="resource-variable flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
                   <code className="text-xs font-mono text-primary w-48 shrink-0 truncate">{v.name}</code>
                   <code className="text-xs font-mono text-muted flex-1 truncate">{typeof v.value === "string" ? v.value : JSON.stringify(v.value)}</code>
                   <button
@@ -244,7 +244,7 @@ function HttpProfilesPanel({ profiles, credentials, reload }: { profiles: HttpPr
         <label className="text-xs text-muted">名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：测试环境 API" className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label>
         <label className="text-xs text-muted">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.example.com" className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label>
         <label className="text-xs text-muted">凭据<select value={credentialId} onChange={(event) => setCredentialId(event.target.value)} className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</select></label>
-        <label className="text-xs text-muted">默认超时（秒）<input type="number" min="1" max="300" value={timeout} onChange={(event) => setTimeoutValue(event.target.value)} placeholder="30" className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label>
+        <div className="text-xs text-muted"><span className="mb-1.5 block">默认超时（秒）</span><NumberInput aria-label="默认超时（秒）" min={1} max={300} value={timeout} onValueChange={setTimeoutValue} placeholder="30" className="w-full" /></div>
       </div>
       <label className="mt-3 block text-xs text-muted">公共请求头（JSON）<textarea rows={3} value={headers} onChange={(event) => setHeaders(event.target.value)} placeholder={'{ "Accept": "application/json" }'} className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label>
       <label className="mt-3 block text-xs text-muted">认证策略（JSON，可选）<textarea rows={4} value={authentication} onChange={(event) => setAuthentication(event.target.value)} placeholder={'{ "mode": "login", "login": { "method": "POST", "path": "/login", "body": { "username": "{{ credential.username }}" }, "extract": { "source": "json", "path": "data.token", "target": "header", "name": "Authorization" } } }'} className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label>
@@ -252,7 +252,7 @@ function HttpProfilesPanel({ profiles, credentials, reload }: { profiles: HttpPr
       <button onClick={() => void create()} disabled={saving} className="mt-3 rounded bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{saving ? "正在创建…" : "创建配置档"}</button>
     </section>
     <div className="mt-5 space-y-2">
-      {profiles.map((profile) => <article key={profile.id} className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3"><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold">{profile.name}</h3><p className="mt-0.5 truncate font-mono text-[11px] text-primary">{profile.base_url || "仅公共请求头"}</p><p className="mt-1 text-[11px] text-muted">{Object.keys(profile.headers).length} 个公共请求头 · {profile.credential_id ? "已绑定凭据" : "无凭据"} · {profile.timeout_seconds ? `${profile.timeout_seconds}s` : "节点默认超时"}</p></div><button onClick={() => setSelectedProfile(profile)} className="text-xs text-primary hover:text-primary-foreground">查看 / 编辑</button><button onClick={async () => { if (!confirm(`删除配置档“${profile.name}”？`)) return; try { await apiClient.deleteHttpProfile(profile.id); await reload(); window.dispatchEvent(new Event("nodeflow:http-profiles-changed")); toast("已删除", "success"); } catch (error) { toast(error instanceof Error ? error.message : "删除失败", "error"); } }} className="text-xs text-muted hover:text-danger">删除</button></article>)}
+      {profiles.map((profile) => <article key={profile.id} className="http-profile-card flex items-center gap-3 rounded-lg border border-border bg-surface p-3"><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold">{profile.name}</h3><p className="mt-0.5 truncate font-mono text-[11px] text-primary">{profile.base_url || "仅公共请求头"}</p><p className="mt-1 text-[11px] text-muted">{Object.keys(profile.headers).length} 个公共请求头 · {profile.credential_id ? "已绑定凭据" : "无凭据"} · {profile.timeout_seconds ? `${profile.timeout_seconds}s` : "节点默认超时"}</p></div><button onClick={() => setSelectedProfile(profile)} className="text-xs text-primary hover:text-primary-foreground">查看 / 编辑</button><button onClick={async () => { if (!confirm(`删除配置档“${profile.name}”？`)) return; try { await apiClient.deleteHttpProfile(profile.id); await reload(); window.dispatchEvent(new Event("nodeflow:http-profiles-changed")); toast("已删除", "success"); } catch (error) { toast(error instanceof Error ? error.message : "删除失败", "error"); } }} className="text-xs text-muted hover:text-danger">删除</button></article>)}
       {profiles.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center text-xs text-muted">还没有 HTTP 配置档。创建后可在 HTTP 请求节点中选择。</div>}
     </div>
     {selectedProfile && <HttpProfileEditor profile={selectedProfile} credentials={credentials} onClose={() => setSelectedProfile(null)} onSaved={async () => { await reload(); window.dispatchEvent(new Event("nodeflow:http-profiles-changed")); setSelectedProfile(null); }} />}
@@ -301,5 +301,5 @@ function HttpProfileEditor({ profile, credentials, onClose, onSaved }: { profile
     finally { setSaving(false); }
   };
 
-  return <section className="mt-5 rounded-lg border border-primary/35 bg-raised/45 p-4" aria-label="编辑 HTTP 配置档"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold">查看 / 编辑 HTTP 配置档</h3><p className="mt-1 text-[11px] text-muted">公共请求头和认证策略可查看、修改；认证凭据以关联关系展示。</p></div><button onClick={onClose} className="text-xs text-muted hover:text-text">关闭</button></div><div className="mt-4 grid gap-3 md:grid-cols-2"><label className="text-xs text-muted">名称<input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">凭据<select value={credentialId} onChange={(event) => setCredentialId(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</select></label><label className="text-xs text-muted">默认超时（秒）<input type="number" min="1" max="300" value={timeout} onChange={(event) => setTimeoutValue(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label></div><label className="mt-3 block text-xs text-muted">公共请求头（JSON）<textarea rows={5} value={headers} onChange={(event) => setHeaders(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><label className="mt-3 block text-xs text-muted">认证策略（JSON）<textarea rows={6} value={authentication} onChange={(event) => setAuthentication(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="rounded px-3 py-2 text-xs text-muted hover:bg-surface">取消</button><button onClick={() => void save()} disabled={saving} className="rounded bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{saving ? "正在保存…" : "保存配置档"}</button></div></section>;
+  return <section className="mt-5 rounded-lg border border-primary/35 bg-raised/45 p-4" aria-label="编辑 HTTP 配置档"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold">查看 / 编辑 HTTP 配置档</h3><p className="mt-1 text-[11px] text-muted">公共请求头和认证策略可查看、修改；认证凭据以关联关系展示。</p></div><button onClick={onClose} className="text-xs text-muted hover:text-text">关闭</button></div><div className="mt-4 grid gap-3 md:grid-cols-2"><label className="text-xs text-muted">名称<input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">凭据<select value={credentialId} onChange={(event) => setCredentialId(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</select></label><div className="text-xs text-muted"><span className="mb-1.5 block">默认超时（秒）</span><NumberInput aria-label="默认超时（秒）" min={1} max={300} value={timeout} onValueChange={setTimeoutValue} className="w-full" /></div></div><label className="mt-3 block text-xs text-muted">公共请求头（JSON）<textarea rows={5} value={headers} onChange={(event) => setHeaders(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><label className="mt-3 block text-xs text-muted">认证策略（JSON）<textarea rows={6} value={authentication} onChange={(event) => setAuthentication(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="rounded px-3 py-2 text-xs text-muted hover:bg-surface">取消</button><button onClick={() => void save()} disabled={saving} className="rounded bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{saving ? "正在保存…" : "保存配置档"}</button></div></section>;
 }

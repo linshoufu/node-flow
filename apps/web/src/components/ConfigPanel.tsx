@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Activity, Braces, GitBranch, MousePointer2, Settings2, Trash2 } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { getActiveGraph, useWorkflowStore } from "@/store/workflow";
 import type { HttpProfile, NodeFormField, NodeType, RunEvent, RunRecord, WorkflowNode } from "@/types";
+import { nodeDescription, nodeIcon, nodeName } from "@/lib/nodePresentation";
+import { NumberInput } from "./NumberInput";
 
 type PanelTab = "config" | "runtime";
 type RuntimeTab = "input" | "output" | "error";
@@ -65,12 +67,13 @@ export function ConfigPanel() {
     </div>;
   }
 
-  return <div className="flex h-full min-h-0 flex-col">
+  const Icon = nodeIcon(nodeType);
+  return <div className="node-config flex h-full min-h-0 flex-col">
     <header className="border-b border-border/70 px-4 py-3">
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold">{nodeType.displayName ?? nodeType.name}</h2>
-          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted">{nodeType.description}</p>
+          <h2 className="flex items-center gap-2 truncate text-sm font-semibold"><Icon size={16} className="shrink-0 text-primary" />{nodeName(nodeType)}</h2>
+          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted">{nodeDescription(nodeType)}</p>
         </div>
         <span className="shrink-0 rounded bg-raised px-1.5 py-0.5 text-[9px] text-muted">v{nodeType.version ?? 1}</span>
       </div>
@@ -96,7 +99,7 @@ function NodeConfigEditor({ node, nodeType, httpProfiles, onConfigChange, onLabe
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="border-b border-border/70 px-4 py-3">
         <label className="mb-1 block text-xs font-medium text-text-secondary">节点名称</label>
-        <input value={node.label ?? ""} onChange={(event) => onLabelChange(node.id, event.target.value)} placeholder={nodeType.displayName ?? nodeType.name} className="w-full rounded border border-border bg-raised px-2 py-1.5 text-xs text-text outline-none focus:border-primary" />
+        <input value={node.label ?? ""} onChange={(event) => onLabelChange(node.id, event.target.value)} placeholder={nodeName(nodeType)} className="w-full rounded border border-border bg-raised px-2 py-1.5 text-xs text-text outline-none focus:border-primary" />
         <p className="mt-1 text-[10px] text-muted">用于画布和运行日志</p>
         {hasBodySubflow && <button type="button" onClick={onOpenSubflow} className="mt-3 flex h-8 w-full items-center justify-between rounded border border-primary/35 bg-primary/8 px-2.5 text-xs text-primary hover:bg-primary/14 focus:outline-none focus:ring-1 focus:ring-primary"><span className="flex items-center gap-1.5"><GitBranch size={13} />编辑循环体</span><span className="text-[10px] text-muted">{node.subflows?.body?.nodes.length ?? 0} 个节点</span></button>}
       </div>
@@ -113,15 +116,16 @@ function NodeConfigEditor({ node, nodeType, httpProfiles, onConfigChange, onLabe
 }
 
 function ConfigField({ field, value, required, httpProfiles, onChange }: { field: NodeFormField; value: unknown; required: boolean; httpProfiles: HttpProfile[]; onChange: (value: unknown) => void }) {
-  const label = <label className="mb-1 block text-xs font-medium">{field.label ?? field.key}{required && <span className="ml-1 text-[10px] font-normal text-danger">必填</span>}</label>;
+  const id = useId();
+  const label = <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-text-secondary">{field.label ?? field.key}{required && <span className="ml-1 text-[10px] font-normal text-danger">必填</span>}</label>;
   const shell = "mb-3 last:mb-0";
   const input = "w-full rounded border border-border bg-raised px-2 py-1.5 text-xs text-text outline-none focus:border-primary";
   if (field.control === "switch") return <label className={`${shell} flex items-center gap-2 text-xs font-medium`}><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-primary" />{field.label ?? field.key}</label>;
-  if (field.control === "select" && field.options) return <div className={shell}>{label}<select value={String(value ?? field.options[0]?.value ?? "")} onChange={(event) => onChange(event.target.value)} className={input}>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>;
-  if (field.control === "http_profile") return <div className={shell}>{label}<select value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)} className={input}><option value="">不使用配置档</option>{httpProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}{profile.base_url ? ` · ${profile.base_url}` : ""}</option>)}</select>{field.description && <p className="mt-1 text-[10px] leading-relaxed text-muted">{field.description}</p>}</div>;
-  if (field.control === "number") return <div className={shell}>{label}<input type="number" value={typeof value === "number" ? value : ""} onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))} className={`${input} max-w-32`} /></div>;
-  if (field.control === "json" || field.control === "textarea") return <div className={shell}>{label}<textarea rows={5} value={typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "")} onChange={(event) => { if (field.control !== "json") return onChange(event.target.value); try { onChange(JSON.parse(event.target.value)); } catch { onChange(event.target.value); } }} placeholder={field.placeholder} className={`${input} resize-y font-mono leading-relaxed`} /></div>;
-  return <div className={shell}>{label}<input value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ?? ""} className={input} /></div>;
+  if (field.control === "select" && field.options) return <div className={shell}>{label}<select id={id} value={String(value ?? field.options[0]?.value ?? "")} onChange={(event) => onChange(event.target.value)} className={input}>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>;
+  if (field.control === "http_profile") return <div className={shell}>{label}<select id={id} value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)} className={input}><option value="">不使用配置档</option>{httpProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}{profile.base_url ? ` · ${profile.base_url}` : ""}</option>)}</select>{field.description && <p className="mt-1 text-[10px] leading-relaxed text-muted">{field.description}</p>}</div>;
+  if (field.control === "number") return <div className={shell}>{label}<NumberInput id={id} aria-label={field.label ?? field.key} value={typeof value === "number" ? value : ""} onValueChange={(value) => onChange(value === "" ? null : Number(value))} className="w-40 max-w-full" /></div>;
+  if (field.control === "json" || field.control === "textarea") return <div className={shell}>{label}<textarea id={id} rows={5} value={typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "")} onChange={(event) => { if (field.control !== "json") return onChange(event.target.value); try { onChange(JSON.parse(event.target.value)); } catch { onChange(event.target.value); } }} placeholder={field.placeholder} className={`${input} resize-y font-mono leading-relaxed`} /></div>;
+  return <div className={shell}>{label}<input id={id} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ?? ""} className={input} /></div>;
 }
 
 function NodeRuntimeInspector({ node, nodeType, run, events }: { node: WorkflowNode; nodeType: NodeType; run: RunRecord | null; events: RunEvent[] }) {

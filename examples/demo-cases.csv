@@ -1,0 +1,5 @@
+reference,product_id,quantity
+batch-first,pencil,2
+batch-missing,missing-product,1
+batch-invalid,notebook,0
+batch-last,notebook,3

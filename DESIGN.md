@@ -8,7 +8,7 @@ Operate. The workbench supports a continuous loop of finding a node, composing a
 
 ## Visual Direction
 
-The canonical surface is a dark workflow workbench: a near-black, dotted canvas sits between dense graphite utility panels. It follows the supplied Figma reference rather than a generic dashboard pattern. The canvas stays visually dominant; surrounding chrome is quiet, compact, and sharply aligned.
+The canonical surface is a dark workflow workbench: a near-black, dotted canvas sits between graphite utility panels. Floating navigation and canvas controls use restrained glass transparency, a subtle highlight, and soft shadows. Node cards, forms, and result data retain solid dark surfaces for legibility. The canvas stays visually dominant; surrounding chrome is quiet and compact.
 
 ## Foundations
 
@@ -16,7 +16,7 @@ The canonical surface is a dark workflow workbench: a near-black, dotted canvas 
 - **Surfaces:** `--workbench-panel`, `--workbench-panel-strong`, and `--workbench-card` separate navigation, canvas, and inspection through small luminance steps rather than large borders.
 - **Semantic color:** teal indicates valid data/success, amber denotes attention or selection, blue is the committed primary action, and red is destructive/error only.
 - **Typography:** Chinese UI copy uses a compact system sans stack with a clear three-level hierarchy: 11px metadata, 12–13px operational controls, 16px+ state titles. Long labels truncate at control boundaries; explanatory copy uses strict, balanced Chinese line breaking.
-- **Geometry:** 4px rhythm, 8px component rounding, one-pixel low-contrast dividers, and 52px top bar. Default desktop columns allocate 17% palette, 63% canvas, and 20% inspector.
+- **Geometry:** 4px rhythm, 8–16px component rounding, one-pixel low-contrast dividers, and a 52px floating top bar. The palette defaults to 224px; the 288px inspector opens on node selection. Both can fold away. Results default to a 44px folded bar and expand for a new run; expanded height adapts to the viewport.
 
 ## Interaction Rules
 
@@ -25,11 +25,24 @@ The canonical surface is a dark workflow workbench: a near-black, dotted canvas 
 - The palette remains immediately usable; density is reduced through row styling and preview, not by hiding the default node set.
 - Empty canvas guidance presents templates as an optional accelerant and keeps the manual node-add path visible.
 - Focus, hover, selected, disabled, running, warning, and error states must remain visibly distinct without relying on color alone.
+- Built-in node names, descriptions, categories, and icons come from shared presentation helpers. Preserve custom names and original node IDs, port keys, and API payloads.
+- Canvas cards and Node Studio previews render the same `NodeCard`. Previews use 100% scale and local sample configuration, including dynamic ports and resolved summary templates; selecting the preview exposes contextual error ports. Preview edits do not update workflow data.
+- Node cards place a category icon beside the title, with category and labeled run status below. Inline controls share an inset group; port rows remain aligned at the card edges. Cards use solid graphite gradients, subtle edge highlights, and soft shadows.
+- Hovering or selecting a node highlights its direct connections and the corresponding ports at both ends. Other connections soften without disappearing. Leaving the node restores the selected node's connections; clearing selection restores the full graph.
+- Presentation updates retain React Flow's measured node dimensions and active drag position. Hover and selection must not hide nodes or restart their initial measurement; actual card size changes remain observed by the renderer.
+- The inspector opens when a node is selected and closes when selection is cleared. An empty inspector never reserves canvas width; a selected node's inspector can still be folded manually.
+- Numeric fields use the shared `NumberInput`: a value area and explicit minus/plus buttons, with one focus boundary. Native numeric typing, arrow keys, and min/max constraints remain available. Temporary editing text remains intact until blur so clearing or entering a negative number is possible. Other form fields use matching dark surfaces, 34px panel heights, and visible keyboard focus.
+- Node Studio groups each port's name, order, and visibility in one card. Labels sit above controls; the editor body scrolls independently while its save action stays visible. Omit empty group separators.
+- Batch results show total, passed, failed, and success rate, followed by a filterable, paginated list. A row opens its source data and corresponding response. Execution completion and individual result failure remain distinct; raw events and JSON remain available.
+- Resizing or folding panels preserves the canvas's world center and zoom. The fit control provides a view of the complete flow.
 
 ## Responsive Behavior
 
-- Up to 1100px: secondary top-bar labels are visually compacted so the canvas does not acquire horizontal page overflow.
-- Up to 760px: the header becomes a single responsive row and template cards stack; the existing workbench interaction model remains available.
+- Up to 1000px: utility panels overlay the canvas instead of taking its width.
+- Up to 900px: secondary top-bar labels compact while accessible names remain available.
+- Up to 760px: the header remains one row and event inspection stacks below a horizontally scrollable timeline.
+- Node Studio adapts to its available content width: three columns above 860px, a node picker plus preview/editor below 860px, and a scrolling vertical layout below 640px. Resource navigation becomes an icon rail at narrower window widths; resource and workflow cards wrap to one column when needed.
+- Reduced transparency preferences use solid navigation surfaces; reduced motion preferences remove transitions.
 
 ## Implementation Anchors
 
@@ -37,3 +50,4 @@ The canonical surface is a dark workflow workbench: a near-black, dotted canvas 
 - App shell and panel proportions: `apps/web/src/components/WorkflowWorkbenchLayout.tsx`
 - Command hierarchy: `apps/web/src/components/WorkflowTopbar.tsx`
 - Canvas and empty-state rendering: `apps/web/src/components/FlowCanvas.tsx`
+- Shared card rendering and preview: `apps/web/src/components/NodeCard.tsx`, `apps/web/src/components/NodeStudio.tsx`

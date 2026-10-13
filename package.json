@@ -10,6 +10,8 @@
     "build": "pnpm lint && pnpm build:web",
     "test:web": "pnpm --filter @node-flow/web test",
     "dev:api": "uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150",
+    "dev:demo-api": "uv run python -m uvicorn examples.demo_api:app --host 127.0.0.1 --port 8160 --no-access-log",
+    "demo:setup": "uv run python -m examples.demo_setup",
     "dev:worker": "python -m apps.api.nodeflow_api.worker",
     "doctor:nodes": "python -m apps.api.nodeflow_api.node_doctor nodes",
     "test:api": "pytest tests/api -q",
@@ -20,8 +22,5 @@
     "typescript": "^5.8.0",
     "vite": "^7.0.0",
     "vitest": "^3.2.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }
