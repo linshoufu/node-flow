@@ -1,6 +1,7 @@
 {
   "name": "node-flow",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev:web": "pnpm --filter @node-flow/web dev",
     "lint:web": "pnpm --filter @node-flow/web lint",
