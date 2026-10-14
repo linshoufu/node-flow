@@ -11,12 +11,13 @@ type NodeCardProps = {
   label?: string; selected?: boolean; connectedOutputHandles?: string[];
   highlightedInputHandles?: string[]; highlightedOutputHandles?: string[];
   httpProfiles?: HttpProfile[]; runStatus?: NodeRunStatus | null;
+  readOnly?: boolean;
   onConfigChange?: (key: string, value: unknown) => void;
   onOpenSubflow?: (node: WorkflowNode) => void;
   renderHandle?: (direction: "input" | "output", id: string, port: NodePort, color: string) => ReactNode;
 };
 
-export function NodeCard({ node: workflowNode, nodeType, manifest, selected = false, connectedOutputHandles = [], highlightedInputHandles = [], highlightedOutputHandles = [], httpProfiles = [], runStatus = null, onConfigChange, onOpenSubflow, renderHandle, label = workflowNode.label || (nodeType ? nodeName(nodeType) : workflowNode.type) }: NodeCardProps) {
+export function NodeCard({ node: workflowNode, nodeType, manifest, selected = false, connectedOutputHandles = [], highlightedInputHandles = [], highlightedOutputHandles = [], httpProfiles = [], runStatus = null, readOnly = false, onConfigChange, onOpenSubflow, renderHandle, label = workflowNode.label || (nodeType ? nodeName(nodeType) : workflowNode.type) }: NodeCardProps) {
   const color = manifest?.cardStyle?.accent ?? categoryColor(nodeType?.category ?? "");
   const compact = manifest?.cardStyle?.density === "compact";
   const inputs = orderedPorts("inputs", nodeType ? resolveNodePorts(nodeType, workflowNode.config, "inputs") : {}, manifest);
@@ -45,14 +46,14 @@ export function NodeCard({ node: workflowNode, nodeType, manifest, selected = fa
       <div className={compact ? "py-1" : "py-2"}>
         {visibleInputs.map(([key, port]) => <PortRow key={`in-${key}`} id={key} port={port} direction="input" compact={compact} highlighted={highlightedInputHandles.includes(key)} renderHandle={renderHandle} />)}
         {summary && <NodeSummaryView summary={summary} compact={compact} />}
-        {hasBodySubflow && <button type="button" disabled={!onOpenSubflow} className="nodrag nopan nowheel mx-3 my-2 flex w-[calc(100%_-_1.5rem)] items-center justify-between rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-2 text-[11px] text-text-secondary hover:border-primary/50 hover:text-text focus:outline-none focus:ring-1 focus:ring-primary/50" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenSubflow?.(workflowNode); }}><span className="flex items-center gap-2"><GitBranch size={14} className="text-primary" />编辑循环体</span><span className="text-muted">{bodyNodeCount} 个节点</span></button>}
-        {visibleFields.length > 0 && <div className="mx-3 my-2 rounded-lg border border-border/50 bg-canvas/50 px-2 py-1">
+        {hasBodySubflow && <button type="button" disabled={!onOpenSubflow} className="nodrag nopan nowheel mx-3 my-2 flex w-[calc(100%_-_1.5rem)] items-center justify-between rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-2 text-[11px] text-text-secondary hover:border-primary/50 hover:text-text focus:outline-none focus:ring-1 focus:ring-primary/50" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenSubflow?.(workflowNode); }}><span className="flex items-center gap-2"><GitBranch size={14} className="text-primary" />{readOnly ? "查看循环体" : "编辑循环体"}</span><span className="text-muted">{bodyNodeCount} 个节点</span></button>}
+        {visibleFields.length > 0 && <fieldset disabled={readOnly} className="mx-3 my-2 rounded-lg border border-border/50 bg-canvas/50 px-2 py-1">
         {visibleFields.map((field) => {
           const current = workflowNode.config[field.key];
           return <WidgetRow key={field.key} label={field.label ?? field.key} value={current} control={field.control} options={field.options} httpProfiles={httpProfiles} compact={compact} onChange={(value) => onConfigChange?.(field.key, value)} />;
         })}
         {fields.length > 3 && <p className="py-1 text-center text-[10px] text-muted">其余 {fields.length - 3} 项在右侧配置</p>}
-        </div>}
+        </fieldset>}
         {visibleInputs.length > 0 && visibleOutputs.length > 0 && !summary && !hasBodySubflow && !visibleFields.length && <div className="mx-3 my-1 border-t border-border/40" />}
         {visibleOutputs.map(([key, port]) => <PortRow key={`out-${key}`} id={key} port={port} direction="output" compact={compact} highlighted={highlightedOutputHandles.includes(key)} renderHandle={renderHandle} />)}
         {!visibleInputs.length && !visibleOutputs.length && !summary && <p className="px-3 py-3 text-[11px] text-muted">此节点未声明端口</p>}

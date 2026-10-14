@@ -47,6 +47,6 @@ def test_local_dev_scripts_use_fixed_shifted_ports() -> None:
     web_package = json.loads((repo_root / "apps" / "web" / "package.json").read_text(encoding="utf-8"))
 
     assert root_package["scripts"]["dev:api"] == (
-        "uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150"
+        "uv run python -m uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150"
     )
     assert web_package["scripts"]["dev"] == "vite --host 127.0.0.1 --port 5273 --strictPort"

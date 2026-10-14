@@ -1,3 +1,4 @@
+import httpx
 import pytest
 
 from nodeflow_sdk import NodeContext
@@ -18,6 +19,7 @@ class _RecordingAsyncClient:
 
     def __init__(self, **kwargs: object) -> None:
         type(self).init_kwargs = kwargs
+        self.cookies = httpx.Cookies()
 
     async def __aenter__(self) -> "_RecordingAsyncClient":
         return self

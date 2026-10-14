@@ -714,63 +714,63 @@ def test_webhook_response_node_returns_configured_http_response():
 
 
 def test_immediate_webhook_response_queues_the_run_and_returns_accepted():
-    client = TestClient(create_app(database_path=":memory:"))
-    workflow = {
-        "id": "wf_webhook_immediate",
-        "name": "Immediate webhook",
-        "nodes": [
-            {
-                "id": "webhook",
-                "type": "webhook.trigger",
-                "position": {"x": 0, "y": 0},
-                "config": {
-                    "method": "POST",
-                    "path": "hooks/immediate",
-                    "response_mode": "immediate",
+    with TestClient(create_app(database_path=":memory:")) as client:
+        workflow = {
+            "id": "wf_webhook_immediate",
+            "name": "Immediate webhook",
+            "nodes": [
+                {
+                    "id": "webhook",
+                    "type": "webhook.trigger",
+                    "position": {"x": 0, "y": 0},
+                    "config": {
+                        "method": "POST",
+                        "path": "hooks/immediate",
+                        "response_mode": "immediate",
+                    },
                 },
-            },
-            {
-                "id": "delay",
-                "type": "utility.delay",
-                "position": {"x": 240, "y": 0},
-                "config": {"seconds": 0.01},
-            },
-        ],
-        "edges": [
-            {
-                "id": "webhook_delay",
-                "source": "webhook",
-                "sourceHandle": "success",
-                "target": "delay",
-                "targetHandle": "input",
-            }
-        ],
-    }
+                {
+                    "id": "delay",
+                    "type": "utility.delay",
+                    "position": {"x": 240, "y": 0},
+                    "config": {"seconds": 0.01},
+                },
+            ],
+            "edges": [
+                {
+                    "id": "webhook_delay",
+                    "source": "webhook",
+                    "sourceHandle": "success",
+                    "target": "delay",
+                    "targetHandle": "input",
+                }
+            ],
+        }
 
-    assert client.post("/api/workflows", json=workflow).status_code == 200
+        assert client.post("/api/workflows", json=workflow).status_code == 200
 
-    response = client.post("/webhooks/hooks/immediate", json={"order_id": 42})
+        response = client.post("/webhooks/hooks/immediate", json={"order_id": 42})
 
-    assert response.status_code == 202
-    assert response.headers["location"].startswith("/api/runs/")
-    assert response.json()["status"] == "accepted"
-    run_id = response.json()["run"]["id"]
-    assert response.headers["location"] == f"/api/runs/{run_id}"
-    assert response.json()["run"]["workflow_id"] == workflow["id"]
-    deadline = time.monotonic() + 2.0
-    run = response.json()["run"]
-    while time.monotonic() < deadline:
-        run_response = client.get(f"/api/runs/{run_id}")
-        assert run_response.status_code == 200
-        run = run_response.json()
-        if run["status"] in TERMINAL_STATUSES:
-            break
-        time.sleep(0.02)
-    assert run["status"] == "succeeded"
-    assert run["execution_mode"] == "webhook"
-    invocation = client.app.state.storage.get_run_invocation(run_id)
-    assert invocation is not None
-    assert invocation.initial_input["body"] == {"order_id": 42}
+        assert response.status_code == 202
+        assert response.headers["location"].startswith("/api/runs/")
+        assert response.json()["status"] == "accepted"
+        run_id = response.json()["run"]["id"]
+        assert response.headers["location"] == f"/api/runs/{run_id}"
+        assert response.json()["run"]["workflow_id"] == workflow["id"]
+        deadline = time.monotonic() + 2.0
+        run = response.json()["run"]
+        while time.monotonic() < deadline:
+            run_response = client.get(f"/api/runs/{run_id}")
+            assert run_response.status_code == 200
+            run = run_response.json()
+            if run["status"] in TERMINAL_STATUSES:
+                break
+            time.sleep(0.02)
+        assert run["status"] == "succeeded"
+        assert run["execution_mode"] == "webhook"
+        invocation = client.app.state.storage.get_run_invocation(run_id)
+        assert invocation is not None
+        assert invocation.initial_input["body"] == {"order_id": 42}
 
 
 def test_immediate_webhook_rejects_a_webhook_response_node():

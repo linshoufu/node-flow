@@ -65,7 +65,10 @@ def build_workspace_resources_router(
                 detail=[{"path": "data", "message": str(exc), "code": "credential_data_invalid"}],
             ) from exc
         except CredentialStorageUnavailableError as exc:
-            raise HTTPException(status_code=503, detail="当前系统不支持本地凭据库。") from exc
+            raise HTTPException(
+                status_code=503,
+                detail="凭据库不可用，请检查服务密钥配置及密钥文件权限。",
+            ) from exc
 
     def _node_credential_ids(node) -> tuple[str, ...]:
         form = registry.get(node.type).form if registry.has(node.type) else None

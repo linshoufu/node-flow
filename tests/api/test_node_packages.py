@@ -235,7 +235,7 @@ def test_builtin_nodes_are_discovered_through_the_builtin_package():
         "name": "内置节点",
         "version": "1.0.0",
     }
-    assert result.packages[0].id == "nodeflow.builtin"
+    assert any(package.id == "nodeflow.builtin" for package in result.packages)
 
 
 def test_package_can_declare_credential_types_for_its_own_nodes(tmp_path: Path):

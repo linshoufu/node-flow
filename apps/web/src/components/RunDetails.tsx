@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Braces, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Clipboard, Clock3, ListChecks, Play, RefreshCw, X } from "lucide-react";
-import { apiClient } from "@/api/client";
-import { getActiveGraph, useWorkflowStore } from "@/store/workflow";
-import type { RunEvent, RunRecord, RunStatus, WorkflowNode } from "@/types";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Braces, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Clipboard, Clock3, ListChecks, RefreshCw, X } from "lucide-react";
+import { useWorkflowStore } from "@/store/workflow";
+import type { RunEvent, RunRecord, RunStatus, WorkflowDocument, WorkflowNode } from "@/types";
 import { nodeName } from "@/lib/nodePresentation";
 import { collectRunReport, parseBody, record, type RunReport, type RunResult } from "@/lib/runPresentation";
 import { toast } from "./Toaster";
@@ -15,110 +14,8 @@ const STATUS: Record<RunStatus, { label: string; tone: string; icon: typeof Circ
   cancelled: { label: "已取消", tone: "text-muted bg-raised", icon: X },
 };
 
-export function RunPanel({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
-  const workflowId = useWorkflowStore((state) => state.workflow.id);
-  const selectNode = useWorkflowStore((state) => state.selectNode);
-  const [runs, setRuns] = useState<RunRecord[]>([]);
-  const [activeRun, setActiveRun] = useState<RunRecord | null>(null);
-  const [events, setEvents] = useState<RunEvent[]>([]);
-  const [selectedEvent, setSelectedEvent] = useState<RunEvent | null>(null);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const currentWorkflow = useRef(workflowId);
-  const currentRun = useRef<string | null>(null);
-  const runRequest = useRef(0);
-  const eventRequest = useRef(0);
-  const userSelectedEvent = useRef(false);
-  currentWorkflow.current = workflowId;
-  currentRun.current = activeRun?.id ?? null;
-
-  const loadRuns = useCallback(async () => {
-    if (!workflowId) { setRuns([]); setActiveRun(null); return; }
-    const request = ++runRequest.current;
-    try {
-      const result = await apiClient.listWorkflowRuns(workflowId, 20);
-      if (currentWorkflow.current !== workflowId || request !== runRequest.current) return;
-      setRuns(result);
-      setActiveRun((current) => current ? result.find((run) => run.id === current.id) ?? result[0] ?? null : result[0] ?? null);
-    } catch { if (currentWorkflow.current === workflowId) toast("无法加载运行记录", "error"); }
-  }, [workflowId]);
-
-  const loadEvents = useCallback(async (run: RunRecord | null) => {
-    if (!run) { setEvents([]); setSelectedEvent(null); return; }
-    const request = ++eventRequest.current;
-    setLoadingEvents(true);
-    try {
-      const result = await apiClient.getRunEvents(run.id);
-      if (currentRun.current !== run.id || request !== eventRequest.current) return;
-      setEvents(result);
-      setSelectedEvent((current) => userSelectedEvent.current && current && current.run_id === run.id ? result.find((event) => event.id === current.id) ?? preferredEvent(result) : preferredEvent(result));
-    } catch { if (currentRun.current === run.id && request === eventRequest.current) { setEvents([]); setSelectedEvent(null); toast("无法加载运行事件", "error"); } }
-    finally { if (currentRun.current === run.id && request === eventRequest.current) setLoadingEvents(false); }
-  }, []);
-
-  useEffect(() => { setRuns([]); setActiveRun(null); setEvents([]); setSelectedEvent(null); void loadRuns(); }, [loadRuns]);
-  useEffect(() => { userSelectedEvent.current = false; setEvents([]); setSelectedEvent(null); }, [activeRun?.id]);
-  useEffect(() => { void loadEvents(activeRun); }, [activeRun?.id, activeRun?.status, loadEvents]);
-  useEffect(() => () => { currentWorkflow.current = ""; currentRun.current = null; runRequest.current++; eventRequest.current++; }, []);
-  useEffect(() => {
-    const focusNewRun = (event: Event) => {
-      const run = (event as CustomEvent<RunRecord>).detail;
-      if (!run || run.workflow_id !== workflowId) return;
-      runRequest.current++;
-      setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
-      setActiveRun(run);
-    };
-    window.addEventListener("nodeflow:run-created", focusNewRun);
-    return () => window.removeEventListener("nodeflow:run-created", focusNewRun);
-  }, [loadRuns, workflowId]);
-  useEffect(() => {
-    if (!activeRun || !["queued", "running"].includes(activeRun.status)) return;
-    const timer = window.setInterval(() => { void loadRuns(); void loadEvents(activeRun); }, 1800);
-    return () => window.clearInterval(timer);
-  }, [activeRun, loadEvents, loadRuns]);
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("nodeflow:run-state", {
-      detail: {
-        run: activeRun,
-        events: activeRun ? events.filter((event) => event.run_id === activeRun.id) : [],
-      },
-    }));
-  }, [activeRun, events]);
-
-  const createRun = async () => {
-    if (!workflowId) { toast("请先创建或选择一个工作流", "error"); return; }
-    try { const run = await apiClient.createRun(workflowId); window.dispatchEvent(new CustomEvent<RunRecord>("nodeflow:run-created", { detail: run })); toast("已开始运行", "success"); }
-    catch { toast("无法创建运行", "error"); }
-  };
-
-  return <section className="flex h-full min-h-0 flex-col" aria-label="运行结果">
-    <header className="flex h-[42px] shrink-0 items-center gap-2 border-b border-border/50 px-4">
-      <button onClick={onToggle} className="flex items-center gap-2 text-xs font-semibold text-text hover:text-white" aria-expanded={expanded}>
-        <ChevronDown size={15} className={`transition-transform ${expanded ? "" : "-rotate-90"}`} />运行结果
-        {runs.length > 0 && <span className="rounded bg-raised px-1.5 py-0.5 text-[10px] font-medium text-muted">{runs.length}</span>}
-      </button>
-      {activeRun && <StatusBadge status={activeRun.status} />}
-      <div className="flex-1" />
-      <button onClick={() => void loadRuns()} className="grid h-7 w-7 place-items-center rounded text-muted hover:bg-raised hover:text-text" title="刷新运行记录" aria-label="刷新运行记录"><RefreshCw size={14} /></button>
-      <button onClick={() => void createRun()} className="inline-flex h-7 items-center gap-1.5 rounded bg-primary px-2.5 text-[11px] font-semibold text-white hover:bg-primary/90"><Play size={12} fill="currentColor" />运行</button>
-    </header>
-    {expanded && <div className="run-panel-body grid min-h-0 flex-1 grid-cols-[176px_minmax(0,1fr)] overflow-hidden">
-      <aside className="overflow-y-auto border-r border-border/70 bg-canvas/35" aria-label="运行历史">
-        {runs.length === 0 ? <EmptyState text="尚无运行记录" /> : runs.map((run) => <button key={run.id} onClick={() => setActiveRun(run)} className={`w-full border-b border-border/45 px-4 py-3 text-left transition ${activeRun?.id === run.id ? "bg-primary/10" : "hover:bg-raised/60"}`}>
-          <div className="flex items-center gap-2"><StatusDot status={run.status} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{modeName(run.execution_mode)}</span><span className="font-mono text-[10px] text-muted">#{shortId(run.id)}</span></div>
-          <div className="mt-1.5 pl-4 text-[10px] text-muted">{formatTime(run.created_at)}</div>
-        </button>)}
-      </aside>
-      <div className="min-h-0 min-w-0 overflow-y-auto bg-surface">
-        {!activeRun ? <EmptyState text="选择一次运行来查看执行详情" /> : <ExecutionDetail key={activeRun.id} run={activeRun} events={events.filter((event) => event.run_id === activeRun.id)} selectedEvent={selectedEvent?.run_id === activeRun.id ? selectedEvent : null} onSelectEvent={(event) => { userSelectedEvent.current = true; setSelectedEvent(event); const state = useWorkflowStore.getState(); if (event.node_id && getActiveGraph(state.workflow, state.canvasScope).nodes.some((node) => node.id === event.node_id)) selectNode(event.node_id); }} loading={loadingEvents} />}
-      </div>
-    </div>}
-  </section>;
-}
-
-function ExecutionDetail({ run, events, selectedEvent, onSelectEvent, loading }: { run: RunRecord; events: RunEvent[]; selectedEvent: RunEvent | null; onSelectEvent: (event: RunEvent) => void; loading: boolean }) {
-  const workflow = useWorkflowStore((state) => state.workflow);
+export function RunDetails({ run, events, workflow, selectedEvent, onSelectEvent, loading }: { run: RunRecord; events: RunEvent[]; workflow: WorkflowDocument | null; selectedEvent: RunEvent | null; onSelectEvent: (event: RunEvent) => void; loading: boolean }) {
   const catalog = useWorkflowStore((state) => state.nodeTypes);
-  const isDirty = useWorkflowStore((state) => state.isDirty);
   const nodeInfo = useMemo(() => {
     const names: Record<string, string> = {};
     const types: Record<string, string> = {};
@@ -128,10 +25,10 @@ function ExecutionDetail({ run, events, selectedEvent, onSelectEvent, loading }:
       types[node.id] = node.type;
       Object.values(node.subflows ?? {}).forEach((flow) => visit(flow.nodes));
     });
-    visit(workflow.nodes);
+    visit(workflow?.nodes ?? []);
     return { names, types };
-  }, [workflow.nodes, catalog]);
-  const report = useMemo(() => collectRunReport(events, run.workflow_version === workflow.version && !isDirty ? nodeInfo.types : {}), [events, nodeInfo, run.workflow_version, workflow.version, isDirty]);
+  }, [workflow, catalog]);
+  const report = useMemo(() => collectRunReport(events, nodeInfo.types), [events, nodeInfo]);
   const [view, setView] = useState<"results" | "events" | null>(null);
   const activeView = view ?? (report ? "results" : "events");
   const duration = durationText(run.started_at, run.completed_at);
@@ -197,7 +94,7 @@ function EventRow({ event, name, selected, onClick }: { event: RunEvent; name?: 
 
 type InspectorTab = "output" | "input" | "logs" | "raw";
 
-function EventInspector({ run, event, name }: { run: RunRecord; event: RunEvent | null; name?: string }) {
+export function EventInspector({ run, event, name }: { run: RunRecord; event: RunEvent | null; name?: string }) {
   const [copied, setCopied] = useState(false);
   const payload = event?.payload ?? {};
   const outputs = payload.outputs;
@@ -282,14 +179,14 @@ function headerValue(headers: Record<string, unknown>, name: string) { const ite
 function httpResponse(value: unknown) { const item = record(value); if (!item || typeof item.status_code !== "number") return null; return { statusCode: item.status_code, headers: record(item.headers) ?? {}, body: parseBody(item.body) }; }
 function formatBytes(value: string) { const bytes = Number(value); return Number.isFinite(bytes) ? bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB` : value; }
 
-function StatusBadge({ status }: { status: RunStatus }) { const meta = STATUS[status]; const Icon = meta.icon; return <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.tone}`}><Icon size={11} className={status === "running" ? "animate-spin" : ""} />{meta.label}</span>; }
-function StatusDot({ status }: { status: RunStatus }) { const meta = STATUS[status]; return <span className={`h-2 w-2 shrink-0 rounded-full ${status === "succeeded" ? "bg-success" : status === "failed" ? "bg-danger" : status === "running" ? "bg-primary animate-pulse" : status === "queued" ? "bg-warning" : "bg-muted"}`} title={meta.label} />; }
+export function StatusBadge({ status }: { status: RunStatus }) { const meta = STATUS[status]; const Icon = meta.icon; return <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.tone}`}><Icon size={11} className={status === "running" ? "animate-spin" : ""} />{meta.label}</span>; }
+export function StatusDot({ status }: { status: RunStatus }) { const meta = STATUS[status]; return <span className={`h-2 w-2 shrink-0 rounded-full ${status === "succeeded" ? "bg-success" : status === "failed" ? "bg-danger" : status === "running" ? "bg-primary animate-pulse" : status === "queued" ? "bg-warning" : "bg-muted"}`} title={meta.label} />; }
 function EmptyState({ text }: { text: string }) { return <div className="grid min-h-[128px] place-items-center px-4 text-center text-xs text-muted">{text}</div>; }
-function formatTime(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date); }
+export function formatTime(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date); }
 function clockTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date); }
-function modeName(mode: RunRecord["execution_mode"]) { return ({ manual: "手动运行", schedule: "定时运行", webhook: "Webhook 触发", webhook_test: "Webhook 调试", child: "子流程运行", error: "错误处理" })[mode ?? "manual"]; }
-function shortId(id: string) { return id.replace(/^run_/, "").slice(0, 6); }
-function preferredEvent(events: RunEvent[]) { const latest = [...events].reverse(); return latest.find((event) => event.type === "node_failed") ?? latest.find((event) => httpResponse(record(event.payload.outputs)?.success) || httpResponse(record(event.payload.outputs)?.error)) ?? latest.find((event) => event.payload.outputs !== undefined) ?? events.at(-1) ?? null; }
+export function modeName(mode: RunRecord["execution_mode"]) { return ({ manual: "手动运行", schedule: "定时运行", webhook: "Webhook 触发", webhook_test: "Webhook 调试", child: "子流程运行", error: "错误处理" })[mode ?? "manual"]; }
+export function shortId(id: string) { return id.replace(/^run_/, "").slice(0, 6); }
+export function preferredEvent(events: RunEvent[]) { const latest = [...events].reverse(); return latest.find((event) => event.type === "node_failed") ?? latest.find((event) => httpResponse(record(event.payload.outputs)?.success) || httpResponse(record(event.payload.outputs)?.error)) ?? latest.find((event) => event.payload.outputs !== undefined) ?? events.at(-1) ?? null; }
 function durationText(started: string | null, completed: string | null) { if (!started || !completed) return null; const milliseconds = new Date(completed).getTime() - new Date(started).getTime(); return milliseconds < 1000 ? `${milliseconds}ms` : `${(milliseconds / 1000).toFixed(1)}s`; }
 
 const EVENT_LABELS: Record<string, string> = { run_started: "运行开始", run_succeeded: "运行成功", run_failed: "运行失败", run_cancelled: "运行已取消", node_started: "节点开始", node_succeeded: "节点完成", node_failed: "节点失败", node_skipped: "节点跳过", node_error_handled: "节点错误已处理" };

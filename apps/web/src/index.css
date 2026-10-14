@@ -126,7 +126,7 @@ input[type="number"]::-webkit-outer-spin-button { appearance: none; -webkit-appe
 @container resource-content (max-width: 640px) {
   .node-studio { display: block; overflow-y: auto; }
   .studio-picker { position: sticky; top: 0; z-index: 10; }
-  .studio-preview { overflow: visible; padding: 20px 16px; }
+  .studio-preview { height: max(480px, min(800px, calc(100dvh - 140px))); padding: 20px 16px; }
   .studio-inspector { overflow: visible; border-left: 0; border-top: 1px solid var(--color-border); }
   .studio-editor { height: auto; min-height: 480px; }
   .studio-editor-body { overflow: visible; }
@@ -189,20 +189,16 @@ input[type="number"]::-webkit-outer-spin-button { appearance: none; -webkit-appe
 .island-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .island-button.active { color: var(--color-primary); background: hsl(212 90% 60% / .12); }
 .island-button:disabled { opacity: .35; cursor: default; }
-.workbench-resizer { position: relative; flex-shrink: 0; outline: none; }
-.workbench-resizer.vertical { width: 8px; cursor: col-resize; }
-.workbench-resizer.horizontal { height: 8px; cursor: row-resize; }
-.workbench-resizer::after { content: ""; position: absolute; border-radius: 3px; background: transparent; transition: background .15s; }
-.workbench-resizer.vertical::after { inset: 30% 3px; }
-.workbench-resizer.horizontal::after { inset: 3px 40%; }
-.workbench-resizer:hover::after, .workbench-resizer:focus-visible::after { background: var(--color-primary); }
 .result-detail-grid { grid-template-columns: minmax(180px, .8fr) minmax(250px, 1.4fr); }
-.react-flow__minimap { width: 140px !important; height: 88px !important; bottom: 58px !important; }
-@media (max-width: 1000px) {
-  .workbench-pane { position: absolute; top: 60px; bottom: 8px; z-index: 30; box-shadow: 0 20px 60px hsl(230 35% 3% / .6); }
-  .workbench-pane.library { left: 8px; }
-  .workbench-pane.inspector { right: 8px; }
-  .workbench-resizer.vertical { display: none; }
+.react-flow__minimap { box-sizing: content-box; overflow: hidden; bottom: 58px !important; }
+.run-history-layout { grid-template-columns: 220px minmax(0, 1fr); }
+.run-canvas-layout { grid-template-columns: minmax(0, 1fr); }
+.run-canvas-layout.has-inspector { grid-template-columns: minmax(0, 1fr) 340px; }
+.react-flow__controls { background: var(--color-surface) !important; border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+.react-flow__controls-button { background: var(--color-surface) !important; border-color: var(--color-border) !important; color: var(--color-text-secondary) !important; }
+.react-flow__controls-button svg { fill: currentColor !important; }
+@media (max-width: 1100px) {
+  .run-canvas-layout.has-inspector { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 1fr) minmax(200px, .8fr); overflow-y: auto; }
 }
 @media (max-width: 900px) { .app-topbar .secondary-label, .app-topbar .save-state { display: none; } .app-topbar { gap: 8px; } .workflow-heading { flex: 1; } .workflow-heading input { width: 100%; } }
 @media (max-width: 760px) {
@@ -211,7 +207,8 @@ input[type="number"]::-webkit-outer-spin-button { appearance: none; -webkit-appe
   .execution-timeline { border-right: 0; border-bottom: 1px solid var(--color-border); }
   .execution-timeline ol { display: flex; gap: 4px; }
   .execution-timeline li { min-width: 180px; }
-  .run-panel-body { grid-template-columns: 120px minmax(0, 1fr); }
+  .run-history-layout { grid-template-columns: 150px minmax(0, 1fr); }
+  .run-feedback { display: none; }
   .result-row-detail { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .7fr) minmax(0, 1.3fr); }
   .result-row-detail > :first-child { border-right: 0; border-bottom: 1px solid var(--color-border); }
   .result-metrics > div { flex-direction: column; align-items: flex-start; }
@@ -219,3 +216,9 @@ input[type="number"]::-webkit-outer-spin-button { appearance: none; -webkit-appe
 @media (max-width: 600px) { .result-table-hint { display: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; } }
 @media (prefers-reduced-transparency: reduce) { .glass-island { background: var(--color-surface); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+
+@media (max-width: 520px) {
+  .run-history-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: 130px minmax(0, 1fr); }
+  .run-history-layout > aside > div { display: flex; overflow-x: auto; }
+  .run-history-layout > aside > div > button { min-width: 170px; }
+}

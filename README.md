@@ -19,7 +19,7 @@ Node Flow 是一个本地运行的通用工作流编排平台。前端是基于 
 - **触发与集成** —— 手动触发、Webhook（方法/路径、自定义响应、访问保护凭据、HMAC 签名校验）、定时触发与工作流间同步调用。
 - **执行策略** —— 节点级失败即停止 / 失败后继续 / 走错误端口，可配置尝试次数与重试间隔；支持错误处理工作流、固定调试输出与 600 秒默认全局超时。
 - **版本与生命周期** —— 草稿与生产双版本、版本历史与恢复、生产回滚，节点配置按版本迁移（`migrate_config`）。
-- **环境与凭据** —— 凭据在 Windows 上经 DPAPI 加密写入 SQLite（工作流只保存凭据 ID，日志与详情脱敏）、命名运行环境与变量快照、项目变量与 HTTP 配置档。
+- **环境与凭据** —— 统一使用跨平台 AES-256-GCM，服务密钥由环境变量或独立文件提供，SQLite 只保存凭据密文（工作流只保存凭据 ID，日志与详情脱敏）、命名运行环境与变量快照、项目变量与 HTTP 配置档。
 - **执行与队列** —— 全局并发上限与工作流级并发、SQLite 原子领取、嵌入式执行或独立 Worker 横向分担；取消是协作式的。
 - **节点契约自检** —— `nodeflow-doctor` 校验 `nodes/` 下的节点与节点包清单、端口与动态端口契约。
 
@@ -69,7 +69,7 @@ flowchart LR
 
 需要 Python 3.11+（推荐 [uv](https://docs.astral.sh/uv/)）、Node.js 22+ 与 pnpm 10。
 
-```powershell
+```sh
 # 后端依赖
 uv sync --extra test
 
@@ -77,13 +77,15 @@ uv sync --extra test
 pnpm install
 
 # 启动 API（127.0.0.1:8150）
-uv run pnpm dev:api
+pnpm dev:api
 
 # 另开一个终端，启动工作台（127.0.0.1:5273）
 pnpm dev:web
 ```
 
-打开 <http://127.0.0.1:5273> 即可使用。没有 uv 时，也可以激活虚拟环境后用 `python -m pip install -e ".[test]"` 安装依赖，再直接执行 `pnpm dev:api`。
+打开 <http://127.0.0.1:5273> 即可使用。Python 运行命令通过 uv 自动选择项目虚拟环境，无需手动激活。没有 uv 时，也可以激活虚拟环境后用 `python -m pip install -e ".[test]"` 安装依赖，再执行 `python -m uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150`。
+
+macOS 开发、VS Code 配置及功能边界见 [Mac 开发说明](docs/mac-development.md)。凭据在 Windows、Mac 和 Linux 使用相同的服务加密方式；首次保存时自动生成用户目录下的 `.node-flow/credential.key`，也可通过环境变量指定密钥或文件。跨系统使用时带上数据库和同一个服务密钥；配置见 [凭据存储](docs/platform-behavior.md#凭据存储)。
 
 | 服务 | 默认地址 |
 | --- | --- |
@@ -181,7 +183,7 @@ pnpm demo:setup     # 创建演示凭据、配置档与示例草稿
 
 - 节点脚本需要在 `nodes/` 中编写，工作台不提供在线 Python 编辑。
 - 定位为本地单机工具，暂不提供多用户、认证与权限管理。
-- 凭据库依赖 Windows DPAPI；其他平台会拒绝写入凭据，不会降级为明文存储。
+- 凭据恢复需要对应密钥；仅复制数据库不够，更换密钥不能直接解密已有密文。旧版凭据格式不再支持，需要重新录入。
 - 不提供节点包在线市场、远程下载、包签名校验或代码沙箱，本地节点属于受信任的开发者代码。
 - Webhook 流式响应和子工作流的异步后台调用尚未提供。
 

@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, FolderKanban, LoaderCircle, Play, Save, Settings2 } from "lucide-react";
+import { Box, FolderKanban, History, LoaderCircle, Play, Save, Settings2 } from "lucide-react";
 import type { RunRecord } from "@/types";
 import { useWorkflowStore } from "@/store/workflow";
 import { WorkflowWorkbenchLayout } from "@/components/WorkflowWorkbenchLayout";
-import { NodePalette } from "@/components/NodePalette";
 import { FlowCanvas } from "@/components/FlowCanvas";
 import { ConfigPanel } from "@/components/ConfigPanel";
-import { RunPanel } from "@/components/RunPanel";
+import { RunsPage } from "@/components/RunsPage";
+import { StatusBadge } from "@/components/RunDetails";
+import { useRunMonitor } from "@/hooks/useRunMonitor";
+import { useRunsStore } from "@/store/runs";
 import { SaveFailureNotice } from "@/components/SaveFailureNotice";
 import { WorkflowManager } from "@/components/WorkflowManager";
 import { ResourcesPage } from "@/components/ResourcesPage";
 import { Toaster, toast } from "@/components/Toaster";
 
-type Page = "editor" | "manager" | "resources";
+type Page = "editor" | "manager" | "resources" | "runs";
 
 export default function App() {
   const [page, setPage] = useState<Page>("editor");
@@ -27,7 +29,11 @@ export default function App() {
   const saveError = useWorkflowStore((s) => s.saveError);
   const setWorkflowName = useWorkflowStore((s) => s.setWorkflowName);
   const [isCreatingRun, setIsCreatingRun] = useState(false);
-  const [latestRun, setLatestRun] = useState<RunRecord | null>(null);
+  const activeRun = useRunsStore((state) => state.activeRun);
+  const runEvents = useRunsStore((state) => state.events);
+  const monitoredWorkflow = useRunsStore((state) => state.workflowId);
+  const runSnapshot = { run: monitoredWorkflow === workflow.id ? activeRun : null, events: monitoredWorkflow === workflow.id ? runEvents : [] };
+  useRunMonitor(workflow.id, page === "runs");
   const reportedFailure = useRef<typeof saveError>(null);
 
   useEffect(() => {
@@ -51,7 +57,6 @@ export default function App() {
     try {
       const run = await runWorkflow();
       if (!run) return;
-      setLatestRun(run);
       window.dispatchEvent(new CustomEvent<RunRecord>("nodeflow:run-created", { detail: run }));
     } finally {
       setIsCreatingRun(false);
@@ -75,7 +80,7 @@ export default function App() {
               {saveError ? "保存失败" : isSaving ? "正在保存" : isDirty ? "未保存" : "已保存"}
             </span>
           </div>
-          {latestRun?.workflow_id === workflow.id && <p className="run-feedback hidden min-w-0 max-w-[180px] truncate text-[11px] text-primary xl:block" title={`运行 #${latestRun.id} 已创建，请在下方查看状态`}>运行 #{latestRun.id.replace(/^run_/, "").slice(0, 6)} 已创建</p>}
+          {runSnapshot.run && <button type="button" onClick={() => setPage("runs")} className="run-feedback flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 hover:bg-raised" title="查看运行详情"><StatusBadge status={runSnapshot.run.status} /><span className="hidden text-[10px] text-muted xl:inline">查看详情</span></button>}
           <div className="flex-1" />
           <button onClick={handleSave} aria-label="保存工作流" title="保存工作流" disabled={!isDirty || isSaving} className="inline-flex shrink-0 items-center gap-1.5 px-2.5 h-8 rounded-md text-xs text-text-secondary hover:text-text hover:bg-raised transition disabled:opacity-35"><Save size={14} /><span className="secondary-label">保存</span></button>
           <button onClick={handleRun} disabled={!workflow.id || isCreatingRun} className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition shadow-[0_4px_14px_hsl(212_93%_60%_/_0.2)] disabled:opacity-40">{isCreatingRun ? <LoaderCircle size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}{isCreatingRun ? "正在创建…" : "运行"}</button>
@@ -83,13 +88,14 @@ export default function App() {
 
         <div className="w-px h-5 bg-border" />
         <nav className="flex items-center gap-1" aria-label="工作台导航">
+          <button aria-label="运行记录" title="运行记录" onClick={() => setPage(page === "runs" ? "editor" : "runs")} className={`inline-flex items-center gap-1.5 text-xs px-2.5 h-8 rounded-md transition ${page === "runs" ? "bg-primary/12 text-primary" : "text-muted hover:text-text hover:bg-raised"}`}><History size={14} /><span className="secondary-label">运行记录</span></button>
           <button aria-label="工作流" title="工作流" onClick={() => setPage(page === "manager" ? "editor" : "manager")} className={`inline-flex items-center gap-1.5 text-xs px-2.5 h-8 rounded-md transition ${page === "manager" ? "bg-primary/12 text-primary" : "text-muted hover:text-text hover:bg-raised"}`}><FolderKanban size={14} /><span className="secondary-label">工作流</span></button>
           <button aria-label="资源" title="资源" onClick={() => setPage(page === "resources" ? "editor" : "resources")} className={`inline-flex items-center gap-1.5 text-xs px-2.5 h-8 rounded-md transition ${page === "resources" ? "bg-primary/12 text-primary" : "text-muted hover:text-text hover:bg-raised"}`}><Settings2 size={14} /><span className="secondary-label">资源</span></button>
         </nav>
       </header>
 
       {page === "editor" && <SaveFailureNotice />}
-      {page === "editor" ? <WorkflowWorkbenchLayout nodeLibrary={<NodePalette />} canvas={<FlowCanvas />} inspector={<ConfigPanel />} runLog={(props) => <RunPanel {...props} />} /> : page === "manager" ? <div className="flex-1 overflow-hidden"><WorkflowManager onOpen={() => setPage("editor")} /></div> : <div className="flex-1 overflow-hidden"><ResourcesPage /></div>}
+      {page === "editor" ? <WorkflowWorkbenchLayout canvas={<FlowCanvas runSnapshot={runSnapshot} />} inspector={<ConfigPanel runSnapshot={runSnapshot} />} /> : page === "runs" ? <RunsPage /> : page === "manager" ? <div className="flex-1 overflow-hidden"><WorkflowManager onOpen={() => setPage("editor")} /></div> : <div className="flex-1 overflow-hidden"><ResourcesPage /></div>}
       <Toaster />
     </div>
   );

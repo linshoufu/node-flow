@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import base64
-import ctypes
 import json
+import os
 import re
-import sys
 from collections.abc import Mapping
-from ctypes import POINTER, Structure, byref, c_byte, cast, create_string_buffer
 from dataclasses import dataclass
-from ctypes.wintypes import DWORD
+from typing import TYPE_CHECKING
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+if TYPE_CHECKING:
+    from .service_credential_key import ServiceCredentialKey
+
+_SERVICE_CIPHERTEXT_HEADER = b"NodeFlowService\x00\x01"
 
 
 _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9._-]*")
@@ -171,22 +177,38 @@ def credential_type_from_manifest(value: object) -> CredentialType:
 
 
 class CredentialVault:
-    """Encrypts credential payloads with the current Windows user profile."""
+    """Encrypts credential payloads with a portable AES-256-GCM service key."""
 
-    def __init__(self, *, platform: str | None = None) -> None:
-        self._platform = platform or sys.platform
+    def __init__(self) -> None:
+        self._service_key_source: ServiceCredentialKey | None = None
+
+    def _service_key(self, *, create: bool) -> bytes:
+        from .service_credential_key import ServiceCredentialKey
+
+        if self._service_key_source is None:
+            self._service_key_source = ServiceCredentialKey()
+        return self._service_key_source.key(create=create)
 
     def encrypt(self, data: Mapping[str, str]) -> str:
         payload = json.dumps(dict(data), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        encrypted = self._protect(payload)
+        key = self._service_key(create=True)
+        nonce = os.urandom(12)
+        encrypted = _SERVICE_CIPHERTEXT_HEADER + nonce + AESGCM(key).encrypt(
+            nonce, payload, _SERVICE_CIPHERTEXT_HEADER,
+        )
         return base64.b64encode(encrypted).decode("ascii")
 
     def decrypt(self, encrypted_data: str) -> dict[str, str]:
         try:
             encrypted = base64.b64decode(encrypted_data.encode("ascii"), validate=True)
-            payload = self._unprotect(encrypted)
+            offset = len(_SERVICE_CIPHERTEXT_HEADER)
+            if not encrypted.startswith(_SERVICE_CIPHERTEXT_HEADER) or len(encrypted) < offset + 12 + 16:
+                raise ValueError("Unsupported or truncated credential ciphertext")
+            payload = AESGCM(self._service_key(create=False)).decrypt(
+                encrypted[offset:offset + 12], encrypted[offset + 12:], _SERVICE_CIPHERTEXT_HEADER,
+            )
             decoded = json.loads(payload.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        except (UnicodeError, ValueError, InvalidTag) as exc:
             raise ValueError("Credential ciphertext is invalid") from exc
 
         if not isinstance(decoded, dict) or not all(
@@ -194,47 +216,3 @@ class CredentialVault:
         ):
             raise ValueError("Credential payload must contain string fields")
         return decoded
-
-    def _require_windows(self) -> None:
-        if self._platform != "win32":
-            raise CredentialStorageUnavailableError("Windows DPAPI is required for local credential storage")
-
-    def _protect(self, payload: bytes) -> bytes:
-        self._require_windows()
-        input_blob, input_buffer = _data_blob(payload)
-        output_blob = _DataBlob()
-        success = ctypes.windll.crypt32.CryptProtectData(
-            byref(input_blob), "Node Flow credential", None, None, None, 0, byref(output_blob)
-        )
-        del input_buffer
-        if not success:
-            raise OSError(ctypes.get_last_error(), "Windows DPAPI encryption failed")
-        return _take_blob(output_blob)
-
-    def _unprotect(self, encrypted: bytes) -> bytes:
-        self._require_windows()
-        input_blob, input_buffer = _data_blob(encrypted)
-        output_blob = _DataBlob()
-        success = ctypes.windll.crypt32.CryptUnprotectData(
-            byref(input_blob), None, None, None, None, 0, byref(output_blob)
-        )
-        del input_buffer
-        if not success:
-            raise OSError(ctypes.get_last_error(), "Windows DPAPI decryption failed")
-        return _take_blob(output_blob)
-
-
-class _DataBlob(Structure):
-    _fields_ = [("cbData", DWORD), ("pbData", POINTER(c_byte))]
-
-
-def _data_blob(data: bytes) -> tuple[_DataBlob, ctypes.Array[c_byte]]:
-    buffer = create_string_buffer(data)
-    return _DataBlob(len(data), cast(buffer, POINTER(c_byte))), buffer
-
-
-def _take_blob(blob: _DataBlob) -> bytes:
-    try:
-        return ctypes.string_at(blob.pbData, blob.cbData)
-    finally:
-        ctypes.windll.kernel32.LocalFree(blob.pbData)

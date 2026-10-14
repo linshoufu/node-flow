@@ -16,13 +16,13 @@ The canonical surface is a dark workflow workbench: a near-black, dotted canvas 
 - **Surfaces:** `--workbench-panel`, `--workbench-panel-strong`, and `--workbench-card` separate navigation, canvas, and inspection through small luminance steps rather than large borders.
 - **Semantic color:** teal indicates valid data/success, amber denotes attention or selection, blue is the committed primary action, and red is destructive/error only.
 - **Typography:** Chinese UI copy uses a compact system sans stack with a clear three-level hierarchy: 11px metadata, 12–13px operational controls, 16px+ state titles. Long labels truncate at control boundaries; explanatory copy uses strict, balanced Chinese line breaking.
-- **Geometry:** 4px rhythm, 8–16px component rounding, one-pixel low-contrast dividers, and a 52px floating top bar. The palette defaults to 224px; the 288px inspector opens on node selection. Both can fold away. Results default to a 44px folded bar and expand for a new run; expanded height adapts to the viewport.
+- **Geometry:** 4px rhythm, 8–16px component rounding, one-pixel low-contrast dividers, and a 52px floating top bar. The canvas fills the editing area. The 280px node palette and 320px inspector open as overlays. Execution history and results live on a separate page.
 
 ## Interaction Rules
 
-- Keep established keyboard commands, button names, node drag/click behavior, saved panel state, and APIs intact.
+- Keep established keyboard commands, button names, node drag/click behavior and APIs intact.
 - Use icon-first compact controls at constrained desktop widths while retaining accessible labels and tooltips.
-- The palette remains immediately usable; density is reduced through row styling and preview, not by hiding the default node set.
+- The palette starts closed and opens through the canvas add-node control. Search and category browsing remain available; adding a node closes the palette. Double-click quick add stays available.
 - Empty canvas guidance presents templates as an optional accelerant and keeps the manual node-add path visible.
 - Focus, hover, selected, disabled, running, warning, and error states must remain visibly distinct without relying on color alone.
 - Built-in node names, descriptions, categories, and icons come from shared presentation helpers. Preserve custom names and original node IDs, port keys, and API payloads.
@@ -34,11 +34,12 @@ The canonical surface is a dark workflow workbench: a near-black, dotted canvas 
 - Numeric fields use the shared `NumberInput`: a value area and explicit minus/plus buttons, with one focus boundary. Native numeric typing, arrow keys, and min/max constraints remain available. Temporary editing text remains intact until blur so clearing or entering a negative number is possible. Other form fields use matching dark surfaces, 34px panel heights, and visible keyboard focus.
 - Node Studio groups each port's name, order, and visibility in one card. Labels sit above controls; the editor body scrolls independently while its save action stays visible. Omit empty group separators.
 - Batch results show total, passed, failed, and success rate, followed by a filterable, paginated list. A row opens its source data and corresponding response. Execution completion and individual result failure remain distinct; raw events and JSON remain available.
-- Resizing or folding panels preserves the canvas's world center and zoom. The fit control provides a view of the complete flow.
+- Opening or closing overlays leaves the canvas dimensions and viewport intact. The fit control provides a view of the complete flow.
+- Execution details use the workflow version recorded by the run. The execution canvas supports pan, zoom, node inspection, and subflow navigation; node positions, connections, and inline configuration stay read-only. Inspecting runs never changes the editing draft.
 
 ## Responsive Behavior
 
-- Up to 1000px: utility panels overlay the canvas instead of taking its width.
+- Utility panels overlay the editing canvas at all widths. Execution history and node data adapt to the available screen width.
 - Up to 900px: secondary top-bar labels compact while accessible names remain available.
 - Up to 760px: the header remains one row and event inspection stacks below a horizontally scrollable timeline.
 - Node Studio adapts to its available content width: three columns above 860px, a node picker plus preview/editor below 860px, and a scrolling vertical layout below 640px. Resource navigation becomes an icon rail at narrower window widths; resource and workflow cards wrap to one column when needed.

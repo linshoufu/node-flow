@@ -1,0 +1,67 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Node Flow：调试 API",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "module": "uvicorn",
+      "args": [
+        "apps.api.nodeflow_api.main:create_app",
+        "--factory",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8150"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+        "NO_PROXY": "localhost,127.0.0.1,::1"
+      }
+    },
+    {
+      "name": "Node Flow：启动前端",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${env:HOME}/.local/bin/node",
+      "program": "${workspaceFolder}/node_modules/vite/bin/vite.js",
+      "args": [
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5273",
+        "--strictPort"
+      ],
+      "cwd": "${workspaceFolder}/apps/web",
+      "console": "integratedTerminal",
+      "env": {
+        "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+        "NO_PROXY": "localhost,127.0.0.1,::1"
+      },
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      "name": "Node Flow：调试浏览器（先启动前后端）",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:5273",
+      "webRoot": "${workspaceFolder}/apps/web/src"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Node Flow：前后端一起启动",
+      "configurations": [
+        "Node Flow：调试 API",
+        "Node Flow：启动前端"
+      ],
+      "stopAll": true
+    }
+  ]
+}

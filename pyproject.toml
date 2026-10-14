@@ -4,6 +4,7 @@ version = "0.1.0"
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=46.0.0",
   "fastapi>=0.115.0",
   "httpx>=0.28.0",
   "packaging>=24.0",

@@ -8,4 +8,6 @@ def pytest_configure(config):
     if config.option.basetemp:
         return
 
-    config.option.basetemp = str(Path(".tmp") / f"pytest-{os.getpid()}")
+    temp_root = Path(config.rootpath) / ".tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    config.option.basetemp = str(temp_root / f"pytest-{os.getpid()}")

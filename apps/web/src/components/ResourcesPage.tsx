@@ -94,7 +94,7 @@ export function ResourcesPage() {
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h2 className="text-lg font-semibold">凭据管理</h2>
-                <p className="text-xs text-muted mt-1">DPAPI 加密存储 · {credentials.length} 条</p>
+                <p className="text-xs text-muted mt-1">加密存储 · {credentials.length} 条</p>
               </div>
               <button
                 onClick={async () => {
@@ -236,7 +236,7 @@ function HttpProfilesPanel({ profiles, credentials, reload }: { profiles: HttpPr
     finally { setSaving(false); }
   };
 
-  return <div className="mx-auto max-w-4xl">
+  return <div>
     <div className="mb-6"><h2 className="text-lg font-semibold">HTTP 配置档</h2><p className="mt-1 text-xs text-muted">复用 Base URL、公共请求头、HTTP 凭据和默认超时。仅 HTTP 请求节点会读取它。</p></div>
     <section className="rounded-lg border border-border bg-surface p-4">
       <h3 className="text-sm font-semibold">新建配置档</h3>

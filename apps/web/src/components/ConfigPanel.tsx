@@ -9,7 +9,7 @@ import { NumberInput } from "./NumberInput";
 type PanelTab = "config" | "runtime";
 type RuntimeTab = "input" | "output" | "error";
 
-export function ConfigPanel() {
+export function ConfigPanel({ runSnapshot }: { runSnapshot: { run: RunRecord | null; events: RunEvent[] } }) {
   const workflow = useWorkflowStore((state) => state.workflow);
   const canvasScope = useWorkflowStore((state) => state.canvasScope);
   const nodeTypes = useWorkflowStore((state) => state.nodeTypes);
@@ -20,7 +20,6 @@ export function ConfigPanel() {
   const enterSubflow = useWorkflowStore((state) => state.enterSubflow);
   const [httpProfiles, setHttpProfiles] = useState<HttpProfile[]>([]);
   const [panelTab, setPanelTab] = useState<PanelTab>("config");
-  const [runSnapshot, setRunSnapshot] = useState<{ run: RunRecord | null; events: RunEvent[] }>({ run: null, events: [] });
   const graph = useMemo(() => getActiveGraph(workflow, canvasScope), [workflow, canvasScope]);
   const nodeTypeMap = useMemo(() => new Map(nodeTypes.map((nodeType) => [nodeType.id, nodeType])), [nodeTypes]);
   const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId);
@@ -38,24 +37,6 @@ export function ConfigPanel() {
     window.addEventListener("nodeflow:http-profiles-changed", loadHttpProfiles);
     return () => window.removeEventListener("nodeflow:http-profiles-changed", loadHttpProfiles);
   }, [loadHttpProfiles]);
-
-  useEffect(() => {
-    const syncRunState = (event: Event) => {
-      const detail = (event as CustomEvent<{ run: RunRecord | null; events: RunEvent[] }>).detail;
-      if (!detail || (detail.run && detail.run.workflow_id !== workflow.id)) return;
-      setRunSnapshot(detail);
-    };
-    const resetForNewRun = (event: Event) => {
-      const run = (event as CustomEvent<RunRecord>).detail;
-      if (run?.workflow_id === workflow.id) setRunSnapshot({ run, events: [] });
-    };
-    window.addEventListener("nodeflow:run-state", syncRunState);
-    window.addEventListener("nodeflow:run-created", resetForNewRun);
-    return () => {
-      window.removeEventListener("nodeflow:run-state", syncRunState);
-      window.removeEventListener("nodeflow:run-created", resetForNewRun);
-    };
-  }, [workflow.id]);
 
   useEffect(() => { setPanelTab("config"); }, [selectedNodeId, canvasScope]);
 

@@ -24,12 +24,15 @@ import { toast } from "./Toaster";
 import { NodeCard, NODE_HANDLE_CLASS, type NodeRunStatus } from "./NodeCard";
 import { categoryColor, categoryName, nodeDescription, nodeName } from "@/lib/nodePresentation";
 import { reconcileCanvasNodes } from "@/lib/canvasNodes";
+import { nodeRunStatus } from "@/lib/runCanvas";
 
-export function FlowCanvas() {
-  return <ReactFlowProvider><FlowCanvasInner /></ReactFlowProvider>;
+type RunSnapshot = { run: RunRecord | null; events: RunEvent[] };
+
+export function FlowCanvas({ runSnapshot }: { runSnapshot: RunSnapshot }) {
+  return <ReactFlowProvider><FlowCanvasInner runSnapshot={runSnapshot} /></ReactFlowProvider>;
 }
 
-function FlowCanvasInner() {
+function FlowCanvasInner({ runSnapshot }: { runSnapshot: RunSnapshot }) {
   const workflow = useWorkflowStore((s) => s.workflow);
   const nodeTypes = useWorkflowStore((s) => s.nodeTypes);
   const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId);
@@ -49,7 +52,6 @@ function FlowCanvasInner() {
   const [quickAdd, setQuickAdd] = useState<{ x: number; y: number; query: string } | null>(null);
   const [manifests, setManifests] = useState<Record<string, NodeFormManifest>>({});
   const [httpProfiles, setHttpProfiles] = useState<HttpProfile[]>([]);
-  const [runSnapshot, setRunSnapshot] = useState<{ run: RunRecord | null; events: RunEvent[] }>({ run: null, events: [] });
   const instance = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const viewportHost = useRef<HTMLDivElement | null>(null);
   const nodeTypeMap = useMemo(() => new Map(nodeTypes.map((type) => [type.id, type])), [nodeTypes]);
@@ -89,24 +91,6 @@ function FlowCanvasInner() {
     window.addEventListener("nodeflow:http-profiles-changed", loadHttpProfiles);
     return () => window.removeEventListener("nodeflow:http-profiles-changed", loadHttpProfiles);
   }, []);
-
-  useEffect(() => {
-    const syncRunState = (event: Event) => {
-      const detail = (event as CustomEvent<{ run: RunRecord | null; events: RunEvent[] }>).detail;
-      if (!detail || (detail.run && detail.run.workflow_id !== workflow.id)) return;
-      setRunSnapshot(detail);
-    };
-    const resetForNewRun = (event: Event) => {
-      const run = (event as CustomEvent<RunRecord>).detail;
-      if (run?.workflow_id === workflow.id) setRunSnapshot({ run, events: [] });
-    };
-    window.addEventListener("nodeflow:run-state", syncRunState);
-    window.addEventListener("nodeflow:run-created", resetForNewRun);
-    return () => {
-      window.removeEventListener("nodeflow:run-state", syncRunState);
-      window.removeEventListener("nodeflow:run-created", resetForNewRun);
-    };
-  }, [workflow.id]);
 
   useEffect(() => {
     const syncManifest = (event: Event) => {
@@ -241,7 +225,7 @@ function FlowCanvasInner() {
         className="bg-canvas"
       >
         <Background gap={20} size={1} color="#273244" />
-        {showMap && <MiniMap nodeColor={(node) => categoryColor(((node.data as { nodeType?: NodeType }).nodeType?.category) ?? "")} maskColor="rgba(5, 9, 16, 0.72)" className="!rounded-md !border !border-border !bg-surface" />}
+        {showMap && <MiniMap style={{ width: 140, height: 88 }} nodeColor={(node) => categoryColor(((node.data as { nodeType?: NodeType }).nodeType?.category) ?? "")} maskColor="rgba(5, 9, 16, 0.72)" className="!rounded-md !border !border-border !bg-surface" />}
       </ReactFlow>
 
       <div className="glass-island absolute left-3 top-3 flex max-w-[calc(100%-110px)] items-center gap-2 rounded-xl px-3 py-2.5">
@@ -288,24 +272,6 @@ const WorkflowNode = memo(function WorkflowNode({ data, selected, httpProfiles, 
   const updateNodeConfig = useWorkflowStore((state) => state.updateNodeConfig);
   return <NodeCard node={data.workflowNode} nodeType={data.nodeType} manifest={data.manifest} label={data.label} selected={selected} connectedOutputHandles={data.connectedOutputHandles} highlightedInputHandles={data.highlightedInputHandles} highlightedOutputHandles={data.highlightedOutputHandles} httpProfiles={httpProfiles} runStatus={data.runStatus} onConfigChange={(key, value) => updateNodeConfig(data.workflowNode.id, key, value)} onOpenSubflow={onOpenSubflow} renderHandle={(direction, id, port, color) => <Handle type={direction === "input" ? "target" : "source"} position={direction === "input" ? Position.Left : Position.Right} id={id} style={{ background: color }} className={NODE_HANDLE_CLASS} title={port.description ?? port.displayName ?? id} />} />;
 });
-
-function nodeRunStatus(nodeId: string, nodeType: NodeType | undefined, run: RunRecord | null, events: RunEvent[]): NodeRunStatus | null {
-  if (!run) return null;
-  const nodeEvents = events.filter((event) => event.node_id === nodeId);
-  const latestEvent = nodeEvents.at(-1);
-  const latest = latestEvent?.type ?? "";
-  const outputs = latestEvent?.payload.outputs;
-  if (outputs && typeof outputs === "object" && !Array.isArray(outputs)) {
-    const emittedError = Object.keys(outputs).some((outputId) => nodeType?.outputs[outputId]?.category === "error");
-    if (emittedError) return "failed";
-  }
-  if (latest.includes("failed") || latest.includes("error")) return "failed";
-  if (latest.includes("succeeded") || latest.includes("pinned_data_used")) return "succeeded";
-  if (latest.includes("skipped") || latest.includes("disabled")) return "skipped";
-  if (latest.includes("started")) return "running";
-  if (["queued", "running"].includes(run.status)) return "waiting";
-  return null;
-}
 
 function edgeItemCount(nodeId: string, outputId: string, events: RunEvent[]): number | null {
   let total = 0;

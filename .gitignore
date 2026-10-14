@@ -14,6 +14,7 @@ coverage/
 .DS_Store
 .env
 .nodeflow-packages/
+.node-flow/
 nodes/_installed/
 
 # 运行生成物与本地缓存

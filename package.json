@@ -10,13 +10,13 @@
     "build:web": "pnpm --filter @node-flow/web build",
     "build": "pnpm lint && pnpm build:web",
     "test:web": "pnpm --filter @node-flow/web test",
-    "dev:api": "uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150",
+    "dev:api": "uv run python -m uvicorn apps.api.nodeflow_api.main:create_app --factory --reload --host 127.0.0.1 --port 8150",
     "dev:demo-api": "uv run python -m uvicorn examples.demo_api:app --host 127.0.0.1 --port 8160 --no-access-log",
     "demo:setup": "uv run python -m examples.demo_setup",
-    "dev:worker": "python -m apps.api.nodeflow_api.worker",
-    "doctor:nodes": "python -m apps.api.nodeflow_api.node_doctor nodes",
-    "test:api": "pytest tests/api -q",
-    "test": "pnpm lint && pnpm test:web && pytest tests/api -q"
+    "dev:worker": "uv run python -m apps.api.nodeflow_api.worker",
+    "doctor:nodes": "uv run python -m apps.api.nodeflow_api.node_doctor nodes",
+    "test:api": "uv run --extra test python -m pytest tests/api -q",
+    "test": "pnpm lint && pnpm test:web && pnpm test:api"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",

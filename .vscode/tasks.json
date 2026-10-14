@@ -1,0 +1,198 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Node Flow：安装依赖",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "install"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：启动前端",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "dev:web"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：启动后端",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "dev:api"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：构建前端",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "build:web"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": "$tsc",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Node Flow：前端检查",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "lint:web"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": "$tsc",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：后端检查",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "lint:api"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：前端测试",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "test:web"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：后端测试",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "test:api"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Node Flow：节点契约检查",
+      "type": "process",
+      "command": "/bin/zsh",
+      "args": [
+        "${workspaceFolder}/.codex/run.sh",
+        "doctor:nodes"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.local/bin:${workspaceFolder}/.venv/bin:${env:PATH}",
+          "NO_PROXY": "localhost,127.0.0.1,::1"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}

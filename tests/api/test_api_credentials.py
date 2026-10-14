@@ -41,6 +41,7 @@ def test_credential_api_lists_types_and_never_returns_secret_values():
         "http.bearer",
         "http.basic",
         "http.header",
+        "http.login",
         "webhook.hmac_sha256",
     ]
     assert created["type_id"] == "http.bearer"
