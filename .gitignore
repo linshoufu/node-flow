@@ -9,6 +9,7 @@ __pycache__/
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
 .coverage
 .DS_Store
 .env
