@@ -10,6 +10,7 @@ import type {
 } from "@/types";
 import { apiClient } from "@/api/client";
 import { createNodeInstance } from "@/lib/nodeInstance";
+import { describeSaveFailure, type SaveFailure } from "@/lib/saveFailure";
 
 type WorkflowState = {
   // Document
@@ -20,7 +21,7 @@ type WorkflowState = {
   canvasScope: CanvasScopeSegment[];
   isDirty: boolean;
   isSaving: boolean;
-  saveError: string | null;
+  saveError: SaveFailure | null;
 
   // Actions
   loadWorkflows: () => Promise<void>;
@@ -40,6 +41,9 @@ type WorkflowState = {
   addEdge: (edge: WorkflowEdge) => void;
   deleteEdge: (edgeId: string) => void;
   saveWorkflow: () => Promise<void>;
+  clearSaveError: () => void;
+  reloadFromServer: () => Promise<void>;
+  saveAsCopy: () => Promise<void>;
   runWorkflow: (entryNodeId?: string, input?: unknown) => Promise<RunRecord | null>;
   setWorkflowName: (name: string) => void;
 };
@@ -241,9 +245,38 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     try {
       const expectedVersion = wf.version;
       const saved = await apiClient.saveWorkflow(wf, expectedVersion);
-      set({ workflow: saved, isDirty: false, isSaving: false });
+      set({ workflow: saved, isDirty: false, isSaving: false, saveError: null });
     } catch (e) {
-      set({ isSaving: false, saveError: (e as Error).message });
+      set({ isSaving: false, saveError: describeSaveFailure(e) });
+    }
+  },
+
+  clearSaveError: () => set({ saveError: null }),
+
+  /** 放弃本地未保存的修改，重新加载服务器上的最新版本。 */
+  reloadFromServer: async () => {
+    const wf = get().workflow;
+    if (!wf.id) return;
+    try {
+      const reloaded = await apiClient.getWorkflow(wf.id);
+      set({ workflow: reloaded, selectedNodeId: null, canvasScope: [], isDirty: false, saveError: null });
+    } catch (e) {
+      set({ saveError: describeSaveFailure(e) });
+    }
+  },
+
+  /** 把当前画布另存为一个新的未发布副本，避免版本冲突阻断本地修改。 */
+  saveAsCopy: async () => {
+    const wf = get().workflow;
+    if (!wf.id) return;
+    try {
+      const copy = { ...wf, id: "", version: 1, name: `${wf.name || "工作流"}（副本）` };
+      const saved = await apiClient.saveWorkflow(copy);
+      await get().loadWorkflows();
+      await get().selectWorkflow(saved.id);
+      set({ saveError: null });
+    } catch (e) {
+      set({ saveError: describeSaveFailure(e) });
     }
   },
 

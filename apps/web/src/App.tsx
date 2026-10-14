@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, FolderKanban, LoaderCircle, Play, Save, Settings2 } from "lucide-react";
 import type { RunRecord } from "@/types";
 import { useWorkflowStore } from "@/store/workflow";
@@ -7,9 +7,10 @@ import { NodePalette } from "@/components/NodePalette";
 import { FlowCanvas } from "@/components/FlowCanvas";
 import { ConfigPanel } from "@/components/ConfigPanel";
 import { RunPanel } from "@/components/RunPanel";
+import { SaveFailureNotice } from "@/components/SaveFailureNotice";
 import { WorkflowManager } from "@/components/WorkflowManager";
 import { ResourcesPage } from "@/components/ResourcesPage";
-import { Toaster } from "@/components/Toaster";
+import { Toaster, toast } from "@/components/Toaster";
 
 type Page = "editor" | "manager" | "resources";
 
@@ -23,9 +24,17 @@ export default function App() {
   const runWorkflow = useWorkflowStore((s) => s.runWorkflow);
   const isDirty = useWorkflowStore((s) => s.isDirty);
   const isSaving = useWorkflowStore((s) => s.isSaving);
+  const saveError = useWorkflowStore((s) => s.saveError);
   const setWorkflowName = useWorkflowStore((s) => s.setWorkflowName);
   const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [latestRun, setLatestRun] = useState<RunRecord | null>(null);
+  const reportedFailure = useRef<typeof saveError>(null);
+
+  useEffect(() => {
+    if (!saveError || reportedFailure.current === saveError) return;
+    reportedFailure.current = saveError;
+    toast(saveError.message, "error");
+  }, [saveError]);
 
   useEffect(() => {
     void (async () => {
@@ -61,9 +70,9 @@ export default function App() {
         {page === "editor" ? <>
           <div className="workflow-heading min-w-0 flex items-center gap-2">
             <input aria-label="工作流名称" value={workflow.name} onChange={(e) => setWorkflowName(e.target.value)} className="min-w-0 bg-transparent text-sm font-medium px-2 py-1 rounded-md hover:bg-raised focus:outline-none focus:ring-2 focus:ring-primary/30 w-52" />
-            <span className="save-state hidden sm:flex items-center gap-1.5 text-[11px] text-muted whitespace-nowrap">
-              <span className={`h-1.5 w-1.5 rounded-full ${isDirty ? "bg-warning" : "bg-success"}`} />
-              {isSaving ? "正在保存" : isDirty ? "未保存" : "已保存"}
+            <span className={`save-state hidden sm:flex items-center gap-1.5 text-[11px] whitespace-nowrap ${saveError ? "text-danger" : "text-muted"}`} title={saveError?.message}>
+              <span className={`h-1.5 w-1.5 rounded-full ${saveError ? "bg-danger" : isDirty ? "bg-warning" : "bg-success"}`} />
+              {saveError ? "保存失败" : isSaving ? "正在保存" : isDirty ? "未保存" : "已保存"}
             </span>
           </div>
           {latestRun?.workflow_id === workflow.id && <p className="run-feedback hidden min-w-0 max-w-[180px] truncate text-[11px] text-primary xl:block" title={`运行 #${latestRun.id} 已创建，请在下方查看状态`}>运行 #{latestRun.id.replace(/^run_/, "").slice(0, 6)} 已创建</p>}
@@ -79,6 +88,7 @@ export default function App() {
         </nav>
       </header>
 
+      {page === "editor" && <SaveFailureNotice />}
       {page === "editor" ? <WorkflowWorkbenchLayout nodeLibrary={<NodePalette />} canvas={<FlowCanvas />} inspector={<ConfigPanel />} runLog={(props) => <RunPanel {...props} />} /> : page === "manager" ? <div className="flex-1 overflow-hidden"><WorkflowManager onOpen={() => setPage("editor")} /></div> : <div className="flex-1 overflow-hidden"><ResourcesPage /></div>}
       <Toaster />
     </div>
