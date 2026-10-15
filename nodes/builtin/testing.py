@@ -36,6 +36,8 @@ class RecordResultConfig(NodeConfig):
     ),
 )
 class RecordResultNode(BaseNode[RecordResultConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="断言结果", required=True, description="Assertion result", schema=ASSERTION_RESULT_SCHEMA)}
     outputs = {"success": Output(display_name="记录结果", description="Recorded result", schema=ASSERTION_RESULT_SCHEMA)}
 
@@ -70,6 +72,8 @@ class SummaryConfig(NodeConfig):
     ),
 )
 class SummaryNode(BaseNode[SummaryConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="上游完成", required=False, description="Upstream completion", schema=ANY_JSON_SCHEMA)}
     outputs = {
         "success": Output(display_name="汇总", description="No failures or failure is tolerated", schema=TEST_REPORT_SCHEMA),
@@ -107,6 +111,12 @@ class WriteReportConfig(NodeConfig):
     ),
 )
 class WriteReportNode(BaseNode[WriteReportConfig]):
+    effect = "write"
+    preview_support = "plan"
+
+    async def preview(self, ctx: NodeContext, inputs: dict):
+        from nodeflow_sdk import PlannedEffect, PreviewResult
+        return PreviewResult(effects=(PlannedEffect("write_file", self.config.path, inputs.get("input"), "计划写入报告，未创建目录或文件"),))
     inputs = {"input": Input(display_name="报告", required=True, description="Report data", schema=TEST_REPORT_SCHEMA)}
     outputs = {
         "success": Output(display_name="已写入", description="Written report", schema={"type": "object", "properties": {"path": {"type": "string"}, "report": TEST_REPORT_SCHEMA}}),

@@ -1,0 +1,1290 @@
+{
+  "id": "a3.purchase.workflow",
+  "name": "A3 采购入库（预演）",
+  "kind": "workflow",
+  "description": "通用 CSV、映射、分组、HTTP 和批处理节点组成的采购模板。",
+  "workflow": {
+    "id": "a3_purchase_example",
+    "name": "A3 采购入库 · 通用节点模板",
+    "settings": {
+      "max_concurrent_runs": 1,
+      "run_mode": "preview",
+      "configuration": [
+        {
+          "name": "purchase_order_menu_code",
+          "label": "采购订单菜单编码",
+          "type": "string",
+          "required": true,
+          "default": "purchase-menu"
+        },
+        {
+          "name": "default_stock_in_category",
+          "label": "默认单据类别",
+          "type": "string",
+          "required": true,
+          "default": "BZRK"
+        },
+        {
+          "name": "categories",
+          "label": "单据类别映射",
+          "type": "json",
+          "required": true,
+          "default": [
+            {
+              "code": "BZRK",
+              "id": "stock-in-category",
+              "name": "标准采购入库单",
+              "business_id": "BZRK",
+              "business_name": "标准采购",
+              "menu_code": "stock-in-menu"
+            }
+          ]
+        },
+        {
+          "name": "default_warehouse",
+          "label": "默认仓库",
+          "type": "json",
+          "required": false,
+          "default": null
+        }
+      ]
+    },
+    "active": false,
+    "nodes": [
+      {
+        "id": "start",
+        "type": "manual.trigger",
+        "label": "手动触发",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "config": {
+          "payload": {}
+        }
+      },
+      {
+        "id": "params",
+        "type": "workflow.parameters",
+        "label": "运行参数",
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "config": {
+          "fields": [
+            {
+              "name": "csv_path",
+              "label": "采购 CSV 文件",
+              "type": "file",
+              "default": "examples/a3_purchase/purchase.csv"
+            }
+          ]
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "csv",
+        "type": "data.csv_read",
+        "label": "读取采购 CSV",
+        "position": {
+          "x": 600,
+          "y": 0
+        },
+        "config": {
+          "encoding": "auto"
+        }
+      },
+      {
+        "id": "prepare",
+        "type": "data.records_prepare",
+        "label": "映射与校验采购数据",
+        "position": {
+          "x": 900,
+          "y": 0
+        },
+        "config": {
+          "columns": [
+            {
+              "name": "order_code",
+              "expression": "row.get('源单单号', '')",
+              "required": true
+            },
+            {
+              "name": "warehouse_name",
+              "expression": "row.get('仓库', '')",
+              "required": true
+            },
+            {
+              "name": "warehouse_id",
+              "expression": "row.get('仓库ID') or (options.default_warehouse.id if options.default_warehouse and values.warehouse_name == options.default_warehouse.name else '')",
+              "required": true
+            },
+            {
+              "name": "warehouse",
+              "expression": "{'name': values.warehouse_name, 'id': values.warehouse_id}",
+              "type": "object"
+            },
+            {
+              "name": "posting_date",
+              "expression": "row.get('过账日期', '')",
+              "type": "date",
+              "required": true
+            },
+            {
+              "name": "order_date",
+              "expression": "row.get('单据日期') or None",
+              "type": "date"
+            },
+            {
+              "name": "category",
+              "expression": "lookup(options.categories, ['code', 'name'], row.get('单据类别') or options.default_stock_in_category)",
+              "type": "object",
+              "required": true
+            },
+            {
+              "name": "document_code",
+              "expression": "row.get('单据编码') or None"
+            },
+            {
+              "name": "material_code",
+              "expression": "row.get('物料编码', '')",
+              "required": true
+            },
+            {
+              "name": "quantity",
+              "expression": "decimal(row.get('数量')) if ensure(decimal(row.get('数量')) > 0, '数量必须大于 0') else None",
+              "type": "decimal",
+              "required": true
+            },
+            {
+              "name": "including_tax_price",
+              "expression": "row.get('含税单价') or None",
+              "type": "decimal",
+              "minimum": "0"
+            },
+            {
+              "name": "purchase_order_menu_code",
+              "expression": "options.purchase_order_menu_code"
+            }
+          ]
+        },
+        "configBindings": {
+          "options.purchase_order_menu_code": {
+            "source": "workflow",
+            "key": "purchase_order_menu_code"
+          },
+          "options.default_stock_in_category": {
+            "source": "workflow",
+            "key": "default_stock_in_category"
+          },
+          "options.categories": {
+            "source": "workflow",
+            "key": "categories"
+          },
+          "options.default_warehouse": {
+            "source": "workflow",
+            "key": "default_warehouse"
+          }
+        }
+      },
+      {
+        "id": "tasks",
+        "type": "data.records_group",
+        "label": "按单据分组",
+        "position": {
+          "x": 1200,
+          "y": 0
+        },
+        "config": {
+          "unique_items": [
+            "material_code"
+          ],
+          "common_fields": [
+            {
+              "name": "order_code",
+              "on_difference": "split",
+              "allow_empty": false,
+              "emit": true,
+              "label": "源单单号"
+            },
+            {
+              "name": "warehouse",
+              "on_difference": "split",
+              "allow_empty": false,
+              "emit": true,
+              "label": "仓库"
+            },
+            {
+              "name": "posting_date",
+              "on_difference": "split",
+              "allow_empty": false,
+              "emit": true,
+              "label": "过账日期"
+            },
+            {
+              "name": "order_date",
+              "on_difference": "split",
+              "allow_empty": true,
+              "emit": true,
+              "label": "单据日期"
+            },
+            {
+              "name": "category",
+              "on_difference": "split",
+              "allow_empty": false,
+              "emit": true,
+              "label": "单据类别"
+            },
+            {
+              "name": "document_code",
+              "on_difference": "split",
+              "allow_empty": true,
+              "emit": true,
+              "label": "指定单据编码"
+            },
+            {
+              "name": "purchase_order_menu_code",
+              "on_difference": "error",
+              "allow_empty": true,
+              "emit": true,
+              "label": "采购订单菜单编码"
+            }
+          ]
+        }
+      },
+      {
+        "id": "each",
+        "type": "control.each_item",
+        "label": "逐组处理",
+        "position": {
+          "x": 1500,
+          "y": 0
+        },
+        "config": {
+          "max_items": 100,
+          "continue_on_error": true,
+          "timeout_seconds": 300
+        },
+        "subflows": {
+          "body": {
+            "nodes": [
+              {
+                "id": "loop_input",
+                "type": "control.loop_input",
+                "label": "当前分组",
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "config": {}
+              },
+              {
+                "id": "query_body",
+                "type": "data.compose",
+                "label": "组装查询条件",
+                "position": {
+                  "x": 300,
+                  "y": 180
+                },
+                "config": {
+                  "output": "{'menuCode':inputs.input.header.purchase_order_menu_code,'tableAlias':'main','current':1,'size':200,'tabIndex':1,'isOpen':'Y','conditionOrList':[],'conditionList':[{'conditionExpression':'=','conditionKey':'code','conditionTableAlias':'main','conditionValue':inputs.input.header.order_code},{'conditionExpression':'=','conditionKey':'enable','conditionTableAlias':'main','conditionValue':'1'},{'conditionExpression':'in','conditionKey':'status','conditionTableAlias':'main','conditionValue':'3'},{'conditionExpression':'=','conditionKey':'selectSource','conditionValue':'chosePurchase4StockIn'},{'conditionExpression':'=','conditionKey':'targetOrderCategoryId','conditionValue':inputs.input.header.category.id}]}"
+                }
+              },
+              {
+                "id": "query",
+                "type": "http.request",
+                "label": "查询可入库采购订单",
+                "position": {
+                  "x": 620,
+                  "y": 180
+                },
+                "config": {
+                  "http_profile_id": "http_profile_REPLACE_WITH_YOUR_HTTP_PROFILE_ID",
+                  "method": "POST",
+                  "url": "/psi/psiPurchaseOrder/defaultPage",
+                  "operation": "read",
+                  "response_checks": [
+                    {
+                      "path": "success",
+                      "in": [
+                        false
+                      ],
+                      "message": "远端业务操作失败"
+                    },
+                    {
+                      "path": "code",
+                      "in": [
+                        "0",
+                        "401"
+                      ],
+                      "message": "远端业务状态异常"
+                    }
+                  ],
+                  "headers": {
+                    "menucode": "{{ inputs.body.menuCode }}"
+                  }
+                }
+              },
+              {
+                "id": "build",
+                "type": "data.compose",
+                "label": "组装采购入库单",
+                "position": {
+                  "x": 960,
+                  "y": -100
+                },
+                "config": {
+                  "rules": [
+                    {
+                      "name": "request",
+                      "expression": "inputs.context.header"
+                    },
+                    {
+                      "name": "records",
+                      "expression": "[r for r in inputs.input.body.data.records if r.get('orderCode') == request.order_code]"
+                    },
+                    {
+                      "name": "check",
+                      "expression": "ensure(len(records) > 0, '未查询到匹配的源单明细')"
+                    },
+                    {
+                      "name": "first",
+                      "expression": "records[0]"
+                    },
+                    {
+                      "name": "details",
+                      "expression": "",
+                      "each": "inputs.context.items",
+                      "rules": [
+                        {
+                          "name": "source",
+                          "expression": "unique(records, 'materialCode', item.material_code)"
+                        },
+                        {
+                          "name": "inventory",
+                          "expression": "source.get('materialInventory') or {}"
+                        },
+                        {
+                          "name": "available",
+                          "expression": "decimal(source.get('canStockInNumber') or source.get('remainStockInNumber'))"
+                        },
+                        {
+                          "name": "conversion",
+                          "expression": "decimal(source.get('singlePricingNumber'), default='1')"
+                        },
+                        {
+                          "name": "pricing_number",
+                          "expression": "decimal(item.quantity) * conversion"
+                        },
+                        {
+                          "name": "price_accuracy",
+                          "expression": "int(first.get('settlementCurrencyPriceAccuracy', 2))"
+                        },
+                        {
+                          "name": "amount_accuracy",
+                          "expression": "int(first.get('settlementCurrencyAmountAccuracy', 2))"
+                        },
+                        {
+                          "name": "base_accuracy",
+                          "expression": "int(first.get('baseCurrencyAmountAccuracy', 2))"
+                        },
+                        {
+                          "name": "tax_rate",
+                          "expression": "decimal(source.get('taxRate') or inventory.get('taxRate')) / decimal('100')"
+                        },
+                        {
+                          "name": "including_tax_price",
+                          "expression": "round_decimal(decimal(item.including_tax_price), price_accuracy) if item.including_tax_price is not None else decimal(source.get('singlePricingIncludingTaxPrice') or source.get('includingTaxPrice'))"
+                        },
+                        {
+                          "name": "price",
+                          "expression": "round_decimal(including_tax_price / (decimal('1') + tax_rate), price_accuracy) if item.including_tax_price is not None else decimal(source.get('singlePrice') or source.get('price'))"
+                        },
+                        {
+                          "name": "amount",
+                          "expression": "round_decimal(pricing_number * price, amount_accuracy)"
+                        },
+                        {
+                          "name": "amount_including_tax",
+                          "expression": "round_decimal(pricing_number * including_tax_price, amount_accuracy)"
+                        },
+                        {
+                          "name": "tax_amount",
+                          "expression": "round_decimal(amount_including_tax - amount, amount_accuracy)"
+                        },
+                        {
+                          "name": "exchange_rate",
+                          "expression": "decimal(first.get('exchangeRate'), default='1')"
+                        },
+                        {
+                          "name": "base_amount",
+                          "expression": "round_decimal(amount * exchange_rate, base_accuracy)"
+                        },
+                        {
+                          "name": "base_tax",
+                          "expression": "round_decimal(tax_amount * exchange_rate, base_accuracy)"
+                        },
+                        {
+                          "name": "base_including_tax",
+                          "expression": "round_decimal(amount_including_tax * exchange_rate, base_accuracy)"
+                        },
+                        {
+                          "name": "v",
+                          "expression": "{'source':source,'inventory':inventory,'line_number':index + 1,'quantity':decimal(item.quantity),'warehouse_id':request.warehouse.id,'warehouse_name':request.warehouse.name,'available':available,'conversion':conversion,'pricing_number':pricing_number,'price_accuracy':price_accuracy,'amount_accuracy':amount_accuracy,'base_accuracy':base_accuracy,'including_tax_price':including_tax_price,'price':price,'amount':amount,'amount_including_tax':amount_including_tax,'tax_amount':tax_amount,'base_amount':base_amount,'base_tax':base_tax,'base_including_tax':base_including_tax}"
+                        },
+                        {
+                          "name": "s",
+                          "expression": "source"
+                        },
+                        {
+                          "name": "inv",
+                          "expression": "inventory"
+                        },
+                        {
+                          "name": "unit_id",
+                          "expression": "inv.get('inventoryUnitId') or s.get('purchaseUnitId')"
+                        },
+                        {
+                          "name": "unit_code",
+                          "expression": "inv.get('inventoryUnitCode') or s.get('purchaseUnitCode')"
+                        },
+                        {
+                          "name": "unit_name",
+                          "expression": "inv.get('inventoryUnitName') or s.get('purchaseUnitName')"
+                        },
+                        {
+                          "name": "unit_accuracy",
+                          "expression": "inv.get('inventoryUnitAccuracy', s.get('purchaseUnitAccuracy', 0))"
+                        },
+                        {
+                          "name": "unit_round",
+                          "expression": "inv.get('inventoryUnitRoundOffType', s.get('purchaseUnitRoundOffType', 4))"
+                        },
+                        {
+                          "name": "pricing_id",
+                          "expression": "s.get('purchasePricingUnitId') or s.get('purchaseUnitId')"
+                        },
+                        {
+                          "name": "pricing_code",
+                          "expression": "s.get('purchasePricingUnitCode') or s.get('purchaseUnitCode')"
+                        },
+                        {
+                          "name": "pricing_name",
+                          "expression": "s.get('purchasePricingUnitName') or s.get('purchaseUnitName')"
+                        }
+                      ],
+                      "fields": [
+                        {
+                          "name": "lineNumber",
+                          "expression": "v['line_number']"
+                        },
+                        {
+                          "name": "materialId",
+                          "expression": "s['materialId']"
+                        },
+                        {
+                          "name": "materialCode",
+                          "expression": "s['materialCode']"
+                        },
+                        {
+                          "name": "materialName",
+                          "expression": "s.get('materialName', '')"
+                        },
+                        {
+                          "name": "materialSpecs",
+                          "expression": "s.get('materialSpecs', '')"
+                        },
+                        {
+                          "name": "materialType",
+                          "expression": "s.get('materialType', '1')"
+                        },
+                        {
+                          "name": "materialPurchaseReturnable",
+                          "expression": "1"
+                        },
+                        {
+                          "name": "materialSpecific",
+                          "expression": "''"
+                        },
+                        {
+                          "name": "lotNoControlType",
+                          "expression": "s.get('lotNoControlType', '1')"
+                        },
+                        {
+                          "name": "lotNoScope",
+                          "expression": "s.get('lotNoScope', '1')"
+                        },
+                        {
+                          "name": "storeUnitId",
+                          "expression": "unit_id"
+                        },
+                        {
+                          "name": "storeUnitCode",
+                          "expression": "unit_code"
+                        },
+                        {
+                          "name": "storeUnitName",
+                          "expression": "unit_name"
+                        },
+                        {
+                          "name": "storeUnitAccuracy",
+                          "expression": "unit_accuracy"
+                        },
+                        {
+                          "name": "storeUnitRoundOffType",
+                          "expression": "unit_round"
+                        },
+                        {
+                          "name": "realityStockInNumber",
+                          "expression": "quantity(v['quantity'])"
+                        },
+                        {
+                          "name": "pricingUnitId",
+                          "expression": "pricing_id"
+                        },
+                        {
+                          "name": "pricingUnitCode",
+                          "expression": "pricing_code"
+                        },
+                        {
+                          "name": "pricingUnitName",
+                          "expression": "pricing_name"
+                        },
+                        {
+                          "name": "pricingUnitAccuracy",
+                          "expression": "s.get('purchasePricingUnitAccuracy', s.get('purchaseUnitAccuracy', 0))"
+                        },
+                        {
+                          "name": "pricingUnitRoundOffType",
+                          "expression": "s.get('purchasePricingUnitRoundOffType', s.get('purchaseUnitRoundOffType', 4))"
+                        },
+                        {
+                          "name": "convertType",
+                          "expression": "'1'"
+                        },
+                        {
+                          "name": "pricingNumber",
+                          "expression": "quantity(v['pricing_number'])"
+                        },
+                        {
+                          "name": "singlePricingNumber",
+                          "expression": "text(v['conversion'], 10)"
+                        },
+                        {
+                          "name": "singlePrice",
+                          "expression": "text(v['price'], v['price_accuracy'])"
+                        },
+                        {
+                          "name": "singlePricingIncludingTaxPrice",
+                          "expression": "text(v['including_tax_price'], v['price_accuracy'])"
+                        },
+                        {
+                          "name": "shouldStockInNumber",
+                          "expression": "quantity(v['quantity'])"
+                        },
+                        {
+                          "name": "occupyNumber",
+                          "expression": "'0'"
+                        },
+                        {
+                          "name": "alreadyReturnNumber",
+                          "expression": "str(s.get('alreadyReturnNumber', 0))"
+                        },
+                        {
+                          "name": "price",
+                          "expression": "text(v['price'], v['price_accuracy'])"
+                        },
+                        {
+                          "name": "taxId",
+                          "expression": "s.get('taxId') or inv.get('taxId')"
+                        },
+                        {
+                          "name": "taxType",
+                          "expression": "s.get('taxType') or inv.get('taxType', '1')"
+                        },
+                        {
+                          "name": "taxRate",
+                          "expression": "str(s.get('taxRate') or inv.get('taxRate', 0))"
+                        },
+                        {
+                          "name": "taxName",
+                          "expression": "s.get('taxName') or inv.get('taxName', '')"
+                        },
+                        {
+                          "name": "taxAccuracy",
+                          "expression": "s.get('taxAccuracy', inv.get('taxAccuracy', 2))"
+                        },
+                        {
+                          "name": "priceIncludingTax",
+                          "expression": "text(v['including_tax_price'], v['price_accuracy'])"
+                        },
+                        {
+                          "name": "amount",
+                          "expression": "text(v['amount'], v['amount_accuracy'])"
+                        },
+                        {
+                          "name": "baseCurrencyAmount",
+                          "expression": "text(v['base_amount'], v['base_accuracy'])"
+                        },
+                        {
+                          "name": "taxAmount",
+                          "expression": "text(v['tax_amount'], v['amount_accuracy'])"
+                        },
+                        {
+                          "name": "baseCurrencyTaxAmount",
+                          "expression": "text(v['base_tax'], v['base_accuracy'])"
+                        },
+                        {
+                          "name": "amountIncludingTax",
+                          "expression": "text(v['amount_including_tax'], v['amount_accuracy'])"
+                        },
+                        {
+                          "name": "baseCurrencyAmountIncludingTax",
+                          "expression": "text(v['base_including_tax'], v['base_accuracy'])"
+                        },
+                        {
+                          "name": "alreadyInvoiceNumber",
+                          "expression": "'0'"
+                        },
+                        {
+                          "name": "occupyInvoiceNumber",
+                          "expression": "'0'"
+                        },
+                        {
+                          "name": "invoiceNotTaxAmount",
+                          "expression": "'0.00'"
+                        },
+                        {
+                          "name": "invoiceIncludingTaxAmount",
+                          "expression": "'0.00'"
+                        },
+                        {
+                          "name": "notInvoiceNumber",
+                          "expression": "'0'"
+                        },
+                        {
+                          "name": "notInvoiceNotTaxAmount",
+                          "expression": "'0.00'"
+                        },
+                        {
+                          "name": "notInvoiceIncludingTaxAmount",
+                          "expression": "'0.00'"
+                        },
+                        {
+                          "name": "overOrderStockInNumber",
+                          "expression": "'0'"
+                        },
+                        {
+                          "name": "overOrderStockInNotTaxAmount",
+                          "expression": "'0.00'"
+                        },
+                        {
+                          "name": "overOrderStockInIncludingTaxAmount",
+                          "expression": "'0.00'"
+                        },
+                        {
+                          "name": "sourceOrderId",
+                          "expression": "s['orderId']"
+                        },
+                        {
+                          "name": "sourceOrderCode",
+                          "expression": "s['orderCode']"
+                        },
+                        {
+                          "name": "sourceOrderType",
+                          "expression": "'1'"
+                        },
+                        {
+                          "name": "sourceOrderTypeName",
+                          "expression": "'采购订单'"
+                        },
+                        {
+                          "name": "sourceLineNumber",
+                          "expression": "s['lineNumber']"
+                        },
+                        {
+                          "name": "sourceDetailId",
+                          "expression": "s['detailId']"
+                        },
+                        {
+                          "name": "purchaseDetailId",
+                          "expression": "s['detailId']"
+                        },
+                        {
+                          "name": "detailEnable",
+                          "expression": "1"
+                        },
+                        {
+                          "name": "detailEnableName",
+                          "expression": "'正常'"
+                        },
+                        {
+                          "name": "canStockInNumber",
+                          "expression": "str(s.get('canStockInNumber', v['available']))"
+                        },
+                        {
+                          "name": "sourceAlreadyStockInNumber",
+                          "expression": "str(decimal(s.get('number')) - v['available'])"
+                        },
+                        {
+                          "name": "sourceOrderNumber",
+                          "expression": "str(s.get('number', '0'))"
+                        },
+                        {
+                          "name": "trackNo",
+                          "expression": "s.get('trackNo', '')"
+                        },
+                        {
+                          "name": "stockInType",
+                          "expression": "'1'"
+                        },
+                        {
+                          "name": "stockInTypeName",
+                          "expression": "'良品入库'"
+                        },
+                        {
+                          "name": "expirationDateManaged",
+                          "expression": "inv.get('expirationDateManaged', 0)"
+                        },
+                        {
+                          "name": "expirationDateControlType",
+                          "expression": "inv.get('expirationDateControlType', '1')"
+                        },
+                        {
+                          "name": "expirationDateUnit",
+                          "expression": "inv.get('expirationDateUnit', '1')"
+                        },
+                        {
+                          "name": "basicUnitId",
+                          "expression": "inv.get('basicUnitId')"
+                        },
+                        {
+                          "name": "basicUnitCode",
+                          "expression": "inv.get('basicUnitCode', '')"
+                        },
+                        {
+                          "name": "projectCode",
+                          "expression": "s.get('projectCode', '')"
+                        },
+                        {
+                          "name": "contractCode",
+                          "expression": "s.get('contractCode', '')"
+                        },
+                        {
+                          "name": "drawingNumber",
+                          "expression": "s.get('drawingNumber', '')"
+                        },
+                        {
+                          "name": "isGift",
+                          "expression": "s.get('isGift', 0)"
+                        },
+                        {
+                          "name": "canIssueNumberConsiderDownstreamDraft",
+                          "expression": "s.get('canIssueNumberConsiderDownstreamDraft', 'N')"
+                        },
+                        {
+                          "name": "oldStoreUnitId",
+                          "expression": "unit_id"
+                        },
+                        {
+                          "name": "oldStoreUnitCode",
+                          "expression": "unit_code"
+                        },
+                        {
+                          "name": "oldStoreUnitName",
+                          "expression": "unit_name"
+                        },
+                        {
+                          "name": "oldStoreUnitAccuracy",
+                          "expression": "unit_accuracy"
+                        },
+                        {
+                          "name": "oldStoreUnitRoundOffType",
+                          "expression": "unit_round"
+                        },
+                        {
+                          "name": "storeId",
+                          "expression": "v['warehouse_id']"
+                        },
+                        {
+                          "name": "storeName",
+                          "expression": "v['warehouse_name']"
+                        },
+                        {
+                          "name": "areaId",
+                          "expression": "''"
+                        },
+                        {
+                          "name": "areaName",
+                          "expression": "''"
+                        },
+                        {
+                          "name": "positionId",
+                          "expression": "''"
+                        },
+                        {
+                          "name": "positionName",
+                          "expression": "''"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "f",
+                      "expression": "first"
+                    },
+                    {
+                      "name": "r",
+                      "expression": "request"
+                    },
+                    {
+                      "name": "s",
+                      "expression": "{'purchase_order_menu_code': request.purchase_order_menu_code}"
+                    },
+                    {
+                      "name": "category",
+                      "expression": "request.category"
+                    },
+                    {
+                      "name": "order_date",
+                      "expression": "date(r.order_date or f.get('orderTime'))"
+                    },
+                    {
+                      "name": "v",
+                      "expression": "{'details':details,'total_amount':sum(decimal(d.amount) for d in details),'total_tax':sum(decimal(d.taxAmount) for d in details),'total_including_tax':sum(decimal(d.amountIncludingTax) for d in details)}"
+                    }
+                  ],
+                  "fields": [
+                    {
+                      "name": "orderCategoryId",
+                      "expression": "category.id"
+                    },
+                    {
+                      "name": "orderCategoryCode",
+                      "expression": "category.code"
+                    },
+                    {
+                      "name": "orderCategoryName",
+                      "expression": "category.name"
+                    },
+                    {
+                      "name": "businessId",
+                      "expression": "category.business_id"
+                    },
+                    {
+                      "name": "businessName",
+                      "expression": "category.business_name"
+                    },
+                    {
+                      "name": "orderTime",
+                      "expression": "order_date"
+                    },
+                    {
+                      "name": "postingTime",
+                      "expression": "r.posting_date"
+                    },
+                    {
+                      "name": "orderSupplierId",
+                      "expression": "f['orderSupplierId']"
+                    },
+                    {
+                      "name": "orderSupplierCode",
+                      "expression": "f.get('orderSupplierCode', '')"
+                    },
+                    {
+                      "name": "orderSupplierName",
+                      "expression": "f.get('orderSupplierName', '')"
+                    },
+                    {
+                      "name": "orderSupplierUser",
+                      "expression": "f.get('orderSupplierUser', '')"
+                    },
+                    {
+                      "name": "orderSupplierUserName",
+                      "expression": "f.get('orderSupplierUserName', '')"
+                    },
+                    {
+                      "name": "orderSupplierPhone",
+                      "expression": "f.get('orderSupplierPhone', '')"
+                    },
+                    {
+                      "name": "orderSupplierAddress",
+                      "expression": "f.get('orderSupplierAddress', '')"
+                    },
+                    {
+                      "name": "supplySupplierId",
+                      "expression": "f.get('supplySupplierId', f['orderSupplierId'])"
+                    },
+                    {
+                      "name": "supplySupplierName",
+                      "expression": "f.get('supplySupplierName', f.get('orderSupplierName', ''))"
+                    },
+                    {
+                      "name": "supplySupplierUser",
+                      "expression": "f.get('supplySupplierUser', '')"
+                    },
+                    {
+                      "name": "supplySupplierUserName",
+                      "expression": "f.get('supplySupplierUserName', '')"
+                    },
+                    {
+                      "name": "supplySupplierPhone",
+                      "expression": "f.get('supplySupplierPhone', '')"
+                    },
+                    {
+                      "name": "supplySupplierAddress",
+                      "expression": "f.get('supplySupplierAddress', '')"
+                    },
+                    {
+                      "name": "settlementSupplierId",
+                      "expression": "f.get('settlementSupplierId', f['orderSupplierId'])"
+                    },
+                    {
+                      "name": "settlementSupplierName",
+                      "expression": "f.get('settlementSupplierName', f.get('orderSupplierName', ''))"
+                    },
+                    {
+                      "name": "collectionSupplierId",
+                      "expression": "f.get('collectionSupplierId', f['orderSupplierId'])"
+                    },
+                    {
+                      "name": "collectionSupplierName",
+                      "expression": "f.get('collectionSupplierName', f.get('orderSupplierName', ''))"
+                    },
+                    {
+                      "name": "paymentConditionPriority",
+                      "expression": "4"
+                    },
+                    {
+                      "name": "pricingMode",
+                      "expression": "'2'"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "0"
+                    },
+                    {
+                      "name": "statusName",
+                      "expression": "'创建'"
+                    },
+                    {
+                      "name": "enable",
+                      "expression": "1"
+                    },
+                    {
+                      "name": "enableName",
+                      "expression": "'正常'"
+                    },
+                    {
+                      "name": "originalContractCode",
+                      "expression": "f.get('originalContractCode', '')"
+                    },
+                    {
+                      "name": "basicUnitId",
+                      "expression": "f.get('baseCurrencyId')"
+                    },
+                    {
+                      "name": "basicUnitName",
+                      "expression": "f.get('baseCurrencyName')"
+                    },
+                    {
+                      "name": "basicUnitPriceAccuracy",
+                      "expression": "f.get('baseCurrencyPriceAccuracy', 2)"
+                    },
+                    {
+                      "name": "basicUnitAmountAccuracy",
+                      "expression": "f.get('baseCurrencyAmountAccuracy', 2)"
+                    },
+                    {
+                      "name": "basicUnitRoundOffType",
+                      "expression": "f.get('baseCurrencyRoundOffType', 4)"
+                    },
+                    {
+                      "name": "basicUnitSymbol",
+                      "expression": "'￥'"
+                    },
+                    {
+                      "name": "settlementCurrencyId",
+                      "expression": "f.get('settlementCurrencyId')"
+                    },
+                    {
+                      "name": "settlementCurrencyName",
+                      "expression": "f.get('settlementCurrencyName')"
+                    },
+                    {
+                      "name": "settlementCurrencyPriceAccuracy",
+                      "expression": "f.get('settlementCurrencyPriceAccuracy', 2)"
+                    },
+                    {
+                      "name": "settlementCurrencyAmountAccuracy",
+                      "expression": "f.get('settlementCurrencyAmountAccuracy', 2)"
+                    },
+                    {
+                      "name": "settlementCurrencyRoundOffType",
+                      "expression": "f.get('settlementCurrencyRoundOffType', 4)"
+                    },
+                    {
+                      "name": "settlementCurrencySymbol",
+                      "expression": "'￥'"
+                    },
+                    {
+                      "name": "exchangeRate",
+                      "expression": "f.get('exchangeRate', '1')"
+                    },
+                    {
+                      "name": "priceIncludedTax",
+                      "expression": "f.get('priceIncludedTax', 'Y')"
+                    },
+                    {
+                      "name": "settlementMethod",
+                      "expression": "f.get('settlementMethod', '')"
+                    },
+                    {
+                      "name": "settlementMethodName",
+                      "expression": "f.get('settlementMethodName', '')"
+                    },
+                    {
+                      "name": "details",
+                      "expression": "v['details']"
+                    },
+                    {
+                      "name": "targetCategoryCode",
+                      "expression": "category.code"
+                    },
+                    {
+                      "name": "sourceMenuCode",
+                      "expression": "s.purchase_order_menu_code"
+                    },
+                    {
+                      "name": "totalAmount",
+                      "expression": "text(v['total_amount'], 2)"
+                    },
+                    {
+                      "name": "totalTaxAmount",
+                      "expression": "text(v['total_tax'], 2)"
+                    },
+                    {
+                      "name": "totalAmountIncludingTax",
+                      "expression": "text(v['total_including_tax'], 2)"
+                    },
+                    {
+                      "name": "enclosureFileList",
+                      "expression": "[]"
+                    },
+                    {
+                      "name": "enclosureIds",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "deleteEnclosureFileList",
+                      "expression": "[]"
+                    },
+                    {
+                      "name": "orderSupplierUserId",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "supplySupplierUserId",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "collectSupplierId",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "collectSupplierName",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "paymentConditionId",
+                      "expression": "f.get('paymentConditionId', '')"
+                    },
+                    {
+                      "name": "paymentConditionName",
+                      "expression": "f.get('paymentConditionName', '')"
+                    },
+                    {
+                      "name": "exchangeRateName",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "exchangeRateId",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "paymentMethodName",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "paymentMethod",
+                      "expression": "''"
+                    },
+                    {
+                      "name": "menuCode",
+                      "expression": "category.menu_code"
+                    },
+                    {
+                      "name": "code",
+                      "expression": "r.document_code or '自动生成'"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "save",
+                "type": "http.request",
+                "label": "提交采购入库请求",
+                "position": {
+                  "x": 1280,
+                  "y": -100
+                },
+                "config": {
+                  "http_profile_id": "http_profile_REPLACE_WITH_YOUR_HTTP_PROFILE_ID",
+                  "method": "POST",
+                  "url": "/psi/psiPurchaseStockInOrder/defaultSaveOrUpdate",
+                  "operation": "write",
+                  "response_checks": [
+                    {
+                      "path": "success",
+                      "in": [
+                        false
+                      ],
+                      "message": "远端业务操作失败"
+                    },
+                    {
+                      "path": "code",
+                      "in": [
+                        "0",
+                        "401"
+                      ],
+                      "message": "远端业务状态异常"
+                    }
+                  ],
+                  "headers": {
+                    "menucode": "{{ inputs.body.menuCode }}"
+                  }
+                }
+              },
+              {
+                "id": "loop_output",
+                "type": "control.loop_output",
+                "label": "单项结果",
+                "position": {
+                  "x": 1620,
+                  "y": -100
+                },
+                "config": {}
+              }
+            ],
+            "edges": [
+              {
+                "id": "loop_input_item_query_body_input",
+                "source": "loop_input",
+                "sourceHandle": "item",
+                "target": "query_body",
+                "targetHandle": "input"
+              },
+              {
+                "id": "query_body_success_query_body",
+                "source": "query_body",
+                "sourceHandle": "success",
+                "target": "query",
+                "targetHandle": "body"
+              },
+              {
+                "id": "query_success_build_input",
+                "source": "query",
+                "sourceHandle": "success",
+                "target": "build",
+                "targetHandle": "input"
+              },
+              {
+                "id": "loop_input_item_build_context",
+                "source": "loop_input",
+                "sourceHandle": "item",
+                "target": "build",
+                "targetHandle": "context"
+              },
+              {
+                "id": "build_success_save_body",
+                "source": "build",
+                "sourceHandle": "success",
+                "target": "save",
+                "targetHandle": "body"
+              },
+              {
+                "id": "save_success_loop_output_value",
+                "source": "save",
+                "sourceHandle": "success",
+                "target": "loop_output",
+                "targetHandle": "value"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "summary",
+        "type": "data.batch_summary",
+        "label": "批处理结果汇总",
+        "position": {
+          "x": 1800,
+          "y": -200
+        },
+        "config": {},
+        "typeVersion": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "start_success_params_input",
+        "source": "start",
+        "sourceHandle": "success",
+        "target": "params",
+        "targetHandle": "input"
+      },
+      {
+        "id": "params_csv_path_csv_path",
+        "source": "params",
+        "sourceHandle": "csv_path",
+        "target": "csv",
+        "targetHandle": "path"
+      },
+      {
+        "id": "csv_success_prepare_dataset",
+        "source": "csv",
+        "sourceHandle": "success",
+        "target": "prepare",
+        "targetHandle": "dataset"
+      },
+      {
+        "id": "prepare_success_tasks_records",
+        "source": "prepare",
+        "sourceHandle": "success",
+        "target": "tasks",
+        "targetHandle": "records"
+      },
+      {
+        "id": "tasks_success_each_items",
+        "source": "tasks",
+        "sourceHandle": "success",
+        "target": "each",
+        "targetHandle": "items"
+      },
+      {
+        "id": "tasks_failures_summary_input_failures",
+        "source": "tasks",
+        "sourceHandle": "failures",
+        "target": "summary",
+        "targetHandle": "input_failures"
+      },
+      {
+        "id": "each_results_summary_results",
+        "source": "each",
+        "sourceHandle": "results",
+        "target": "summary",
+        "targetHandle": "results"
+      }
+    ]
+  }
+}

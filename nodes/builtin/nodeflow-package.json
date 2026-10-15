@@ -1,8 +1,8 @@
 {
   "id": "nodeflow.builtin",
-  "name": "\u5185\u7f6e\u8282\u70b9",
+  "name": "内置节点",
   "version": "1.0.0",
-  "description": "Node Flow \u81ea\u5e26\u7684\u901a\u7528\u5de5\u4f5c\u6d41\u8282\u70b9\u3002",
+  "description": "Node Flow 自带的通用工作流节点。",
   "author": "Node Flow",
   "engines": {
     "nodeflow": ">=0.1.0,<0.2.0",
@@ -20,6 +20,8 @@
     "testing.py",
     "utility.py",
     "webhook.py",
-    "workflow.py"
+    "workflow.py",
+    "parameters.py",
+    "records.py"
   ]
 }

@@ -1,0 +1,80 @@
+{
+  "name": "A3 采购 · HTTP 连接",
+  "base_url": "http://10.0.2.155",
+  "credential_id": "credential_REPLACE_WITH_YOUR_CREDENTIAL_ID",
+  "timeout_seconds": 30,
+  "headers": {
+    "Content-Type": "application/json;charset=UTF-8",
+    "client_type": "mom_web",
+    "lang": "zh-CN"
+  },
+  "authentication": {
+    "mode": "login",
+    "login": {
+      "path": "/uc/login/login",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Accept-Language": "zh-CN,zh;q=0.9"
+      },
+      "body": {
+        "clientType": "mom_web",
+        "tenancyCode": "{{ credential.tenant }}",
+        "username": "{{ credential.username }}",
+        "password": "{{ credential.password }}"
+      },
+      "reject_when": [
+        {
+          "path": "success",
+          "in": [
+            false
+          ]
+        },
+        {
+          "path": "code",
+          "in": [
+            "0",
+            "401"
+          ]
+        }
+      ],
+      "extracts": [
+        {
+          "source": "json",
+          "path": "data.access_token",
+          "target": "header",
+          "name": "access_token"
+        },
+        {
+          "source": "json",
+          "path": "data.token_uuid",
+          "target": "header",
+          "name": "token_uuid"
+        },
+        {
+          "source": "json",
+          "path": "data.userVo.user.tenancyId",
+          "target": "header",
+          "name": "tenancy_id",
+          "optional": true,
+          "as_text": true
+        },
+        {
+          "source": "json",
+          "path": "data.userVo.tenancy.id",
+          "target": "header",
+          "name": "tenancy_id",
+          "optional": true,
+          "as_text": true,
+          "if_absent": true
+        }
+      ]
+    },
+    "refresh_on": {
+      "path": "code",
+      "in": [
+        "401"
+      ]
+    }
+  }
+}

@@ -1,9 +1,22 @@
 {
   "id": "a3.purchase",
   "name": "A3 采购",
-  "version": "0.1.0",
-  "description": "A3 采购业务纯计算节点。",
-  "engines": {"nodeflow": ">=0.1.0,<0.2.0", "python": ">=3.11"},
-  "pythonDependencies": ["a3-tool>=0.1.0"],
-  "nodeEntrypoints": ["stock_in.py"]
+  "version": "0.6.0",
+  "description": "通用节点的 A3 采购预设与子流程模板；保留旧节点兼容入口。",
+  "engines": {
+    "nodeflow": ">=0.1.0,<0.2.0",
+    "python": ">=3.11"
+  },
+  "pythonDependencies": [],
+  "nodeEntrypoints": [],
+  "templates": [
+    "templates/body.json",
+    "templates/build.json",
+    "templates/group.json",
+    "templates/prepare.json",
+    "templates/query.json",
+    "templates/submit.json",
+    "templates/workflow.json",
+    "templates/query_body.json"
+  ]
 }

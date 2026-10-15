@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 MANIFEST_SUFFIX = ".nodeform.json"
 SUPPORTED_CONTROLS = frozenset({
     "text", "textarea", "password", "number", "switch",
-    "select", "json", "dynamic_output_list", "dynamic_input_list", "http_profile",
-    "url", "credential",
+    "select", "json", "dynamic_output_list", "dynamic_input_list", "http_profile", "column_rules", "mapping_rules", "group_fields",
+    "url", "credential", "parameter_list", "string_list",
 })
 
 

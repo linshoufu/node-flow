@@ -1,3 +1,6 @@
+import { Switch } from "./Switch";
+import { TextInput } from "./TextInput";
+import { Select } from "./Select";
 import type { CSSProperties, ReactNode } from "react";
 import { Check, Clock3, GitBranch, LoaderCircle, Puzzle, X } from "lucide-react";
 import type { HttpProfile, NodeFormManifest, NodePort, NodeSummaryTemplate, NodeType, WorkflowNode } from "@/types";
@@ -45,11 +48,14 @@ export function NodeCard({ node: workflowNode, nodeType, manifest, selected = fa
       </header>
       <div className={compact ? "py-1" : "py-2"}>
         {visibleInputs.map(([key, port]) => <PortRow key={`in-${key}`} id={key} port={port} direction="input" compact={compact} highlighted={highlightedInputHandles.includes(key)} renderHandle={renderHandle} />)}
+        {!!Object.keys(workflowNode.configBindings ?? {}).length && <p className="mx-3 my-2 text-[10px] text-primary" title={Object.keys(workflowNode.configBindings ?? {}).join("、")}>引用配置 · {Object.keys(workflowNode.configBindings ?? {}).length} 项</p>}
         {summary && <NodeSummaryView summary={summary} compact={compact} />}
         {hasBodySubflow && <button type="button" disabled={!onOpenSubflow} className="nodrag nopan nowheel mx-3 my-2 flex w-[calc(100%_-_1.5rem)] items-center justify-between rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-2 text-[11px] text-text-secondary hover:border-primary/50 hover:text-text focus:outline-none focus:ring-1 focus:ring-primary/50" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenSubflow?.(workflowNode); }}><span className="flex items-center gap-2"><GitBranch size={14} className="text-primary" />{readOnly ? "查看循环体" : "编辑循环体"}</span><span className="text-muted">{bodyNodeCount} 个节点</span></button>}
         {visibleFields.length > 0 && <fieldset disabled={readOnly} className="mx-3 my-2 rounded-lg border border-border/50 bg-canvas/50 px-2 py-1">
         {visibleFields.map((field) => {
           const current = workflowNode.config[field.key];
+          const binding = workflowNode.configBindings?.[field.key];
+          if (binding) return <div key={field.key} className="flex min-h-7 items-center justify-between gap-2 text-[11px]"><span className="truncate text-text-secondary">{field.label ?? field.key}</span><span className="truncate text-primary" title={binding.key}>{binding.source === "workflow" ? "工作流配置" : "运行参数"} ↗</span></div>;
           return <WidgetRow key={field.key} label={field.label ?? field.key} value={current} control={field.control} options={field.options} httpProfiles={httpProfiles} compact={compact} onChange={(value) => onConfigChange?.(field.key, value)} />;
         })}
         {fields.length > 3 && <p className="py-1 text-center text-[10px] text-muted">其余 {fields.length - 3} 项在右侧配置</p>}
@@ -79,13 +85,12 @@ function PortRow({ id, port, direction, compact, highlighted, renderHandle }: { 
 }
 
 function WidgetRow({ label, value, control, options, httpProfiles, compact, onChange }: { label: string; value: unknown; control: string; options?: { label: string; value: string }[]; httpProfiles: HttpProfile[]; compact: boolean; onChange: (value: unknown) => void }) {
-  const base = "min-w-0 flex-1 rounded-md border border-border/70 bg-raised/80 px-2 py-1 text-xs text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary/20";
   const rowHeight = compact ? "min-h-7" : "min-h-8";
-  if (control === "switch") return <label className={`nodrag flex items-center justify-between gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="min-w-0 truncate" title={label}>{label}</span><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} className="node-toggle shrink-0" /></label>;
-  if (control === "select" && options) return <label className={`nodrag flex items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate" title={label}>{label}</span><select value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} className={base}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
-  if (control === "http_profile") return <label className={`nodrag flex items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate" title={label}>{label}</span><select aria-label={label} value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)} className={base} title={httpProfiles.find((profile) => profile.id === value)?.base_url ?? ""}><option value="">未设置</option>{httpProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>;
+  if (control === "switch") return <label className={`nodrag flex items-center justify-between gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="min-w-0 truncate" title={label}>{label}</span><Switch checked={Boolean(value)} onCheckedChange={onChange} /></label>;
+  if (control === "select" && options) return <label className={`nodrag flex items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate" title={label}>{label}</span><Select value={String(value ?? "")} onValueChange={(selectedValue) => onChange(selectedValue)} aria-label={label} className="h-7 min-w-0 flex-1 px-2 py-1">{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></label>;
+  if (control === "http_profile") return <label className={`nodrag flex items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate" title={label}>{label}</span><Select aria-label={label} value={String(value ?? "")} onValueChange={(selectedValue) => onChange(selectedValue || null)} className="h-7 min-w-0 flex-1 px-2 py-1" title={httpProfiles.find((profile) => profile.id === value)?.base_url ?? ""}><option value="">未设置</option>{httpProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</Select></label>;
   if (control === "number") return <div className={`nodrag flex min-w-0 items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] shrink-0 truncate" title={label}>{label}</span><NumberInput compact aria-label={label} value={typeof value === "string" || typeof value === "number" ? value : ""} onValueChange={(value) => onChange(Number(value))} className="min-w-0 flex-1" /></div>;
-  return <label className={`nodrag flex items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate" title={label}>{label}</span><input type="text" value={typeof value === "string" || typeof value === "number" ? String(value) : ""} onChange={(event) => onChange(event.target.value)} className={base} /></label>;
+  return <label className={`nodrag flex items-center gap-2 text-[11px] text-text-secondary ${rowHeight}`}><span className="w-[43%] truncate" title={label}>{label}</span><TextInput compact type="text" value={typeof value === "string" || typeof value === "number" ? String(value) : ""} onChange={(event) => onChange(event.target.value)} className="flex-1" /></label>;
 }
 
 function orderedPorts(direction: "inputs" | "outputs", ports: Record<string, NodePort>, manifest?: NodeFormManifest) {
@@ -93,7 +98,7 @@ function orderedPorts(direction: "inputs" | "outputs", ports: Record<string, Nod
 }
 
 type NodeSummary = { badge: string; primary: string; secondary?: string; warning?: boolean };
-export type NodeRunStatus = "waiting" | "running" | "succeeded" | "failed" | "skipped";
+export type NodeRunStatus = "waiting" | "running" | "succeeded" | "failed" | "skipped" | "planned" | "unverified";
 
 const NODE_RUN_STATUS: Record<NodeRunStatus, { label: string; className: string; icon: typeof Check }> = {
   waiting: { label: "等待", className: "bg-raised text-muted", icon: Clock3 },
@@ -101,6 +106,8 @@ const NODE_RUN_STATUS: Record<NodeRunStatus, { label: string; className: string;
   succeeded: { label: "成功", className: "bg-success/12 text-success", icon: Check },
   failed: { label: "失败", className: "bg-danger/12 text-danger", icon: X },
   skipped: { label: "跳过", className: "bg-raised text-muted", icon: X },
+  planned: { label: "操作计划", className: "bg-warning/10 text-warning", icon: Clock3 },
+  unverified: { label: "未验证", className: "bg-warning/10 text-warning", icon: X },
 };
 
 function NodeRunStatusBadge({ status }: { status: NodeRunStatus }) {

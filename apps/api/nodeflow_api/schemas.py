@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from nodeflow_sdk.parameters import RunParameter
 from packaging.version import InvalidVersion, Version
 
 from .execution_policy import NodeExecutionPolicy
@@ -162,6 +163,12 @@ class CanvasAnnotation(BaseModel):
         return value.strip() if isinstance(value, str) else ""
 
 
+class ConfigBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["workflow", "parameter"]
+    key: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
 class WorkflowNode(BaseModel):
     id: str
     type: str
@@ -171,6 +178,7 @@ class WorkflowNode(BaseModel):
     typeVersion: int = Field(default=1, ge=1)
     position: Position
     config: dict[str, Any] = Field(default_factory=dict)
+    configBindings: dict[str, ConfigBinding] = Field(default_factory=dict)
     pinnedData: dict[str, Any] | None = None
     execution: NodeExecutionPolicy | None = None
     subflows: dict[str, "WorkflowSubflow"] = Field(default_factory=dict)
@@ -201,6 +209,8 @@ class WorkflowSubflow(BaseModel):
 
 
 class WorkflowSettings(BaseModel):
+    configuration: list["RunParameter"] = Field(default_factory=list)
+    run_mode: Literal["live", "preview"] = "live"
     timeout_seconds: float = Field(default=600, gt=0)
     variables: dict[str, Any] = Field(default_factory=dict)
     error_workflow_id: str | None = Field(default=None, min_length=1, max_length=120)
@@ -559,11 +569,15 @@ class RunInvocation(BaseModel):
     initial_input: Any = Field(default_factory=dict)
     has_initial_input: bool = False
     execution_mode: RunExecutionMode = "manual"
+    run_mode: Literal["live", "preview"] = "live"
     allow_pinned_data: bool = True
     project_variables: dict[str, Any] = Field(default_factory=dict)
     environment_id: str = "default"
     environment_name: str = "默认环境"
     credential_overrides: dict[str, str] = Field(default_factory=dict)
+    profiles: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    configuration: dict[str, Any] = Field(default_factory=dict)
 
 
 class ManualRunRequest(BaseModel):
@@ -572,6 +586,7 @@ class ManualRunRequest(BaseModel):
     entry_node_id: str | None = Field(default=None, min_length=1, max_length=120)
     initial_input: Any = None
     environment_id: str | None = Field(default=None, min_length=1, max_length=120)
+    run_mode: Literal["live", "preview"] | None = None
 
 
 class RunRecord(BaseModel):
@@ -580,6 +595,8 @@ class RunRecord(BaseModel):
     workflow_version: int
     status: RunStatus
     execution_mode: RunExecutionMode = "manual"
+    run_mode: Literal["live", "preview"] = "live"
+    preview_status: Literal["complete", "partial"] | None = None
     created_at: str
     started_at: str | None = None
     completed_at: str | None = None

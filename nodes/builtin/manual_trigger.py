@@ -31,6 +31,8 @@ class ManualTriggerConfig(NodeConfig):
     ),
 )
 class ManualTriggerNode(BaseNode[ManualTriggerConfig]):
+    effect = "pure"
+    preview_support = "execute"
     outputs = {
         "success": Output(display_name="初始数据", description="Initial payload", schema=ANY_JSON_SCHEMA)
     }

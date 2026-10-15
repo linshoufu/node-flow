@@ -8,7 +8,7 @@ from apps.api.nodeflow_api.main import create_app
 
 
 def _client() -> TestClient:
-    return TestClient(create_app(database_path=":memory:", nodes_dir=Path("nodes")))
+    return TestClient(create_app(database_path=":memory:", nodes_dir=Path("nodes/builtin")))
 
 
 def _create_bearer_credential(client: TestClient) -> dict[str, object]:

@@ -1,0 +1,46 @@
+{
+  "id": "a3.purchase.compatibility",
+  "name": "A3 采购（旧版兼容）",
+  "version": "0.4.1",
+  "description": "仅为已有工作流保留的旧版 Python 节点；新流程使用 A3 模板。",
+  "engines": {
+    "nodeflow": ">=0.1.0,<0.2.0",
+    "python": ">=3.11"
+  },
+  "pythonDependencies": [
+    "a3-tool>=0.1.0",
+    "httpx>=0.28"
+  ],
+  "nodeEntrypoints": [
+    "stock_in.py",
+    "purchase.py"
+  ],
+  "credentialTypes": [
+    {
+      "id": "a3.account",
+      "displayName": "A3 账号",
+      "fields": [
+        {
+          "id": "tenancy_code",
+          "label": "租户代码",
+          "secret": false
+        },
+        {
+          "id": "username",
+          "label": "用户名",
+          "secret": false
+        },
+        {
+          "id": "password",
+          "label": "密码",
+          "secret": true
+        }
+      ],
+      "nodeTypeIds": [
+        "a3.purchase_order_query",
+        "a3.purchase_save",
+        "a3.purchase_submit"
+      ]
+    }
+  ]
+}

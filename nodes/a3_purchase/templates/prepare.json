@@ -1,0 +1,138 @@
+{
+  "id": "a3.purchase.prepare.preset",
+  "name": "采购 CSV 字段规则",
+  "kind": "node",
+  "description": "可编辑的通用节点预设",
+  "node": {
+    "id": "prepare",
+    "type": "data.records_prepare",
+    "label": "映射与校验采购数据",
+    "position": {
+      "x": 900,
+      "y": 0
+    },
+    "config": {
+      "columns": [
+        {
+          "name": "order_code",
+          "expression": "row.get('源单单号', '')",
+          "required": true
+        },
+        {
+          "name": "warehouse_name",
+          "expression": "row.get('仓库', '')",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "expression": "row.get('仓库ID') or (options.default_warehouse.id if options.default_warehouse and values.warehouse_name == options.default_warehouse.name else '')",
+          "required": true
+        },
+        {
+          "name": "warehouse",
+          "expression": "{'name': values.warehouse_name, 'id': values.warehouse_id}",
+          "type": "object"
+        },
+        {
+          "name": "posting_date",
+          "expression": "row.get('过账日期', '')",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "order_date",
+          "expression": "row.get('单据日期') or None",
+          "type": "date"
+        },
+        {
+          "name": "category",
+          "expression": "lookup(options.categories, ['code', 'name'], row.get('单据类别') or options.default_stock_in_category)",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "document_code",
+          "expression": "row.get('单据编码') or None"
+        },
+        {
+          "name": "material_code",
+          "expression": "row.get('物料编码', '')",
+          "required": true
+        },
+        {
+          "name": "quantity",
+          "expression": "decimal(row.get('数量')) if ensure(decimal(row.get('数量')) > 0, '数量必须大于 0') else None",
+          "type": "decimal",
+          "required": true
+        },
+        {
+          "name": "including_tax_price",
+          "expression": "row.get('含税单价') or None",
+          "type": "decimal",
+          "minimum": "0"
+        },
+        {
+          "name": "purchase_order_menu_code",
+          "expression": "options.purchase_order_menu_code"
+        }
+      ]
+    },
+    "configBindings": {
+      "options.purchase_order_menu_code": {
+        "source": "workflow",
+        "key": "purchase_order_menu_code"
+      },
+      "options.default_stock_in_category": {
+        "source": "workflow",
+        "key": "default_stock_in_category"
+      },
+      "options.categories": {
+        "source": "workflow",
+        "key": "categories"
+      },
+      "options.default_warehouse": {
+        "source": "workflow",
+        "key": "default_warehouse"
+      }
+    }
+  },
+  "configuration": [
+    {
+      "name": "purchase_order_menu_code",
+      "label": "采购订单菜单编码",
+      "type": "string",
+      "required": true,
+      "default": "purchase-menu"
+    },
+    {
+      "name": "default_stock_in_category",
+      "label": "默认单据类别",
+      "type": "string",
+      "required": true,
+      "default": "BZRK"
+    },
+    {
+      "name": "categories",
+      "label": "单据类别映射",
+      "type": "json",
+      "required": true,
+      "default": [
+        {
+          "code": "BZRK",
+          "id": "stock-in-category",
+          "name": "标准采购入库单",
+          "business_id": "BZRK",
+          "business_name": "标准采购",
+          "menu_code": "stock-in-menu"
+        }
+      ]
+    },
+    {
+      "name": "default_warehouse",
+      "label": "默认仓库",
+      "type": "json",
+      "required": false,
+      "default": null
+    }
+  ]
+}

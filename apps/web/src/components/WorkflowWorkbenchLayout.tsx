@@ -10,7 +10,7 @@ export function WorkflowWorkbenchLayout({ canvas, inspector }: { canvas: ReactNo
   const [inspectorOpen, setInspectorOpen] = useState(Boolean(selectedNodeId));
   const libraryButton = useRef<HTMLButtonElement>(null);
   const closeLibrary = () => { setLibraryOpen(false); libraryButton.current?.focus(); };
-  useEffect(() => { setInspectorOpen(Boolean(selectedNodeId)); }, [selectedNodeId]);
+  useEffect(() => { setInspectorOpen(Boolean(selectedNodeId)); }, [selectedNodeId, workflowId]);
   useEffect(() => { setLibraryOpen(false); }, [workflowId]);
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {

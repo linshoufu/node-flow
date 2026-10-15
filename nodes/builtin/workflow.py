@@ -22,6 +22,8 @@ class ExecuteWorkflowConfig(NodeConfig):
     documentation_url="/docs/nodes/index.html#workflow.trigger",
 )
 class WorkflowTriggerNode(BaseNode[NodeConfig]):
+    effect = "pure"
+    preview_support = "execute"
     outputs = {
         "success": Output(display_name="输入", description="Caller input", schema=ANY_JSON_SCHEMA)
     }
@@ -53,6 +55,8 @@ class WorkflowTriggerNode(BaseNode[NodeConfig]):
     ),
 )
 class ExecuteWorkflowNode(BaseNode[ExecuteWorkflowConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {
         "success": Output(display_name="结果", description="Child workflow result", schema=ANY_JSON_SCHEMA),
@@ -80,6 +84,8 @@ class ExecuteWorkflowNode(BaseNode[ExecuteWorkflowConfig]):
     documentation_url="/docs/nodes/index.html#workflow.return",
 )
 class WorkflowReturnNode(BaseNode[NodeConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="最终结果", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {
         "success": Output(display_name="完成", description="Final workflow output", schema=ANY_JSON_SCHEMA)

@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, LayoutDashboard, ListTree, LoaderCircle, RefreshCw, RotateCcw, Square, X } from "lucide-react";
 import { apiClient } from "@/api/client";
@@ -29,9 +30,9 @@ export function RunsPage() {
   return <main aria-label="运行记录页面" className="runs-page flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 pt-2">
     <header className="workbench-surface flex shrink-0 flex-wrap items-center gap-3 rounded-xl px-4 py-3">
       <div className="min-w-0 flex-1"><h1 className="text-sm font-semibold">运行记录</h1><p className="mt-1 truncate text-xs text-muted">{workflow.name || "当前工作流"}</p></div>
-      <label className="flex items-center gap-2 text-xs text-muted">状态<select aria-label="筛选运行状态" value={state.status} onChange={(event) => state.setStatus(event.target.value as RunHistoryStatusFilter)} className="rounded-lg border border-border bg-canvas px-2 py-1.5 text-text">
+      <label className="flex items-center gap-2 text-xs text-muted">状态<Select aria-label="筛选运行状态" value={state.status} onValueChange={(selectedValue) => state.setStatus(selectedValue as RunHistoryStatusFilter)} className="rounded-lg border border-border bg-canvas px-2 py-1.5 text-text">
         <option value="all">全部状态</option><option value="failed">失败</option><option value="succeeded">已完成</option><option value="running">运行中</option><option value="queued">队列中</option><option value="cancelled">已取消</option>
-      </select></label>
+      </Select></label>
       <button type="button" onClick={refresh} disabled={state.loading} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-raised hover:text-text disabled:opacity-40" aria-label="刷新运行记录"><RefreshCw size={14} className={state.loading ? "animate-spin" : ""} />刷新</button>
     </header>
     {state.error && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{state.error}</div>}
@@ -40,7 +41,7 @@ export function RunsPage() {
       <aside aria-label="运行历史" className="workbench-surface flex min-h-0 flex-col overflow-hidden rounded-xl">
         <div className="min-h-0 flex-1 overflow-y-auto">
           {!state.runs.length ? <p className="px-4 py-8 text-center text-xs text-muted">{state.loading ? "正在加载运行记录…" : !workflow.id ? "请先打开一个工作流" : "没有符合条件的运行记录"}</p> : state.runs.map((run) => <button type="button" key={run.id} onClick={() => void state.selectRun(run)} aria-pressed={state.activeRun?.id === run.id} className={`w-full border-b border-border/45 px-4 py-3 text-left ${state.activeRun?.id === run.id ? "bg-primary/10" : "hover:bg-raised/60"}`}>
-            <div className="flex items-center gap-2"><StatusDot status={run.status} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{modeName(run.execution_mode)}</span><span className="font-mono text-[10px] text-muted">#{shortId(run.id)}</span></div>
+            <div className="flex items-center gap-2"><StatusDot status={run.status} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{run.run_mode === "preview" ? "预演 · " : ""}{modeName(run.execution_mode)}</span><span className="font-mono text-[10px] text-muted">#{shortId(run.id)}</span></div>
             <div className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge status={run.status} /><span className="text-[10px] text-muted">v{run.workflow_version}</span></div>
             <div className="mt-2 text-[10px] text-muted">{formatTime(run.created_at)}</div>
           </button>)}

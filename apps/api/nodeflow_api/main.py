@@ -25,6 +25,7 @@ from .routes.runs import build_run_router
 from .routes.webhooks import build_webhook_router
 from .routes.workflows import build_workflow_router
 from .routes.workspace_resources import build_workspace_resources_router
+from .routes.profiles import build_profile_router
 
 
 def create_app(
@@ -114,6 +115,7 @@ def create_app(
 
     app.include_router(build_node_catalog_router(registry, node_package_installer, storage))
     app.include_router(build_workspace_resources_router(storage, registry, credential_vault))
+    app.include_router(build_profile_router(storage, registry, node_package_installer.scan_registry_if_changed))
     app.include_router(
         build_workflow_router(
             storage,

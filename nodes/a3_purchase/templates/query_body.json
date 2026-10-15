@@ -1,0 +1,18 @@
+{
+  "id": "a3.purchase.query_body.preset",
+  "name": "采购查询条件组装",
+  "kind": "node",
+  "description": "可编辑的通用节点预设",
+  "node": {
+    "id": "query_body",
+    "type": "data.compose",
+    "label": "组装查询条件",
+    "position": {
+      "x": 300,
+      "y": 0
+    },
+    "config": {
+      "output": "{'menuCode':inputs.input.header.purchase_order_menu_code,'tableAlias':'main','current':1,'size':200,'tabIndex':1,'isOpen':'Y','conditionOrList':[],'conditionList':[{'conditionExpression':'=','conditionKey':'code','conditionTableAlias':'main','conditionValue':inputs.input.header.order_code},{'conditionExpression':'=','conditionKey':'enable','conditionTableAlias':'main','conditionValue':'1'},{'conditionExpression':'in','conditionKey':'status','conditionTableAlias':'main','conditionValue':'3'},{'conditionExpression':'=','conditionKey':'selectSource','conditionValue':'chosePurchase4StockIn'},{'conditionExpression':'=','conditionKey':'targetOrderCategoryId','conditionValue':inputs.input.header.category.id}]}"
+    }
+  }
+}

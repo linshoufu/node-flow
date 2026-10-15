@@ -33,6 +33,7 @@ export function RunDetails({ run, events, workflow, selectedEvent, onSelectEvent
   const activeView = view ?? (report ? "results" : "events");
   const duration = durationText(run.started_at, run.completed_at);
   return <div className="flex h-full min-h-0 flex-col px-4 py-3">
+    {run.run_mode === "preview" && <div role="status" className="mb-2 rounded border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">预演运行 · 未执行计划中的写入{run.preview_status === "partial" ? " · 部分步骤未验证，请查看操作计划和未验证事件" : run.preview_status === "complete" ? " · 已完成可验证范围；不代表真实写入成功" : ""}</div>}
     <div className="mb-2 flex items-center gap-3"><div className="min-w-0 flex-1"><h3 className="text-xs font-semibold">{modeName(run.execution_mode)} <span className="ml-1 font-mono font-normal text-muted">#{shortId(run.id)}</span></h3><p className="mt-1 text-[10px] text-muted">{formatTime(run.created_at)}{duration && ` · 用时 ${duration}`}</p></div>{run.error && <span className="max-w-[45%] truncate text-[11px] text-danger" title={run.error}>{run.error}</span>}{report && <div className="flex gap-1 rounded-lg bg-canvas p-1" role="tablist" aria-label="运行详情视图">{([['results', '逐条结果'], ['events', '执行事件']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={activeView === id} onClick={() => setView(id)} className={`rounded-md px-2.5 py-1 text-[11px] ${activeView === id ? 'bg-raised text-text' : 'text-muted hover:text-text'}`}>{label}</button>)}</div>}</div>
     {report && activeView === "results" ? <ResultsView report={report} run={run} names={nodeInfo.names} /> : <div className="result-detail-grid grid min-h-0 flex-1 overflow-hidden rounded-xl border border-border/70">
       <div className="execution-timeline min-w-0 overflow-y-auto border-r border-border/70 p-2"><div className="mb-1 px-2 py-1 text-[10px] font-semibold text-muted">执行时间线 · {events.length} 个事件</div>{loading && !events.length ? <EmptyState text="正在加载事件…" /> : events.length === 0 ? <EmptyState text="该运行尚未产生事件" /> : <ol className="space-y-0.5">{events.map((event, index) => <EventRow key={event.id ?? index} event={event} name={nodeInfo.names[event.node_id ?? ""]} selected={selectedEvent?.id === event.id} onClick={() => onSelectEvent(event)} />)}</ol>}</div>
@@ -92,7 +93,7 @@ function EventRow({ event, name, selected, onClick }: { event: RunEvent; name?: 
   return <li><button onClick={onClick} className={`flex w-full gap-2 rounded px-2 py-2 text-left transition ${selected ? "bg-primary/10 ring-1 ring-primary/20" : "hover:bg-raised/50"}`}><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${failed ? "bg-danger" : succeeded ? "bg-success" : "bg-muted"}`} /><time className="w-14 shrink-0 font-mono text-[10px] text-muted">{clockTime(event.timestamp)}</time><div className="min-w-0 flex-1"><div className={`text-xs ${failed ? "text-danger" : succeeded ? "text-text" : "text-text-secondary"}`}>{label}</div>{event.node_id && <div className="mt-0.5 truncate text-[10px] text-muted" title={event.node_id}>{name ?? event.node_id}</div>}</div></button></li>;
 }
 
-type InspectorTab = "output" | "input" | "logs" | "raw";
+type InspectorTab = "plan" | "output" | "input" | "logs" | "raw";
 
 export function EventInspector({ run, event, name }: { run: RunRecord; event: RunEvent | null; name?: string }) {
   const [copied, setCopied] = useState(false);
@@ -100,13 +101,14 @@ export function EventInspector({ run, event, name }: { run: RunRecord; event: Ru
   const outputs = payload.outputs;
   const inputs = payload.inputs;
   const logs = payload.logs;
+  const effects = Array.isArray(payload.effects) ? payload.effects.map(record).filter((item) => item !== null) : null;
   const rawData = useMemo(() => event ? { event: { id: event.id, type: event.type, timestamp: event.timestamp, node_id: event.node_id ?? null, scope: event.scope }, payload: event.payload } : { run: { id: run.id, workflow_version: run.workflow_version, status: run.status, error: run.error, started_at: run.started_at, completed_at: run.completed_at } }, [event, run]);
-  const preferredTab: InspectorTab = outputs !== undefined ? "output" : inputs !== undefined ? "input" : logs !== undefined ? "logs" : "raw";
+  const preferredTab: InspectorTab = effects ? "plan" : outputs !== undefined ? "output" : inputs !== undefined ? "input" : logs !== undefined ? "logs" : "raw";
   const [tab, setTab] = useState<InspectorTab>(preferredTab);
 
   useEffect(() => { setTab(preferredTab); }, [event?.id, event?.timestamp, preferredTab]);
 
-  const activeValue = tab === "output" ? outputs : tab === "input" ? inputs : tab === "logs" ? logs : rawData;
+  const activeValue = tab === "plan" ? effects : tab === "output" ? outputs : tab === "input" ? inputs : tab === "logs" ? logs : rawData;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(activeValue, null, 2) ?? "null");
@@ -115,6 +117,7 @@ export function EventInspector({ run, event, name }: { run: RunRecord; event: Ru
     } catch { toast("无法复制到剪贴板", "error"); }
   };
   const tabs: Array<{ id: InspectorTab; label: string; available: boolean }> = [
+    { id: "plan", label: "操作计划", available: effects !== null },
     { id: "output", label: "输出", available: outputs !== undefined },
     { id: "input", label: "输入", available: inputs !== undefined },
     { id: "logs", label: "日志", available: logs !== undefined },
@@ -128,6 +131,7 @@ export function EventInspector({ run, event, name }: { run: RunRecord; event: Ru
     </div>
     <div className="flex gap-1 border-b border-border/70 px-2 py-1.5" role="tablist" aria-label="事件数据视图">{tabs.map((item) => <button key={item.id} role="tab" aria-selected={tab === item.id} disabled={!item.available} onClick={() => setTab(item.id)} className={`rounded px-2 py-1 text-[10px] transition ${tab === item.id ? "bg-primary/15 text-primary" : "text-muted hover:bg-raised hover:text-text"} disabled:cursor-not-allowed disabled:opacity-35`}>{item.label}</button>)}</div>
     <div className="event-inspector-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain p-3">
+      {tab === "plan" && <div className="space-y-3"><p className="text-xs text-warning">以下操作为预演计划，未实际提交。</p>{effects?.map((effect, index) => <section key={index} className="rounded border border-border bg-surface p-3"><h4 className="text-xs font-semibold">{String(effect.operation)}</h4><p className="mt-1 break-all text-xs text-text-secondary">目标：{String(effect.target)}</p><p className="mt-1 text-[11px] text-muted">{String(effect.description ?? "")}</p>{effect.details != null && <JsonBlock label="计划内容" value={effect.details} />}</section>)}{effects?.length === 0 && <p className="text-xs text-muted">此步骤未产生写入计划。</p>}</div>}
       {tab === "output" && <OutputView value={outputs} />}
       {tab === "input" && <DataView emptyText="该事件没有记录输入数据。" value={inputs} />}
       {tab === "logs" && <DataView emptyText="该节点没有写入日志。" value={logs} />}
@@ -186,7 +190,7 @@ export function formatTime(value: string | null | undefined) { if (!value) retur
 function clockTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date); }
 export function modeName(mode: RunRecord["execution_mode"]) { return ({ manual: "手动运行", schedule: "定时运行", webhook: "Webhook 触发", webhook_test: "Webhook 调试", child: "子流程运行", error: "错误处理" })[mode ?? "manual"]; }
 export function shortId(id: string) { return id.replace(/^run_/, "").slice(0, 6); }
-export function preferredEvent(events: RunEvent[]) { const latest = [...events].reverse(); return latest.find((event) => event.type === "node_failed") ?? latest.find((event) => httpResponse(record(event.payload.outputs)?.success) || httpResponse(record(event.payload.outputs)?.error)) ?? latest.find((event) => event.payload.outputs !== undefined) ?? events.at(-1) ?? null; }
+export function preferredEvent(events: RunEvent[]) { const latest = [...events].reverse(); return latest.find((event) => event.type === "node_failed") ?? latest.find((event) => httpResponse(record(event.payload.outputs)?.success) || httpResponse(record(event.payload.outputs)?.error)) ?? latest.find((event) => event.type === "node_previewed") ?? latest.find((event) => event.payload.outputs !== undefined) ?? events.at(-1) ?? null; }
 function durationText(started: string | null, completed: string | null) { if (!started || !completed) return null; const milliseconds = new Date(completed).getTime() - new Date(started).getTime(); return milliseconds < 1000 ? `${milliseconds}ms` : `${(milliseconds / 1000).toFixed(1)}s`; }
 
-const EVENT_LABELS: Record<string, string> = { run_started: "运行开始", run_succeeded: "运行成功", run_failed: "运行失败", run_cancelled: "运行已取消", node_started: "节点开始", node_succeeded: "节点完成", node_failed: "节点失败", node_skipped: "节点跳过", node_error_handled: "节点错误已处理" };
+const EVENT_LABELS: Record<string, string> = { preview_started: "预演开始", preview_completed: "预演完成", node_previewed: "操作计划（未提交）", node_not_verified: "未验证", run_started: "运行开始", run_succeeded: "运行成功", run_failed: "运行失败", run_cancelled: "运行已取消", node_started: "节点开始", node_succeeded: "节点完成", node_failed: "节点失败", node_skipped: "节点跳过", node_error_handled: "节点错误已处理" };

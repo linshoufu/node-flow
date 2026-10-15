@@ -17,9 +17,29 @@ from ..schemas import (
     WorkflowDocument,
 )
 from .base import utc_now
+from ..run_parameters import resolve_workflow_parameters
+from ..resource_profiles import referenced_profiles
+from ..config_bindings import configuration_values, resolve_workflow_bindings
 
 
 class RunRepositoryMixin:
+    def _run_record(self, row) -> RunRecord:
+        values = dict(row)
+        if "run_mode" not in values:
+            invocation = self.get_run_invocation(values["id"])
+            values["run_mode"] = invocation.run_mode if invocation else "live"
+        return RunRecord(**values)
+
+    def list_run_tree(self, run_id: str) -> list[RunRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """WITH RECURSIVE tree(id) AS (
+                     SELECT id FROM runs WHERE id = ?
+                     UNION ALL SELECT r.id FROM runs r JOIN tree ON r.parent_run_id = tree.id
+                   ) SELECT r.*, COALESCE(i.run_mode, 'live') AS run_mode FROM runs r JOIN tree ON r.id = tree.id LEFT JOIN run_invocations i ON i.run_id = r.id""", (run_id,),
+            ).fetchall()
+        return [self._run_record(row) for row in rows]
+
     def create_run(
         self,
         workflow: WorkflowDocument,
@@ -29,6 +49,21 @@ class RunRepositoryMixin:
         invocation: RunInvocation | None = None,
     ) -> RunRecord:
         invocation = invocation or RunInvocation()
+        mode = invocation.run_mode if "run_mode" in invocation.model_fields_set else workflow.settings.run_mode
+        if parent_run_id is not None:
+            parent_invocation = self.get_run_invocation(parent_run_id)
+            # Historical/imported lineage may name a parent outside this DB.
+            # Every real child run inherits its persisted parent's policy.
+            if parent_invocation is not None:
+                mode = parent_invocation.run_mode
+        invocation = invocation.model_copy(update={"run_mode": mode})
+        updates = {}
+        if "parameters" not in invocation.model_fields_set:
+            updates["parameters"] = resolve_workflow_parameters(workflow, invocation.initial_input)
+        if "configuration" not in invocation.model_fields_set:
+            updates["configuration"] = configuration_values(workflow)
+        invocation = invocation.model_copy(update=updates)
+        bound_workflow = resolve_workflow_bindings(workflow, None, configuration=invocation.configuration, parameters=invocation.parameters, runtime=True)
         environment = self.get_project_environment(invocation.environment_id)
         if environment is None:
             raise ValueError(f"Unknown environment: {invocation.environment_id}")
@@ -42,6 +77,14 @@ class RunRepositoryMixin:
         if "credential_overrides" not in invocation.model_fields_set:
             snapshot_updates["credential_overrides"] = environment.credential_overrides
         invocation = invocation.model_copy(update=snapshot_updates)
+        if "profiles" not in invocation.model_fields_set:
+            references = set(referenced_profiles(bound_workflow.nodes, {
+                "project": invocation.project_variables, "vars": workflow.settings.variables,
+                "run_parameters": invocation.parameters,
+            }))
+            invocation = invocation.model_copy(update={
+                "profiles": {profile["id"]: profile for profile in self.list_profiles() if profile["id"] in references},
+            })
         if parent_run_id is None and parent_node_id is not None:
             raise ValueError("Run lineage requires both parent_run_id and parent_node_id")
         if parent_run_id is not None and parent_node_id is None and invocation.execution_mode != "error":
@@ -52,6 +95,7 @@ class RunRepositoryMixin:
             workflow_version=workflow.version,
             status="queued",
             execution_mode=invocation.execution_mode,
+            run_mode=invocation.run_mode,
             created_at=utc_now(),
             parent_run_id=parent_run_id,
             parent_node_id=parent_node_id,
@@ -79,9 +123,10 @@ class RunRepositoryMixin:
                     """
                     INSERT INTO run_invocations (
                       run_id, entry_node_id, initial_input_json, has_initial_input, execution_mode, allow_pinned_data,
-                      project_variables_json, environment_id, environment_name, credential_overrides_json
+                      project_variables_json, environment_id, environment_name, credential_overrides_json,
+                      profiles_json, parameters_json, run_mode, configuration_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         run.id,
@@ -94,6 +139,10 @@ class RunRepositoryMixin:
                         invocation.environment_id,
                         invocation.environment_name,
                         json.dumps(invocation.credential_overrides),
+                        json.dumps(invocation.profiles),
+                        json.dumps(invocation.parameters),
+                        invocation.run_mode,
+                        json.dumps(invocation.configuration),
                     ),
                 )
                 return run
@@ -116,11 +165,15 @@ class RunRepositoryMixin:
             initial_input=json.loads(row["initial_input_json"]),
             has_initial_input=bool(row["has_initial_input"]),
             execution_mode=row["execution_mode"],
+            run_mode=row["run_mode"],
             allow_pinned_data=bool(row["allow_pinned_data"]),
             project_variables=json.loads(row["project_variables_json"] or "{}"),
             environment_id=row["environment_id"],
             environment_name=row["environment_name"],
             credential_overrides=json.loads(row["credential_overrides_json"] or "{}"),
+            profiles=json.loads(row["profiles_json"] or "{}"),
+            parameters=json.loads(row["parameters_json"] or "{}"),
+            configuration=json.loads(row["configuration_json"] or "{}"),
         )
 
     def list_runs_requiring_recovery(self) -> list[RunRecord]:
@@ -132,7 +185,7 @@ class RunRepositoryMixin:
                 ORDER BY created_at, rowid
                 """
             ).fetchall()
-        return [RunRecord(**dict(row)) for row in rows]
+        return [self._run_record(row) for row in rows]
 
     def claim_next_queued_run(
         self,
@@ -204,7 +257,7 @@ class RunRepositoryMixin:
             except Exception:
                 self._connection.rollback()
                 raise
-        return RunRecord(**dict(claimed)) if claimed is not None else None
+        return self._run_record(claimed) if claimed is not None else None
 
     def _queued_run_has_workflow_capacity(self, row: sqlite3.Row) -> bool:
         workflow_row = self._connection.execute(
@@ -437,6 +490,12 @@ class RunRepositoryMixin:
                         (status, error, run_id),
                     )
 
+    def set_run_preview_status(self, run_id: str, status: str) -> None:
+        if status not in {"complete", "partial"}:
+            raise ValueError("Invalid preview status")
+        with self._lock, self._connection:
+            self._connection.execute("UPDATE runs SET preview_status = ? WHERE id = ?", (status, run_id))
+
     def request_run_cancel(self, run_id: str) -> bool:
         timestamp = utc_now()
         cancelled_queued_run = False
@@ -507,7 +566,7 @@ class RunRepositoryMixin:
         with self._lock:
             rows = self._connection.execute(
                 """
-                SELECT r.*, COALESCE(i.execution_mode, 'manual') AS execution_mode
+                SELECT r.*, COALESCE(i.execution_mode, 'manual') AS execution_mode, COALESCE(i.run_mode, 'live') AS run_mode
                 FROM runs r
                 LEFT JOIN run_invocations i ON i.run_id = r.id
                 WHERE r.workflow_id = ?{status_clause}
@@ -516,13 +575,13 @@ class RunRepositoryMixin:
                 """.format(status_clause=status_clause),
                 parameters,
             ).fetchall()
-            return [RunRecord(**dict(row)) for row in rows]
+            return [self._run_record(row) for row in rows]
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
             row = self._connection.execute(
                 """
-                SELECT r.*, COALESCE(i.execution_mode, 'manual') AS execution_mode
+                SELECT r.*, COALESCE(i.execution_mode, 'manual') AS execution_mode, COALESCE(i.run_mode, 'live') AS run_mode
                 FROM runs r
                 LEFT JOIN run_invocations i ON i.run_id = r.id
                 WHERE r.id = ?
@@ -531,7 +590,7 @@ class RunRepositoryMixin:
             ).fetchone()
             if row is None:
                 return None
-            return RunRecord(**dict(row))
+            return self._run_record(row)
 
     def append_event(self, event: RunEvent) -> None:
         event_data = event.model_dump(mode="json")

@@ -64,6 +64,8 @@ def execution_policy_issues(
     path: str,
 ) -> list[tuple[str, str]]:
     policy = normalize_node_execution_policy(node.execution)
+    if registry.has(node.type) and not registry.get(node.type).node_class.can_retry(node.config) and policy.retry.max_attempts > 1:
+        return [(f"{path}.execution.retry.maxAttempts", "该节点可能产生外部写入，不支持自动重试")]
     if policy.on_error != "errorOutput" or not registry.has(node.type):
         return []
 

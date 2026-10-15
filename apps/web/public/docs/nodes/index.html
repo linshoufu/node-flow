@@ -44,7 +44,7 @@
 
       <h2>网络与数据</h2>
       <section class="node-doc" id="http.request"><h3>HTTP 请求</h3><span class="node-id">http.request</span><p>发送 HTTP 请求并输出状态码、响应头和响应体。</p><div class="meta"><span>输入：请求体、请求头</span><span>输出：响应、错误</span></div></section>
-      <section class="node-doc" id="data.csv_read"><h3>读取 CSV</h3><span class="node-id">data.csv_read</span><p>读取 CSV 文件并输出 headers、rows、columns、row_count 和逐行数据项。数据项可直接连接到逐项循环。</p><div class="meta"><span>输出：数据集、数据项、错误</span></div></section>
+      <section class="node-doc" id="data.csv_read"><h3>读取 CSV</h3><span class="node-id">data.csv_read</span><p>通过 path 输入接收文件路径，未连接时兼容固定路径配置。输出 headers、rows、line_numbers、columns、row_count 和逐行数据项。auto 编码支持 UTF-8 BOM 和 GB18030。</p><div class="meta"><span>输入：CSV 文件路径</span><span>输出：数据集、数据项、错误</span></div></section>
       <section class="node-doc" id="data.extract"><h3>提取数据</h3><span class="node-id">data.extract</span><p>从输入对象中按路径提取一个值，适合把复杂响应整理成下游节点需要的字段。</p><div class="meta"><span>输入：数据</span><span>输出：提取值、错误</span></div></section>
       <section class="node-doc" id="data.map_items"><h3>映射数据项</h3><span class="node-id">data.map_items</span><p>为每个输入数据项构造新的 JSON 值，同时保留来源配对和二进制元数据。</p><div class="meta"><span>输入：数据项</span><span>输出：数据项</span></div></section>
       <section class="node-doc" id="data.filter_items"><h3>筛选数据项</h3><span class="node-id">data.filter_items</span><p>读取每个数据项中的值并按比较方式保留匹配项。</p><div class="meta"><span>输入：数据项</span><span>输出：匹配项</span></div></section>
@@ -52,8 +52,10 @@
       <section class="node-doc" id="data.collect"><h3>命名汇聚</h3><span class="node-id">data.collect</span><p>为每条上游连线配置独立的输入端口名称，再输出一个以端口标识为键的对象。</p><div class="meta"><span>输入：具名端口</span><span>输出：汇聚结果</span></div></section>
 
       <h2>控制流与逻辑</h2>
-      <section class="node-doc" id="control.each_item"><h3>逐项循环</h3><span class="node-id">control.each_item</span><p>接收标准数据项并逐项执行循环体。循环体内可用 <code>{{ loop.item }}</code> 访问当前项。</p><div class="meta"><span>输入：数据项</span><span>输出：完成、错误</span></div></section>
-      <section class="node-doc" id="control.foreach"><h3>遍历循环</h3><span class="node-id">control.foreach</span><p>对列表或 CSV 行逐项执行循环体。循环体内可用 <code>{{ loop.item }}</code> 引用当前项。</p><div class="meta"><span>输入：循环输入</span><span>输出：完成、错误</span></div></section>
+      <section class="node-doc" id="control.each_item"><h3>逐项循环</h3><span class="node-id">control.each_item</span><p>接收数组并逐项执行循环体。用循环输入和循环结果节点显式连接业务链路；results 按顺序返回每项的 index、item、status 和 output 或 error。空数组返回空结果，未到达结果节点算失败。旧循环保留 done 行为。</p><div class="meta"><span>输入：数据项</span><span>输出：完成、逐项结果、错误</span></div></section>
+      <section class="node-doc" id="control.foreach"><h3>遍历循环</h3><span class="node-id">control.foreach</span><p>通过表达式读取列表，循环边界和逐项结果契约与数据项循环相同。新工作流优先通过数据项循环的输入端口传递数组。</p><div class="meta"><span>输入：循环输入</span><span>输出：完成、逐项结果、错误</span></div></section>
+      <section class="node-doc" id="control.loop_input"><h3>循环输入</h3><span class="node-id">control.loop_input</span><p>只放在逐项循环体中，将当前数据项从 item 端口传递给业务节点。业务节点无需读取循环上下文。</p></section>
+      <section class="node-doc" id="control.loop_output"><h3>循环结果</h3><span class="node-id">control.loop_output</span><p>从 value 输入接收本项处理结果，交回外层循环的 results 输出。每个逐项循环体只能声明一个结果节点。</p></section>
       <section class="node-doc" id="control.while"><h3>条件循环</h3><span class="node-id">control.while</span><p>在条件表达式为真时重复执行循环体，适合轮询或等待状态变化。</p><div class="meta"><span>输入：循环输入</span><span>输出：完成、达到上限、错误</span></div></section>
       <section class="node-doc" id="logic.if"><h3>条件分支</h3><span class="node-id">logic.if</span><p>根据条件表达式把数据路由到 true 或 false 输出端口。</p><div class="meta"><span>输入：输入</span><span>输出：为真、为假</span></div></section>
       <section class="node-doc" id="logic.switch"><h3>路由分支</h3><span class="node-id">logic.switch</span><p>按配置的路由规则匹配输入值，并从对应输出端口继续执行。</p><div class="meta"><span>输入：输入</span><span>输出：规则端口、未匹配</span></div></section>
@@ -74,6 +76,22 @@
 
       <h2>演示节点</h2>
       <section class="node-doc" id="demo.test"><h3>演示节点</h3><span class="node-id">demo.test</span><p>用于测试节点表单编辑器和内联控件，包含常用配置控件示例。</p><div class="meta"><span>分组：测试</span></div></section>
+      <section class="node-doc" id="workflow.parameters"><h3>运行参数</h3><span class="node-id">workflow.parameters</span><p>声明参数名称、类型、默认值和选项；运行前校验。v2 仅为每个参数生成同名输出端口，没有整包输出。未声明参数时没有输出端口。敏感信息使用凭据引用。</p></section>
+      <section class="node-doc" id="a3.purchase_tasks"><h3>生成采购入库任务</h3><span class="node-id">a3.purchase_tasks</span><p>v2 接收 dataset 表格数据，不读取文件；复用 a3-tool 的业务解析和分组规则，分别从 tasks 和 input_failures 端口输出有效任务、输入失败。</p></section>
+      <section class="node-doc" id="a3.purchase_order_query"><h3>查询可入库采购订单</h3><span class="node-id">a3.purchase_order_query</span><p>根据单据任务查询已审核采购订单，多个节点共享本次运行的登录会话。</p></section>
+      <section class="node-doc" id="a3.purchase_build_payload"><h3>组装采购入库单</h3><span class="node-id">a3.purchase_build_payload</span><p>校验来源、物料和数量，使用 a3-tool 计算金额并生成待保存单据。</p></section>
+      <section class="node-doc" id="a3.purchase_submit"><h3>保存采购入库单</h3><span class="node-id">a3.purchase_submit</span><p>模式由平台顶部的运行方式统一选择。预演返回待提交 Payload 和操作计划，不保存；正式执行返回实际单据 ID。节点配置无需模式字段。</p></section>
+      <section class="node-doc" id="a3.purchase_save"><h3>预览或保存采购入库单</h3><span class="node-id">a3.purchase_save</span><p>preview 仅返回 Payload；save 调用 A3 保存并返回单据 ID。正式保存不自动重试。</p></section>
+      <section class="node-doc" id="a3.purchase_summary"><h3>采购入库结果汇总</h3><span class="node-id">a3.purchase_summary</span><p>v2 只统计 results、input_failures 两个输入，不读取共享结果列表。有失败时输出 failed 分支；已经保存的单据不会因整体失败而回滚。</p></section>
+      <section class="node-doc" id="a3.purchase_stock_in_payload"><h3>采购入库 Payload 组装（兼容）</h3><span class="node-id">a3.purchase_stock_in_payload</span><p>保留原 HTTP 响应与 CSV 分组输入契约，供已有工作流使用；新流程推荐使用业务配置档和采购组装节点。</p></section>
+      <section class="node-doc" id="data.decimal_math"><h3>精确小数计算</h3><span class="node-id">data.decimal_math</span><p>使用十进制运算处理数量和金额。</p></section>
+      <section class="node-doc" id="data.group_items"><h3>数据项分组</h3><span class="node-id">data.group_items</span><p>按指定字段把输入数据项组成分组。</p></section>
+      <section class="node-doc" id="data.json_template"><h3>JSON 模板</h3><span class="node-id">data.json_template</span><p>根据输入和表达式组装 JSON 数据。</p></section>
+      <section class="node-doc" id="data.lookup"><h3>数据查找</h3><span class="node-id">data.lookup</span><p>按配置的查找字段匹配数据。</p></section>
     </main>
-  </body>
+  <section class="node-doc" id="data.records_prepare"><h3>字段映射与校验</h3><span class="node-id">data.records_prepare</span><p>从显式数据集和选项输入按字段规则转换文本、日期、精确小数和对象；保留来源行号和字段错误。</p></section>
+<section class="node-doc" id="data.records_group"><h3>分组聚合</h3><span class="node-id">data.records_group</span><p>公共字段每项选择“值不同时拆组”或“值不同时报错”，可设置允许空值；另外检查明细唯一性。组内有错误时整组输出至 failures。旧工作流配置保持兼容。</p></section>
+<section class="node-doc" id="data.compose"><h3>对象组装与计算</h3><span class="node-id">data.compose</span><p>通过字段表单配置表达式、集合映射和输出对象。输入只能来自 input、context、options 端口。表达式使用受限解释器，不执行 Python 代码或网络请求。</p></section>
+<section class="node-doc" id="data.batch_summary"><h3>批处理结果汇总</h3><span class="node-id">data.batch_summary</span><p>汇总 input_failures 和逐项 results，分别统计成功、失败及未验证条目；有失败时输出 failed。</p></section>
+</body>
 </html>

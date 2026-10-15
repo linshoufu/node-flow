@@ -19,6 +19,10 @@ from ..schemas import (
 )
 from ..storage import Storage, utc_now
 from ..validation import manual_run_entry_issues
+from ..run_parameters import resolve_workflow_parameters
+from ..config_bindings import resolve_workflow_bindings
+from ..resource_profiles import validate_run_profiles
+from ..preview_policy import validate_preview
 
 # 运行终态：到达后不会再产生新事件（与 schemas.RunStatus 定义保持一致）
 TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -95,16 +99,32 @@ def build_run_router(
         environment_id = request.environment_id if request and request.environment_id else workflow.settings.environment_id
         if storage.get_project_environment(environment_id) is None:
             raise HTTPException(status_code=422, detail="所选运行环境不存在")
-        entry_issues = manual_run_entry_issues(workflow, registry, entry_node_id)
+        run_mode = request.run_mode if request and request.run_mode else workflow.settings.run_mode
+        entry_issues = manual_run_entry_issues(workflow, registry, entry_node_id, allow_pinned_data=run_mode != "preview")
         if entry_issues:
             raise HTTPException(
                 status_code=422,
                 detail=[issue.model_dump(exclude_none=True) for issue in entry_issues],
             )
+        try:
+            parameters = resolve_workflow_parameters(workflow, initial_input)
+            bound_workflow = resolve_workflow_bindings(workflow, registry, parameters=parameters, runtime=True)
+            if run_mode == "preview":
+                validate_preview(bound_workflow, registry, storage.get_workflow, {
+                    "project": storage.get_project_environment(environment_id).variables,
+                    "vars": workflow.settings.variables, "run_parameters": parameters,
+                }, _bindings_resolved=True)
+            validate_run_profiles(bound_workflow.nodes, registry, {p["id"]: p for p in storage.list_profiles()},
+                                  storage.get_credential, storage.get_project_environment(environment_id).credential_overrides,
+                                  {"project": storage.get_project_environment(environment_id).variables,
+                                   "vars": workflow.settings.variables, "run_parameters": parameters})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         run = storage.create_run(
             workflow,
             invocation=RunInvocation(
                 execution_mode="manual",
+                run_mode=run_mode,
                 entry_node_id=entry_node_id,
                 initial_input=initial_input,
                 has_initial_input=has_initial_input,
@@ -178,13 +198,34 @@ def build_run_router(
         workflow = storage.get_workflow(source_run.workflow_id, source_run.workflow_version)
         if workflow is None:
             raise HTTPException(status_code=409, detail="The workflow version used by this run is no longer available")
+        def unsafe_nodes(nodes):
+            for node in nodes:
+                if registry.has(node.type) and not registry.get(node.type).node_class.can_retry(node.config):
+                    yield node.id
+                for subflow in node.subflows.values():
+                    yield from unsafe_nodes(subflow.nodes)
+
+        for related_run in storage.list_run_tree(run_id):
+            if related_run.run_mode == "preview":
+                continue
+            related_workflow = storage.get_workflow(related_run.workflow_id, related_run.workflow_version)
+            if related_workflow is None:
+                raise HTTPException(status_code=409, detail="运行关联的工作流版本不可用，无法确认重试安全性")
+            related_invocation = storage.get_run_invocation(related_run.id)
+            try:
+                related_workflow = resolve_workflow_bindings(related_workflow, registry, configuration=related_invocation.configuration if related_invocation else None, parameters=related_invocation.parameters if related_invocation else None, runtime=True)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail="配置绑定不可解析，无法确认重试安全性") from exc
+            unsafe_ids = set(unsafe_nodes(related_workflow.nodes))
+            if any(event.node_id in unsafe_ids and event.type == "node_started" for event in storage.list_events(related_run.id)):
+                raise HTTPException(status_code=409, detail="本次运行已开始可能产生外部写入的步骤，请核实处理结果后另建运行，不能直接重试整个流程")
         result = validate_workflow_document(workflow)
         if not result.valid:
             raise HTTPException(
                 status_code=422,
                 detail=[issue.model_dump(exclude_none=True) for issue in result.issues],
             )
-        entry_issues = manual_run_entry_issues(workflow, registry, source_invocation.entry_node_id)
+        entry_issues = manual_run_entry_issues(workflow, registry, source_invocation.entry_node_id, allow_pinned_data=source_invocation.run_mode != "preview")
         if entry_issues:
             raise HTTPException(
                 status_code=422,

@@ -48,6 +48,8 @@ def node_definition_issues(
             config_is_valid = False
             for error in exc.errors():
                 field_path = ".".join(str(part) for part in error["loc"])
+                if field_path and any(field_path == target or field_path.startswith(target + ".") or target.startswith(field_path + ".") for target in node.configBindings):
+                    continue
                 issue_path = f"{path}.config" if not field_path else f"{path}.config.{field_path}"
                 issues.append((issue_path, error["msg"]))
 

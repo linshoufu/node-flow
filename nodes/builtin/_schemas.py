@@ -57,6 +57,7 @@ CSV_DATASET_SCHEMA: JsonSchema = {
             },
         },
         "row_count": {"type": "integer", "minimum": 0},
+        "line_numbers": {"type": "array", "items": {"type": "integer", "minimum": 1}},
     },
     "required": ["path", "headers", "rows", "columns", "row_count"],
 }

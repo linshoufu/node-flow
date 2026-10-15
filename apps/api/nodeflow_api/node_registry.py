@@ -166,6 +166,10 @@ class RegisteredNodeType:
             "dynamicOutputs": self.dynamic_outputs,
             "package": self.package.provenance_api_dict() if self.package else None,
             "sourcePath": self.source_path,
+            "profileType": self.node_class.profile_type.to_dict() if self.node_class.profile_type else None,
+            "retrySafe": self.node_class.retry_safe,
+            "effect": self.node_class.effect,
+            "previewSupport": self.node_class.preview_support,
         }
 
 @dataclass(frozen=True)
@@ -503,9 +507,10 @@ class NodeRegistry:
             credential_type_ids.append(credential_type.id)
 
         status: Literal["loaded", "partial", "failed", "disabled"]
-        if node_ids and error_count:
+        has_assets = bool(node_ids or manifest.get("templates"))
+        if has_assets and error_count:
             status = "partial"
-        elif node_ids:
+        elif has_assets:
             status = "loaded"
         else:
             status = "failed"
@@ -532,10 +537,17 @@ class NodeRegistry:
         except InvalidVersion as exc:
             raise ValueError(f"字段 version 不是有效版本号：{raw_manifest['version']}") from exc
         entrypoints = raw_manifest.get("nodeEntrypoints")
-        if not isinstance(entrypoints, list) or not entrypoints or not all(
+        if not isinstance(entrypoints, list) or (not entrypoints and not raw_manifest.get("templates")) or not all(
             isinstance(entrypoint, str) and entrypoint.strip() for entrypoint in entrypoints
         ):
-            raise ValueError("字段 nodeEntrypoints 必须是非空字符串数组")
+            raise ValueError("字段 nodeEntrypoints 必须为字符串数组；无入口的包必须声明 templates")
+        templates = raw_manifest.get("templates", [])
+        if not isinstance(templates, list) or not all(isinstance(path, str) and path.strip() for path in templates):
+            raise ValueError("字段 templates 必须为路径数组")
+        for relative in templates:
+            asset = (manifest_path.parent / relative).resolve()
+            if not asset.is_relative_to(manifest_path.parent.resolve()) or asset.suffix != ".json" or not asset.is_file():
+                raise ValueError("模板必须为包内存在的 JSON 文件")
         for optional_name in ("description", "documentationUrl", "icon", "author"):
             optional_value = raw_manifest.get(optional_name)
             if optional_value is not None and not isinstance(optional_value, str):
@@ -656,6 +668,22 @@ class NodeRegistry:
         try:
             _validate_node_port_contracts(node_class)
             _validate_dynamic_port_contracts(node_class)
+            if node_class.effect not in {"pure", "read", "write", "unknown"} or node_class.preview_support not in {"execute", "plan", "unsupported"}:
+                raise ValueError("节点副作用或预演支持声明无效")
+            if node_class.preview_support == "execute" and node_class.effect not in {"pure", "read"}:
+                raise ValueError("有副作用的节点必须提供预演实现，不能声明直接执行")
+            if node_class.preview_support == "plan" and node_class.preview is BaseNode.preview:
+                raise ValueError("节点声明支持预演但未实现 preview")
+            spec = node_class.profile_type
+            if spec is not None:
+                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", spec.id) or not spec.name.strip():
+                    raise ValueError("配置档类型 ID 或名称无效")
+                if "profile_id" not in node_class.config_model().model_fields:
+                    raise ValueError("配置档节点必须声明 profile_id 配置字段")
+                for existing in self._nodes.values():
+                    other = existing.node_class.profile_type
+                    if other is not None and other.id == spec.id and other.to_dict() != spec.to_dict():
+                        raise ValueError(f"配置档类型声明冲突：{spec.id}")
         except ValueError as exc:
             self._record_diagnostic(
                 "node_port_contract_invalid",
@@ -934,7 +962,9 @@ def _validate_node_form(form: dict[str, Any], config_schema: dict[str, Any]) -> 
         "json",
         "dynamic_output_list",
         "dynamic_input_list",
-        "http_profile",
+        "http_profile", "column_rules", "mapping_rules", "group_fields",
+        "parameter_list",
+        "string_list",
         "url",
         "credential",
     }

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 
 from ..node_package_installer import (
     MAX_ARCHIVE_BYTES,
@@ -22,6 +22,10 @@ from ..node_registry_manifest import (
 )
 from ..schemas import NodeAssetOpenSourceRequest, NodeFormManifestRequest, NodePackageSettingsUpdate
 from ..storage import Storage
+from ..node_templates import list_templates
+from ..user_templates import TemplateCreate, TemplateUpdate, TemplateRename, prepare_user_template
+from ..storage.user_templates import UserTemplateConflict
+from ..storage import utc_now
 
 
 def _open_in_system_handler(path: Path) -> None:
@@ -43,6 +47,66 @@ def build_node_catalog_router(
     storage: Storage,
 ) -> APIRouter:
     router = APIRouter()
+
+    @router.get("/api/node-templates")
+    def node_templates(include_deleted: bool = False):
+        node_package_installer.scan_registry_if_changed(timeout_seconds=5.0)
+        try:
+            return [*storage.list_user_templates(include_deleted=include_deleted), *[{**asset, "source": "package"} for asset in list_templates(registry)]]
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(status_code=422, detail=f"节点包模板无效：{exc}") from exc
+
+    @router.post("/api/node-templates", status_code=201)
+    def create_node_template(request: TemplateCreate):
+        node_package_installer.scan_registry_if_changed(timeout_seconds=5.0)
+        try:
+            return storage.save_user_template(prepare_user_template(request, registry))
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=422, detail=f"无法保存预设或模板：{exc}") from exc
+
+    def owned_template(template_id, *, deleted=False):
+        asset = storage.get_user_template(template_id)
+        if asset is None:
+            if any(item["id"] == template_id for item in list_templates(registry)):
+                raise HTTPException(403, "节点包资源只读，请另存为个人资源")
+            raise HTTPException(404, "个人资源不存在")
+        if bool(asset.get("deletedAt")) != deleted:
+            raise HTTPException(404, "个人资源已删除" if not deleted else "资源不在回收站中")
+        return asset
+
+    def change_template(template_id, expected_revision, changes):
+        try:
+            return storage.update_user_template(template_id, expected_revision, changes)
+        except UserTemplateConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.put("/api/node-templates/{template_id}")
+    def update_node_template(template_id: str, request: TemplateUpdate):
+        current = owned_template(template_id)
+        if current["kind"] != request.kind:
+            raise HTTPException(422, "不能修改资源类型，请另存为新资源")
+        try:
+            prepared = prepare_user_template(request, registry)
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(422, f"无法保存修改：{exc}") from exc
+        return change_template(template_id, request.expected_revision, prepared)
+
+    @router.patch("/api/node-templates/{template_id}")
+    def rename_node_template(template_id: str, request: TemplateRename):
+        owned_template(template_id)
+        if not request.name.strip():
+            raise HTTPException(422, "请输入名称")
+        return change_template(template_id, request.expected_revision, {"name": request.name.strip(), "description": request.description.strip()})
+
+    @router.delete("/api/node-templates/{template_id}")
+    def delete_node_template(template_id: str, expected_revision: int = Query(ge=1)):
+        owned_template(template_id)
+        return change_template(template_id, expected_revision, {"deletedAt": utc_now()})
+
+    @router.post("/api/node-templates/{template_id}/restore")
+    def restore_node_template(template_id: str, expected_revision: int = Query(ge=1)):
+        owned_template(template_id, deleted=True)
+        return change_template(template_id, expected_revision, {"deletedAt": None})
 
     @router.get("/api/health")
     def health() -> dict[str, str]:

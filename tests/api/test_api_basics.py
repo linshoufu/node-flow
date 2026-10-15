@@ -69,6 +69,7 @@ def test_preview_and_apply_node_upgrades_without_mutating_the_saved_version(tmp_
         "typeVersion": 2,
         "position": {"x": 0.0, "y": 0.0},
         "config": {"message": "hello"},
+        "configBindings": {},
         "subflows": {},
     }
     assert preview["upgrades"] == [

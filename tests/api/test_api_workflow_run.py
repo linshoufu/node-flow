@@ -499,6 +499,7 @@ def test_retry_failed_manual_run_reuses_its_saved_workflow_version_and_records_l
     assert retry_run["workflow_id"] == "wf_retry_version"
     assert retry_run["workflow_version"] == 1
     assert client.app.state.storage.get_run_invocation(retry_run["id"]).model_dump() == {
+        "run_mode": "live",
         "entry_node_id": None,
         "initial_input": {"version": "manual-input"},
         "execution_mode": "manual",
@@ -508,6 +509,9 @@ def test_retry_failed_manual_run_reuses_its_saved_workflow_version_and_records_l
         "environment_id": "default",
         "environment_name": "默认环境",
         "credential_overrides": {},
+        "profiles": {},
+        "parameters": {},
+        "configuration": {},
     }
     assert client.get(f"/api/runs/{source_run['id']}/events").json()[-1]["type"] == "run_retry_requested"
     retry_events = client.get(f"/api/runs/{retry_run['id']}/events").json()

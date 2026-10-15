@@ -37,6 +37,8 @@ class StatusCodeAssertConfig(NodeConfig):
     ),
 )
 class StatusCodeAssertNode(BaseNode[StatusCodeAssertConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="响应", required=True, description="HTTP response", schema=HTTP_RESPONSE_SCHEMA)}
     outputs = {
         "passed": Output(display_name="通过", description="Assertion passed", schema=ASSERTION_RESULT_SCHEMA),
@@ -90,6 +92,8 @@ class EqualsAssertConfig(NodeConfig):
     ),
 )
 class EqualsAssertNode(BaseNode[EqualsAssertConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="数据", required=True, description="Source data", schema=ANY_JSON_SCHEMA)}
     outputs = {
         "passed": Output(display_name="通过", description="Assertion passed", schema=ASSERTION_RESULT_SCHEMA),
@@ -150,6 +154,8 @@ class ContainsAssertConfig(NodeConfig):
     ),
 )
 class ContainsAssertNode(BaseNode[ContainsAssertConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="数据", required=True, description="Source data", schema=ANY_JSON_SCHEMA)}
     outputs = {
         "passed": Output(display_name="通过", description="Assertion passed", schema=ASSERTION_RESULT_SCHEMA),

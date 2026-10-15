@@ -19,10 +19,16 @@ from .core import (
     node,
 )
 from .version import NODEFLOW_ENGINE_VERSION, SUPPORTED_NODEFLOW_ENGINE_RANGE
+from .profiles import ProfileType
+from .config_expression import ConfigExpression
+from .preview import NodeEffect, PlannedEffect, PreviewResult, PreviewSupport, RunMode
 
 __version__ = NODEFLOW_ENGINE_VERSION
 
 __all__ = [
+    "NodeEffect", "PlannedEffect", "PreviewResult", "PreviewSupport", "RunMode",
+    "ConfigExpression",
+    "ProfileType",
     "BaseNode",
     "CredentialData",
     "DynamicInputList",

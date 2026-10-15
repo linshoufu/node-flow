@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, ClassVar, Generic, Literal, Mapping, TypeVar, cast, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict
+from .profiles import ProfileType
 
 
 ConfigT = TypeVar("ConfigT", bound=BaseModel)
@@ -81,7 +82,9 @@ FormControl = Literal[
     "dynamic_input_list",
     "url",
     "credential",
-    "http_profile",
+    "http_profile", "column_rules", "mapping_rules", "group_fields",
+    "parameter_list",
+    "string_list",
 ]
 FormExpressionMode = Literal["allowed", "disabled", "required"]
 FieldPlacement = Literal["inline", "panel"]
@@ -306,6 +309,8 @@ class NodeContext:
         workflow_id: str | None = None,
         static_data: Any | None = None,
         run_resources: dict[str, Any] | None = None,
+        profile: Mapping[str, Any] | None = None,
+        run_mode: Literal["live", "preview"] = "live",
     ) -> None:
         self.run_id = run_id
         self.node_id = node_id
@@ -320,7 +325,14 @@ class NodeContext:
         self.workflow_id = workflow_id
         self._static_data = static_data
         self._run_resources = run_resources if run_resources is not None else {}
+        self.profile = dict(profile or {})
+        self._run_mode = run_mode
         self.log = NodeLogger(self.logs)
+
+    @property
+    def run_mode(self) -> Literal["live", "preview"]:
+        """Immutable policy snapshotted by the platform for this invocation."""
+        return self._run_mode
 
     def emit_progress(self, value: float) -> None:
         self.progress = max(0.0, min(1.0, value))
@@ -402,9 +414,21 @@ def execution_item(
 
 
 class BaseNode(Generic[ConfigT]):
+    effect: ClassVar[Literal["pure", "read", "write", "unknown"]] = "unknown"
+    preview_support: ClassVar[Literal["execute", "plan", "unsupported"]] = "unsupported"
+    profile_type: ClassVar[ProfileType | None] = None
+    retry_safe: ClassVar[bool] = True
+
+    @classmethod
+    def can_retry(cls, config: dict[str, Any]) -> bool:
+        """Whether this configured operation is safe to repeat after failure."""
+        return cls.retry_safe
     inputs: ClassVar[dict[str, Input]] = {}
     outputs: ClassVar[dict[str, Output]] = {"success": Output()}
     resolve_config_expressions: ClassVar[bool] = True
+
+    async def preview(self, ctx: NodeContext, inputs: dict):
+        raise NotImplementedError("此节点未实现预演接口")
 
     def __init__(self, *, config: dict[str, Any] | ConfigT | None = None) -> None:
         model = self.config_model()

@@ -52,7 +52,12 @@ export type NodeFormControl =
   | "dynamic_output_list"
   | "url"
   | "credential"
-  | "http_profile";
+  | "http_profile"
+  | "parameter_list"
+  | "string_list"
+  | "column_rules"
+  | "mapping_rules"
+  | "group_fields";
 
 export type NodeFormExpressionMode = "allowed" | "disabled" | "required";
 
@@ -110,6 +115,10 @@ export type DynamicInputList = {
 };
 
 export type NodeType = {
+  effect?: "pure" | "read" | "write" | "unknown";
+  previewSupport?: "execute" | "plan" | "unsupported";
+  retrySafe?: boolean;
+  profileType?: ResourceProfileType | null;
   id: string;
   name: string;
   displayName?: string;
@@ -129,6 +138,21 @@ export type NodeType = {
   dynamicOutputs?: DynamicOutputList | null;
   package?: NodePackageProvenance | null;
   sourcePath?: string | null;
+};
+
+export type ResourceProfileType = {
+  id: string;
+  name: string;
+  schema: JsonSchema;
+  credentialTypeIds: string[];
+};
+
+export type ResourceProfile = {
+  id: string;
+  name: string;
+  type_id: string;
+  data: Record<string, unknown>;
+  credential_id: string | null;
 };
 
 export type NodePackageProvenance = {
@@ -165,6 +189,20 @@ export type NodePackageSummary = NodePackageProvenance & {
     versionStatus: "unlocked" | "locked" | "mismatch";
     installManaged?: boolean;
   };
+};
+
+export type NodeTemplate = {
+  id: string; name: string; description?: string; kind: "node" | "subflow" | "workflow";
+  packageId: string; packageVersion: string;
+  node?: WorkflowNode; graph?: WorkflowSubflow; workflow?: WorkflowDocument;
+  configuration?: import("@/lib/runParameters").RunParameter[];
+    parameters?: import("@/lib/runParameters").RunParameter[];
+    variables?: Record<string, unknown>;
+    source?: "user" | "package";
+    createdAt?: string;
+    revision?: number;
+    updatedAt?: string;
+    deletedAt?: string | null;
 };
 
 export type NodePackageSettingsUpdate = {
@@ -270,6 +308,7 @@ export type WorkflowNode = {
     y: number;
   };
   config: Record<string, unknown>;
+  configBindings?: Record<string, ConfigBinding>;
   pinnedData?: Record<string, unknown>;
   execution?: NodeExecutionPolicy;
   subflows?: Record<string, WorkflowSubflow>;
@@ -313,7 +352,11 @@ export type WorkflowSubflow = {
   annotations?: CanvasAnnotation[];
 };
 
+export type ConfigBinding = { source: "workflow" | "parameter"; key: string };
+
 export type WorkflowSettings = {
+  configuration?: import("@/lib/runParameters").RunParameter[];
+  run_mode?: "live" | "preview";
   timeout_seconds: number;
   variables?: Record<string, unknown>;
   error_workflow_id?: string | null;
@@ -519,6 +562,8 @@ export type RunHistoryStatusFilter = "all" | RunStatus;
 export type RunExecutionMode = "manual" | "schedule" | "webhook" | "webhook_test" | "child" | "error";
 
 export type RunRecord = {
+  run_mode?: "live" | "preview";
+  preview_status?: "complete" | "partial" | null;
   id: string;
   workflow_id: string;
   workflow_version: number;

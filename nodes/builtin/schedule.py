@@ -33,6 +33,8 @@ class ScheduleTriggerConfig(NodeConfig):
     ),
 )
 class ScheduleTriggerNode(BaseNode[ScheduleTriggerConfig]):
+    effect = "pure"
+    preview_support = "execute"
     outputs = {
         "success": Output(
             display_name="触发数据",

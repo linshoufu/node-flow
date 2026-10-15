@@ -7,7 +7,7 @@ from .credentials import CredentialType, credential_type_by_id
 from .node_registry import NodeRegistry
 from .node_ports import resolved_input_ports
 from .execution_policy import execution_policy_issues
-from .schemas import CredentialRecord, ValidationIssue, ValidationResult, WorkflowDocument, WorkflowNode
+from .schemas import CredentialRecord, ValidationIssue, ValidationResult, WorkflowDocument, WorkflowNode, WorkflowSubflow
 from .workflow_connections import (
     EdgeConnectionValidationResult,
     required_input_issues,
@@ -20,6 +20,8 @@ from .workflow_schedule_validation import schedule_trigger_issues
 from .workflow_structure import cycle_issues, duplicate_edge_id_issues, duplicate_node_id_issues
 from .workflow_variables import invalid_workflow_variable_issues
 from .workflow_webhook_validation import webhook_trigger_issues
+from .run_parameters import parameter_declaration
+from .config_bindings import resolve_workflow_bindings
 
 
 def validate_workflow(
@@ -30,13 +32,33 @@ def validate_workflow(
     credential_lookup: Callable[[str], CredentialRecord | None] | None = None,
     credential_type_lookup: Callable[[str], CredentialType | None] = credential_type_by_id,
     error_workflow_lookup: Callable[[str], WorkflowDocument | None] | None = None,
+    item_loop_body: bool = False,
+    _bindings_resolved: bool = False,
 ) -> ValidationResult:
     issues: list[ValidationIssue] = []
+    if not _bindings_resolved:
+        try:
+            workflow = resolve_workflow_bindings(workflow, registry)
+        except ValueError as exc:
+            return ValidationResult(valid=False, issues=[ValidationIssue(path="configuration", message=str(exc), code="config_binding_invalid")])
+    try:
+        parameter_declaration(workflow)
+    except ValueError as exc:
+        issues.append(ValidationIssue(path="nodes", message=str(exc), code="run_parameters_invalid"))
     node_by_id = {node.id: node for node in workflow.nodes}
     _add_issues(issues, duplicate_node_id_issues(workflow.nodes))
     _add_issues(issues, duplicate_edge_id_issues(workflow.edges))
     _validate_workflow_settings(workflow, issues, error_workflow_lookup=error_workflow_lookup)
     for node in workflow.nodes:
+        if node.type in {"control.loop_input", "control.loop_output"} and not item_loop_body:
+            issues.append(ValidationIssue(path=f"nodes.{node.id}", message="循环输入和循环结果只能放在逐项循环体中", code="loop_boundary_outside_body"))
+        if node.type in {"control.each_item", "control.foreach"}:
+            returns = [child for child in node.subflows.get("body", WorkflowSubflow()).nodes
+                       if child.type == "control.loop_output"]
+            if len(returns) > 1:
+                issues.append(ValidationIssue(path=f"nodes.{node.id}", message="逐项循环体只能声明一个循环结果节点", code="loop_multiple_outputs"))
+            if any(edge.source == node.id and edge.sourceHandle == "results" for edge in workflow.edges) and not returns:
+                issues.append(ValidationIssue(path=f"nodes.{node.id}", message="使用逐项结果端口时，循环体必须包含循环结果节点", code="loop_output_required"))
         _validate_node(
             node,
             registry,
@@ -81,6 +103,8 @@ def validate_workflow(
                 credential_lookup=credential_lookup,
                 credential_type_lookup=credential_type_lookup,
                 error_workflow_lookup=error_workflow_lookup,
+                item_loop_body=node.type in {"control.each_item", "control.foreach"} and subflow_name == "body",
+                _bindings_resolved=True,
             )
             for issue in nested_result.issues:
                 issues.append(
@@ -98,6 +122,7 @@ def manual_run_entry_issues(
     workflow: WorkflowDocument,
     registry: NodeRegistry,
     entry_node_id: str | None,
+    *, allow_pinned_data: bool = True,
 ) -> list[ValidationIssue]:
     """Validate the extra boundary created when an editor starts from one node.
 
@@ -129,6 +154,7 @@ def manual_run_entry_issues(
         if edge.target == node.id
         and (source := node_by_id.get(edge.source)) is not None
         and source.pinnedData is not None
+        and allow_pinned_data
         and edge.sourceHandle in source.pinnedData
     }
     issues: list[ValidationIssue] = []

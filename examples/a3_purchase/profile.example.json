@@ -1,0 +1,20 @@
+{
+  "name": "A3 测试采购",
+  "type_id": "a3.purchase",
+  "credential_id": "cred_REPLACE_WITH_YOUR_CREDENTIAL_ID",
+  "data": {
+    "base_url": "https://a3.example.invalid",
+    "purchase_order_menu_code": "purchase-menu",
+    "default_stock_in_category": "BZRK",
+    "stock_in_categories": {
+      "BZRK": {
+        "code": "BZRK",
+        "id": "stock-in-category",
+        "name": "标准采购入库单",
+        "business_id": "BZRK",
+        "business_name": "标准采购",
+        "menu_code": "stock-in-menu"
+      }
+    }
+  }
+}

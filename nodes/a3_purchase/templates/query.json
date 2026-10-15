@@ -1,0 +1,41 @@
+{
+  "id": "a3.purchase.query.preset",
+  "name": "采购订单查询请求",
+  "kind": "node",
+  "description": "可编辑的通用节点预设",
+  "node": {
+    "id": "query",
+    "type": "http.request",
+    "label": "采购订单查询请求",
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "config": {
+      "http_profile_id": "http_profile_REPLACE_WITH_YOUR_HTTP_PROFILE_ID",
+      "method": "POST",
+      "url": "/psi/psiPurchaseOrder/defaultPage",
+      "operation": "read",
+      "response_checks": [
+        {
+          "path": "success",
+          "in": [
+            false
+          ],
+          "message": "远端业务操作失败"
+        },
+        {
+          "path": "code",
+          "in": [
+            "0",
+            "401"
+          ],
+          "message": "远端业务状态异常"
+        }
+      ],
+      "headers": {
+        "menucode": "{{ inputs.body.menuCode }}"
+      }
+    }
+  }
+}

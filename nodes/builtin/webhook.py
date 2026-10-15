@@ -69,6 +69,8 @@ WEBHOOK_RESPONSE_MODE_OPTIONS = (
     ),
 )
 class WebhookTriggerNode(BaseNode[WebhookTriggerConfig]):
+    effect = "pure"
+    preview_support = "execute"
     outputs = {
         "success": Output(display_name="请求数据", description="Incoming request", schema=ANY_JSON_SCHEMA)
     }
@@ -116,6 +118,12 @@ class WebhookRespondConfig(NodeConfig):
     ),
 )
 class WebhookRespondNode(BaseNode[WebhookRespondConfig]):
+    effect = "write"
+    preview_support = "plan"
+
+    async def preview(self, ctx: NodeContext, inputs: dict):
+        from nodeflow_sdk import PlannedEffect, PreviewResult
+        return PreviewResult(effects=(PlannedEffect("webhook_response", "caller", inputs, "仅计划响应，不发送业务响应"),))
     inputs = {
         "input": Input(display_name="响应内容", required=False, schema=ANY_JSON_SCHEMA)
     }

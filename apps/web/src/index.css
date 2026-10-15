@@ -81,11 +81,12 @@
 .react-flow__edge .react-flow__edge-path { transition: stroke .15s, stroke-width .15s, opacity .15s; }
 .react-flow__edge.is-highlighted .react-flow__edge-path { filter: drop-shadow(0 0 3px hsl(212 70% 70% / .16)); }
 .react-flow__edge.is-subdued .react-flow__edge-textwrapper { opacity: .4; }
-.node-toggle { appearance: none; position: relative; width: 28px; height: 16px; border: 1px solid var(--color-border-hover); border-radius: 999px; background: var(--color-raised); cursor: pointer; transition: background .15s, border-color .15s; }
-.node-toggle::before { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-secondary); transition: transform .15s; }
-.node-toggle:checked { background: var(--color-primary); border-color: var(--color-primary); }
-.node-toggle:checked::before { transform: translateX(12px); background: white; }
-.node-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.workbench-switch { appearance: none; position: relative; width: 28px; height: 16px; border: 1px solid var(--color-border-hover); border-radius: 999px; background: var(--color-raised); cursor: pointer; transition: background .15s, border-color .15s; }
+.workbench-switch::before { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-secondary); transition: transform .15s; }
+.workbench-switch:checked { background: var(--color-primary); border-color: var(--color-primary); }
+.workbench-switch:checked::before { transform: translateX(12px); background: white; }
+.workbench-switch:disabled { opacity: .4; cursor: not-allowed; }
+.workbench-switch:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 
 /* Form controls keep one focus boundary and reserve room for actions. */
 input[type="number"] { appearance: textfield; -moz-appearance: textfield; }

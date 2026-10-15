@@ -28,6 +28,59 @@ const workflow: WorkflowDocument = {
 };
 
 describe("workflow scoped canvas", () => {
+  it("replaces scoped configuration atomically while keeping bindings and parent configuration", () => {
+    useWorkflowStore.setState({ workflow: structuredClone(workflow), canvasScope: [{ nodeId: "each", key: "body", label: "Body" }], isDirty: false });
+    useWorkflowStore.getState().setNodeBindings("request", { method: { source: "workflow", key: "method" } });
+    useWorkflowStore.getState().replaceNodeConfig("request", { common_fields: [{ name: "key", on_difference: "split" }] });
+    const result = useWorkflowStore.getState().workflow;
+    expect(result.nodes[0].config).toEqual({});
+    expect(result.nodes[0].subflows?.body.nodes[0].config).toEqual({ common_fields: [{ name: "key", on_difference: "split" }] });
+    expect(result.nodes[0].subflows?.body.nodes[0].configBindings?.method.key).toBe("method");
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+  });
+  it("inserts user presets with independent config dependencies and refuses conflicting defaults", () => {
+    useWorkflowStore.setState({ workflow: structuredClone(workflow), canvasScope: [], isDirty: false });
+    const asset = { id: "mine", name: "Mine", kind: "node" as const, source: "user" as const, packageId: "user", packageVersion: "1", configuration: [{ name: "warehouse", type: "json" as const, default: { id: "one" } }], node: { id: "source", type: "data.compose", position: { x: 0, y: 0 }, config: {}, configBindings: { "options.warehouse": { source: "workflow" as const, key: "warehouse" } } } };
+    useWorkflowStore.getState().insertTemplate(asset);
+    const result = useWorkflowStore.getState().workflow;
+    expect(result.nodes[1].id).not.toBe("source");
+    expect(result.settings?.configuration?.[0].default).toEqual({ id: "one" });
+    expect(result.settings?.configuration).not.toBe(asset.configuration);
+    useWorkflowStore.setState({ isDirty: false });
+    useWorkflowStore.getState().insertTemplate({ ...asset, configuration: [{ name: "warehouse", type: "json", default: { id: "other" } }] });
+    expect(useWorkflowStore.getState().workflow).toBe(result);
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
+  it("keeps workflow configuration separate from scoped node bindings and plain config", () => {
+    useWorkflowStore.setState({ workflow: structuredClone(workflow), canvasScope: [{ nodeId: "each", key: "body", label: "Body" }], isDirty: false });
+    useWorkflowStore.getState().setWorkflowConfiguration([{ name: "method", type: "string", default: "POST" }]);
+    useWorkflowStore.getState().setNodeBindings("request", { method: { source: "workflow", key: "method" } });
+    const result = useWorkflowStore.getState().workflow;
+    expect(result.settings?.configuration?.[0].default).toBe("POST");
+    expect(result.nodes[0].subflows?.body.nodes[0].config).toEqual({ method: "GET" });
+    expect(result.nodes[0].subflows?.body.nodes[0].configBindings).toEqual({ method: { source: "workflow", key: "method" } });
+    expect(result.nodes[0].configBindings).toBeUndefined();
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+  });
+  it("clones preset nodes without sharing configuration or IDs", () => {
+    useWorkflowStore.setState({ workflow: structuredClone(workflow), canvasScope: [], isDirty: false });
+    const node = { id: "preset", type: "data.compose", position: { x: 0, y: 0 }, config: { rules: [{ name: "x", expression: "1" }] } };
+    const template = { id: "demo", name: "Demo", kind: "node" as const, packageId: "demo", packageVersion: "1", node };
+    useWorkflowStore.getState().insertTemplate(template);
+    useWorkflowStore.getState().insertTemplate(template);
+    const nodes = useWorkflowStore.getState().workflow.nodes;
+    expect(new Set(nodes.map((node) => node.id)).size).toBe(nodes.length);
+    expect(nodes[1].config).not.toBe(node.config);
+    expect(node.id).toBe("preset");
+  });
+
+  it("does not replace a populated subflow with a template", () => {
+    useWorkflowStore.setState({ workflow: structuredClone(workflow), canvasScope: [{ nodeId: "each", key: "body", label: "Body" }], isDirty: false });
+    const before = useWorkflowStore.getState().workflow;
+    useWorkflowStore.getState().insertTemplate({ id: "body", name: "Body", kind: "subflow", packageId: "demo", packageVersion: "1", graph: { nodes: [], edges: [] } });
+    expect(useWorkflowStore.getState().workflow).toBe(before);
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
   beforeEach(() => {
     useWorkflowStore.setState({
       workflow: structuredClone(workflow),

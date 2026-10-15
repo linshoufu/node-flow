@@ -170,6 +170,8 @@ def build_workspace_resources_router(
 
     @router.delete("/api/credentials/{credential_id}", status_code=204)
     def delete_credential(credential_id: str) -> None:
+        if any(profile.get("credential_id") == credential_id for profile in storage.list_profiles()):
+            raise HTTPException(status_code=409, detail="凭据仍被配置档引用")
         if storage.get_credential(credential_id) is None:
             raise HTTPException(status_code=404, detail="凭据不存在。")
         references = storage.list_credential_references(

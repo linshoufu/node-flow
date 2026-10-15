@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from nodeflow_sdk import DynamicInputList, DynamicOutputList, Input, Output
+from nodeflow_sdk import BaseNode, DynamicInputList, DynamicOutputList, Input, Output
 from pydantic import BaseModel
 
 from .node_registry import PORT_HANDLE_PATTERN, RegisteredNodeType, validate_port_mapping
@@ -26,6 +26,8 @@ def resolve_input_port_contract(node: WorkflowNode, node_type: RegisteredNodeTyp
     """Safely resolve and validate one node instance's complete input contract."""
 
     node_class = node_type.node_class
+    if node.configBindings and node_class.__node_meta__.dynamic_inputs is None and node_class.input_ports.__func__ is BaseNode.input_ports.__func__:
+        return ResolvedPortContract(ports=_serialize_ports(node_class.inputs))
     return _resolve_port_contract(
         raw_config=node.config,
         config_model=node_class.config_model(),
@@ -42,6 +44,8 @@ def resolve_output_port_contract(node: WorkflowNode, node_type: RegisteredNodeTy
     """Safely resolve and validate one node instance's complete output contract."""
 
     node_class = node_type.node_class
+    if node.configBindings and node_class.__node_meta__.dynamic_outputs is None and node_class.output_ports.__func__ is BaseNode.output_ports.__func__:
+        return ResolvedPortContract(ports=_serialize_ports(node_class.outputs))
     return _resolve_port_contract(
         raw_config=node.config,
         config_model=node_class.config_model(),

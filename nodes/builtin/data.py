@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import io
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_DOWN, ROUND_UP
 from pathlib import Path
 from typing import Any, Literal
@@ -29,7 +30,7 @@ from nodes.builtin._schemas import ANY_JSON_SCHEMA, CSV_DATASET_SCHEMA, ERROR_SC
 
 
 class CsvReadConfig(NodeConfig):
-    path: str = Field(..., title="CSV file path")
+    path: str | None = Field(default=None, title="CSV file path")
     delimiter: str = Field(default=",", min_length=1, max_length=4)
     encoding: str = "utf-8"
     has_header: bool = True
@@ -51,7 +52,7 @@ class CsvReadConfig(NodeConfig):
                 "file",
                 "文件",
                 fields=(
-                    FormField("path", label="CSV 文件路径", placeholder="examples/api-cases.csv"),
+                    FormField("path", label="固定文件路径（未连接路径时使用）", placeholder="也可连接文件路径输入端口"),
                 ),
             ),
             FormGroup(
@@ -67,6 +68,9 @@ class CsvReadConfig(NodeConfig):
     ),
 )
 class CsvReadNode(BaseNode[CsvReadConfig]):
+    effect = "read"
+    preview_support = "execute"
+    inputs = {"path": Input(display_name="CSV 文件路径", required=False, schema={"type": "string"})}
     outputs = {
         "success": Output(display_name="数据集", description="CSV rows, headers, and columns", schema=CSV_DATASET_SCHEMA),
         "items": Output(display_name="数据项", description="One execution item per CSV row", schema=EXECUTION_ITEMS_SCHEMA),
@@ -74,15 +78,43 @@ class CsvReadNode(BaseNode[CsvReadConfig]):
     }
 
     async def execute(self, ctx: NodeContext, inputs: dict):
+        path = inputs.get("path", self.config.path)
         try:
-            csv_path = Path(self.config.path)
-            with csv_path.open("r", encoding=self.config.encoding, newline="") as file:
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError("请连接 CSV 文件路径输入，或配置固定文件路径")
+            csv_path = Path(path)
+            encoding = self.config.encoding
+            if encoding == "auto":
+                raw = csv_path.read_bytes()
+                try:
+                    text = raw.decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    text = raw.decode("gb18030")
+            else:
+                text = csv_path.read_text(encoding="utf-8-sig" if encoding.lower() in {"utf-8", "utf8"} else encoding)
+            line_numbers = []
+            with io.StringIO(text, newline="") as file:
                 if self.config.has_header:
-                    reader = csv.DictReader(file, delimiter=self.config.delimiter)
-                    rows = [dict(row) for row in reader]
-                    headers = list(reader.fieldnames or [])
+                    reader = csv.reader(file, delimiter=self.config.delimiter)
+                    headers = next(reader, [])
+                    rows = []
+                    line = reader.line_num + 1
+                    for values in reader:
+                        row_line = line
+                        line = reader.line_num + 1
+                        if not values:
+                            continue
+                        rows.append({key: values[index] if index < len(values) else None
+                                     for index, key in enumerate(headers)})
+                        line_numbers.append(row_line)
                 else:
-                    raw_rows = list(csv.reader(file, delimiter=self.config.delimiter))
+                    reader = csv.reader(file, delimiter=self.config.delimiter)
+                    raw_rows = []
+                    line = 1
+                    for row in reader:
+                        raw_rows.append(row)
+                        line_numbers.append(line)
+                        line = reader.line_num + 1
                     column_count = max((len(row) for row in raw_rows), default=0)
                     headers = [f"column_{index + 1}" for index in range(column_count)]
                     rows = [
@@ -94,7 +126,7 @@ class CsvReadNode(BaseNode[CsvReadConfig]):
                 "error": {
                     "message": str(exc),
                     "type": exc.__class__.__name__,
-                    "path": self.config.path,
+                    "path": path,
                 }
             }
 
@@ -104,12 +136,13 @@ class CsvReadNode(BaseNode[CsvReadConfig]):
                 columns[header].append(row.get(header, ""))
 
         dataset = {
-                "path": str(Path(self.config.path)),
+                "path": str(csv_path),
                 "headers": headers,
                 "rows": rows,
                 "columns": columns,
                 "items": [execution_item(row, paired_item={"item": index}) for index, row in enumerate(rows)],
                 "row_count": len(rows),
+                "line_numbers": line_numbers,
         }
         return {"success": dataset, "items": dataset["items"]}
 
@@ -141,6 +174,8 @@ class ExtractConfig(NodeConfig):
     ),
 )
 class ExtractNode(BaseNode[ExtractConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="数据", required=True, description="Source data", schema=ANY_JSON_SCHEMA)}
     outputs = {
         "success": Output(display_name="提取值", description="Extracted value", schema=ANY_JSON_SCHEMA),
@@ -187,6 +222,8 @@ class MapItemsConfig(NodeConfig):
     ),
 )
 class MapItemsNode(BaseNode[MapItemsConfig]):
+    effect = "pure"
+    preview_support = "execute"
     resolve_config_expressions = False
     inputs = {
         "items": Input(
@@ -219,6 +256,7 @@ class GroupItemsConfig(NodeConfig):
 
 @node(
     id="data.group_items",
+    documentation_url="/docs/nodes/index.html#data.group_items",
     name="Group Items",
     category="Data",
     description="Group execution items by one or more data paths.",
@@ -229,6 +267,8 @@ class GroupItemsConfig(NodeConfig):
     form=NodeForm(groups=(FormGroup("group", "分组", fields=(FormField("paths", control="json", label="分组字段路径", placeholder='["源单单号", "仓库"]'),)),)),
 )
 class GroupItemsNode(BaseNode[GroupItemsConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"items": Input(display_name="数据项", required=True, data_mode="items")}
     outputs = {"items": Output(display_name="分组数据项", schema=EXECUTION_ITEMS_SCHEMA)}
 
@@ -250,6 +290,7 @@ class LookupConfig(NodeConfig):
 
 @node(
     id="data.lookup",
+    documentation_url="/docs/nodes/index.html#data.lookup",
     name="Lookup Records",
     category="Data",
     description="Find records by a configured key path.",
@@ -273,6 +314,8 @@ class LookupConfig(NodeConfig):
     ),
 )
 class LookupNode(BaseNode[LookupConfig]):
+    effect = "pure"
+    preview_support = "execute"
     resolve_config_expressions = False
     inputs = {"source": Input(display_name="记录来源", required=True, schema=ANY_JSON_SCHEMA)}
     outputs = {
@@ -304,6 +347,7 @@ class JsonTemplateConfig(NodeConfig):
 
 @node(
     id="data.json_template",
+    documentation_url="/docs/nodes/index.html#data.json_template",
     name="JSON Template",
     category="Data",
     description="Render any JSON object or array from inputs and workflow expressions.",
@@ -314,6 +358,8 @@ class JsonTemplateConfig(NodeConfig):
     form=NodeForm(groups=(FormGroup("template", "JSON 模板", fields=(FormField("template", control="json", label="模板", placeholder='{"code": "{{ inputs.order.code }}"}'),)),)),
 )
 class JsonTemplateNode(BaseNode[JsonTemplateConfig]):
+    effect = "pure"
+    preview_support = "execute"
     resolve_config_expressions = False
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {"success": Output(display_name="JSON 结果", schema=ANY_JSON_SCHEMA), "error": Output(display_name="模板错误", category="error", schema=ERROR_SCHEMA)}
@@ -339,6 +385,7 @@ _ROUNDING = {"half_up": ROUND_HALF_UP, "half_even": ROUND_HALF_EVEN, "down": ROU
 
 @node(
     id="data.decimal_math",
+    documentation_url="/docs/nodes/index.html#data.decimal_math",
     name="Decimal Math",
     category="Data",
     description="Perform precise decimal arithmetic with explicit scale and rounding.",
@@ -363,6 +410,8 @@ _ROUNDING = {"half_up": ROUND_HALF_UP, "half_even": ROUND_HALF_EVEN, "down": ROU
     ),
 )
 class DecimalMathNode(BaseNode[DecimalMathConfig]):
+    effect = "pure"
+    preview_support = "execute"
     resolve_config_expressions = False
     outputs = {"success": Output(display_name="计算结果", schema=ANY_JSON_SCHEMA), "error": Output(display_name="计算错误", category="error", schema=ERROR_SCHEMA)}
 
@@ -423,6 +472,8 @@ FILTER_EXPECTED_VALUE_CONDITION = FormCondition("operator", one_of=("equals", "n
     ),
 )
 class FilterItemsNode(BaseNode[FilterItemsConfig]):
+    effect = "pure"
+    preview_support = "execute"
     resolve_config_expressions = False
     inputs = {
         "items": Input(
@@ -462,6 +513,8 @@ class FilterItemsNode(BaseNode[FilterItemsConfig]):
     documentation_url="/docs/nodes/index.html#data.merge_items",
 )
 class MergeItemsNode(BaseNode[NodeConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {
         "items": Input(
             display_name="数据项",
@@ -548,6 +601,8 @@ class CollectInputsConfig(NodeConfig):
     ),
 )
 class CollectInputsNode(BaseNode[CollectInputsConfig]):
+    effect = "pure"
+    preview_support = "execute"
     outputs = {
         "output": Output(
             display_name="汇聚结果",

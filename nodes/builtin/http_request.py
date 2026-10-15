@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import hashlib
 import json
 from typing import Any, Literal
@@ -34,6 +35,8 @@ class HttpRequestConfig(NodeConfig):
     body: Any = Field(default=None, title="Body")
     timeout_seconds: int = Field(default=30, ge=1, le=300)
     authentication: dict[str, Any] = Field(default_factory=dict, title="Authentication")
+    operation: Literal["unknown", "read", "write"] = "unknown"
+    response_checks: list[dict[str, Any]] = Field(default_factory=list)
 
 
 HTTP_METHOD_OPTIONS = (
@@ -77,6 +80,8 @@ HTTP_METHODS_WITH_BODY = FormCondition("method", one_of=("POST", "PUT", "PATCH")
                     FormField("method", control="select", label="请求方法", options=HTTP_METHOD_OPTIONS),
                     FormField("url", control="url", label="URL", placeholder="https://api.example.com/users"),
                     FormField("timeout_seconds", control="number", label="超时（秒）"),
+                    FormField("operation", control="select", label="操作语义", expression="disabled",
+                              options=(("unknown", "未声明（预演只生成计划）"), ("read", "只读查询（预演会访问远端）"), ("write", "写入操作（预演只生成计划）"))),
                 ),
             ),
             FormGroup(
@@ -85,6 +90,8 @@ HTTP_METHODS_WITH_BODY = FormCondition("method", one_of=("POST", "PUT", "PATCH")
                 fields=(
                     FormField("body", control="json", label="请求体", visible_when=HTTP_METHODS_WITH_BODY),
                     FormField("headers", control="json", label="请求头"),
+                    FormField("response_checks", control="json", label="响应失败条件", expression="disabled",
+                              description="条件包含 path、in 数组和 message；命中时输出错误。"),
                 ),
             ),
             FormGroup(
@@ -103,6 +110,23 @@ HTTP_METHODS_WITH_BODY = FormCondition("method", one_of=("POST", "PUT", "PATCH")
     ),
 )
 class HttpRequestNode(BaseNode[HttpRequestConfig]):
+    effect = "unknown"
+    preview_support = "plan"
+
+    @classmethod
+    def can_retry(cls, config: dict[str, Any]) -> bool:
+        return config.get("operation") == "read"
+
+    async def preview(self, ctx: NodeContext, inputs: dict):
+        from nodeflow_sdk import PlannedEffect, PreviewResult
+        if self.config.operation == "read":
+            return PreviewResult(outputs=await self.execute(ctx, inputs), complete=True)
+        # Do not authenticate or issue any request for an undeclared/write action.
+        return PreviewResult(effects=(PlannedEffect(
+            operation=f"HTTP {self.config.method}", target=self.config.url,
+            details={"body": inputs.get("body", self.config.body), "credential_id": self.config.credential_id},
+            description="仅计划请求；未声明只读语义时不访问远端，也不生成响应或资源 ID",
+        ),))
     inputs = {
         "body": Input(display_name="请求体", required=False, description="Request body", schema=ANY_JSON_SCHEMA),
         "headers": Input(display_name="请求头", required=False, description="Request headers", schema=STRING_MAP_SCHEMA),
@@ -116,20 +140,26 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
         session = self._session(ctx)
         credential_headers = self._credential_headers(ctx)
         try:
-            await self._ensure_authenticated(ctx, session)
+            async with session["lock"]:
+                await self._ensure_authenticated(ctx, session)
         except (httpx.RequestError, httpx.TimeoutException, ValueError) as exc:
             return {"error": {"message": str(exc), "type": exc.__class__.__name__}}
         headers = {**credential_headers, **session["headers"], **self.config.headers, **(inputs.get("headers") or {})}
         body = inputs.get("body", self.config.body)
         try:
             async with httpx.AsyncClient(timeout=self.config.timeout_seconds, trust_env=False, cookies=session["cookies"]) as client:
-                response = await client.request(
-                    self.config.method,
-                    self.config.url,
-                    headers=headers,
-                    json=body if body is not None else None,
-                )
+                response = await client.request(self.config.method, self.config.url, headers=headers, json=body if body is not None else None)
                 session["cookies"].update(client.cookies)
+                refresh = self.config.authentication.get("refresh_on")
+                if isinstance(refresh, dict) and self._check_matches(response, refresh):
+                    async with session["lock"]:
+                        if all(headers.get(name) == value for name, value in session["headers"].items()):
+                            session["authenticated"] = False
+                            session["headers"].clear()
+                        await self._ensure_authenticated(ctx, session)
+                    headers = {**credential_headers, **session["headers"], **self.config.headers, **(inputs.get("headers") or {})}
+                    response = await client.request(self.config.method, self.config.url, headers=headers, json=body if body is not None else None)
+                    session["cookies"].update(client.cookies)
         except (httpx.RequestError, httpx.TimeoutException) as exc:
             return {
                 "error": {
@@ -148,6 +178,9 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
             response_body = response.json()
         except ValueError:
             response_body = response.text
+        for check in self.config.response_checks:
+            if self._check_matches(response, check):
+                return {"error": {"message": check.get("message", "响应未通过业务校验"), "type": "ResponseValidationError"}}
         return {
             "success": {
                 "status_code": response.status_code,
@@ -181,13 +214,13 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
 
     def _session(self, ctx: NodeContext) -> dict[str, Any]:
         key = json.dumps(
-            {"url": self.config.url, "credential": self.config.credential_id, "auth": self.config.authentication},
+            {"origin": str(httpx.URL(self.config.url).copy_with(path="/", query=None, fragment=None)), "credential": self.config.credential_id, "auth": self.config.authentication},
             sort_keys=True,
             ensure_ascii=False,
         )
         resource_key = f"http.auth.{hashlib.sha256(key.encode()).hexdigest()}"
         return ctx.get_or_create_run_resource(
-            resource_key, lambda: {"authenticated": False, "headers": {}, "cookies": httpx.Cookies()}
+            resource_key, lambda: {"authenticated": False, "headers": {}, "cookies": httpx.Cookies(), "lock": asyncio.Lock()}
         )
 
     async def _ensure_authenticated(self, ctx: NodeContext, session: dict[str, Any]) -> None:
@@ -215,6 +248,9 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
             response = await client.request(str(login.get("method", "POST")).upper(), login_url, headers=headers, json=body)
             response.raise_for_status()
             session["cookies"].update(client.cookies)
+        for check in login.get("reject_when", []):
+            if self._check_matches(response, check):
+                raise ValueError("登录响应未通过认证校验")
         extracts = login.get("extracts")
         if extracts is None:
             legacy_extract = login.get("extract")
@@ -225,7 +261,14 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
             session["authenticated"] = True
             return
         for extract in extracts:
-            token = self._extract_login_value(response, extract)
+            if extract.get("if_absent") and extract.get("name") in session["headers"]:
+                continue
+            try:
+                token = self._extract_login_value(response, extract)
+            except ValueError:
+                if extract.get("optional"):
+                    continue
+                raise
             target = extract.get("target")
             name = extract.get("name")
             if not isinstance(name, str) or not name:
@@ -238,6 +281,14 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
             else:
                 raise ValueError("登录认证策略 target 只能是 header 或 cookie。")
         session["authenticated"] = True
+
+    @staticmethod
+    def _check_matches(response: httpx.Response, check: dict[str, Any]) -> bool:
+        value: Any = response.status_code if check.get("path") == "$status" else response.json()
+        if check.get("path") != "$status":
+            for part in str(check.get("path", "")).split("."):
+                value = value.get(part) if isinstance(value, dict) else None
+        return any(value == expected or (not isinstance(value, bool) and str(value) == str(expected)) for expected in check.get("in", []))
 
     @staticmethod
     def _extract_login_value(response: httpx.Response, extract: dict[str, Any]) -> str:
@@ -257,6 +308,8 @@ class HttpRequestNode(BaseNode[HttpRequestConfig]):
                 value = value[part]
         else:
             raise ValueError("登录认证策略 source 只能是 json、header 或 cookie。")
+        if extract.get("as_text") and isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = str(value)
         if not isinstance(value, str) or not value:
             raise ValueError("登录认证策略提取的认证结果必须是非空文本。")
         return value

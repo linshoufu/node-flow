@@ -196,6 +196,89 @@ python -m apps.api.nodeflow_api.node_doctor nodes/my-tools --strict
 
 `GET /api/node-packages/{package_id}/revisions` 只对安装器管理的活动包开放。`POST /api/node-packages/{package_id}/revisions/{revision_id}/activate` 会把历史目录复制到暂存区，再走与 ZIP 安装一致的预检和激活事务。该入口允许明确降级，但不绕过 `locked_version`、节点/凭据 ID 冲突和工作流引用保护；恢复前的当前版本也会成为新的历史修订。
 
+## 运行参数与业务配置档
+
+`workflow.parameters` 在主流程中声明唯一的运行输入契约。`fields` 每项支持 `name`、`label`、`type`、`required`、`default`、`options` 和 `description`；类型为 `string`、`file`（服务端文件路径）、`integer`、`number`、`boolean`、`date`、`json`。`input_path` 留空读取调用输入，可填写 `body` 等对象路径适配 Webhook。参数节点不能放在循环体，不能声明重复名称或敏感字段。
+
+手动运行先显示参数表单。所有入口创建运行时，都在持久队列入队前完成参数校验并保存解析后的快照。运行参数节点 v2 仅为每个声明的参数提供同名动态输出端口，没有整包 `success` 输出；没有参数时没有输出端口。v1 配置迁移保留字段定义，旧图若连接了整包端口，需要改接具体字段端口。`success` 继续保留为参数名称禁用值，防止旧连线被误认成同名字段。参数也可通过 `{{ run_parameters.name }}` 引用。运行输入通过已有 `initial_input` 传入。字段默认值只在未传入时采用，不能代替凭据。环境、并发和总超时继续由平台调度配置管理。
+
+节点包可在节点类声明 `profile_type = ProfileType(id, name, model, credential_type_ids)`；`model` 为 Pydantic 模型，节点配置必须声明字符串 `profile_id`。同一类型在多个节点上的声明必须一致。平台通过 `/api/profile-types` 暴露配置 Schema，在资源中心生成表单；`/api/profiles` 提供创建、读取、完整更新和删除。配置档的 `data` 只存非敏感配置，`credential_id` 单独引用凭据库。不能把密码、令牌或密钥放入配置档和运行参数。
+
+`profile_id` 可以是固定 ID，也可以使用 `{{ project.connection }}` 选择环境中的配置档 ID。入队时只保存工作流引用的配置档快照和凭据 ID；运行节点通过 `ctx.profile` 读取配置档，通过 `ctx.get_credential(ctx.profile["credential_id"])` 读取经环境映射后的凭据。排队后修改配置档或环境不影响已有运行，重试保留原快照。凭据值不进入快照，执行时从凭据库读取。配置档被当前工作流引用、凭据被配置档引用时不能删除。未能静态解析的动态配置档引用会保守阻止删除。
+
+`ctx.get_or_create_run_resource(key, factory)` 仅用于同一运行内共享客户端、会话等私有技术资源，不进入表达式上下文、事件或跨运行状态。业务任务、处理结果和失败信息必须通过端口传递，不能用资源字典、全局变量或跨运行状态替代连线。节点包负责资源的线程安全；有持久资源的 Adapter 应明确关闭资源。A3 包使用独立 HTTP 请求，不保持需要关闭的 HTTP 客户端。
+
+需要同时支持枚举或数字类型与运行表达式的配置字段，可使用 SDK 的 `ConfigExpression` 联合类型，例如 `Literal["preview", "save"] | ConfigExpression`。保存时校验表达式语法，执行器先解析表达式，再由原配置模型校验实际值。
+
+可能产生不可幂等外部写入的节点应声明 `retry_safe = False`。平台拒绝这类节点的自动重试策略；一次运行若已开始执行此类节点，也不能直接重试整个流程，必须先核对外部结果。该保护不提供分布式事务或自动断点续跑，外部系统已经成功的写入不会随工作流失败回滚。
+
+## 表格数据与循环边界
+
+### 工作流配置与节点绑定
+
+`settings.configuration` 声明本工作流的固定非敏感配置，采用与运行参数相同的名称、标签、类型和默认值结构。设置界面独立管理这些值；画布端口继续表达业务数据流。凭据仍只在凭据库保存，不能写入工作流配置。
+
+每个节点的 `configBindings` 独立于 `config` 存储，键为配置目标路径（如 `options.default_warehouse`），值为 `{ "source": "workflow", "key": "default_warehouse" }` 或 `source: "parameter"` 的运行参数引用。目标必须存在于节点配置 Schema，不能重叠，也不能绑定决定动态端口的字段。保存时校验引用和已知类型；尚无值的运行参数在启动时校验，缺失或不兼容时明确失败。
+
+平台在入队时保存工作流配置快照，执行前解析绑定并校验，Python 节点继续接收普通类型化 `self.config`，不需要读取平台配置字典或修改 execute 签名。绑定值是数据，不会作为双花括号表达式再次执行。循环使用所属工作流的配置；调用其他工作流时使用被调用工作流自己的配置，重试保持原快照。旧工作流缺省配置和绑定为空，旧节点及旧连线继续可用。固定配置、运行参数、数据输入和运行策略分别管理，不新增公共可变缓存。
+
+`nodeflow_sdk.datasets.RecordDataset` 定义文件无关的表格输入：`headers: string[]`、`rows: object[]`、可选 `line_numbers: integer[]`。行号必须与行一一对应；未提供时从 2 开始。读取、格式解析与业务校验分离：`data.csv_read` 从 `path` 输入端口读取文件路径，未连接时兼容固定路径配置，输出数据集和逐行数据项。`encoding=auto` 支持 UTF-8 BOM 和 GB18030；数据集携带来源行号。业务节点接收数据集，不应重新读取路径。同一契约也可由 HTTP、表格或其他来源构建。
+
+`control.each_item.items` 接收数组，`control.foreach` 保留表达式入口。两者的循环体都可放置 `control.loop_input` 和一个 `control.loop_output`，业务节点只需连接普通输入输出：循环输入的 `item` → 业务处理 → 循环结果的 `value`。边界节点只能放在逐项循环体中；嵌套循环有各自的边界。
+
+包含循环结果节点时，外层 `results` 输出按输入顺序排列的公共结果数组（Schema 见 `nodeflow_sdk.loops.LOOP_RESULTS_SCHEMA`）：
+
+```json
+[
+  {"index": 0, "item": {"id": "a"}, "status": "succeeded", "output": {"value": 1}},
+  {"index": 1, "item": {"id": "b"}, "status": "failed", "error": "处理失败"}
+]
+```
+
+`output` 保留 `null`、`false`、`0` 等值。开启 `continue_on_error` 时保留失败项并处理后续项；未开启时中断循环。某项未到达结果节点（包括被分支跳过或节点错误策略继续）也算失败，不能复用上一项输出。空数组输出空结果。旧循环没有结果节点时保持原有 `done` 行为；连接 `results` 必须先配置结果节点。循环的技术上下文由引擎维护，业务节点不应自行读取 `loop.item` 或查找其他节点的隐式结果。
+
+A3 采购包 0.3 的任务、查询、汇总节点为 v2：任务节点接收 `dataset` 并分别输出 `tasks`、`input_failures`；查询必须显式连接 `task`；汇总接收 `results`、`input_failures`。v1 配置迁移只迁移配置字段，完整工作流还必须按新端口重新连线，不能直接把旧图的版本号改成 2。采购示例已完成该结构迁移。
+
+## 平台级预演
+
+`WorkflowSettings.run_mode` 指定默认方式：`live` 或 `preview`。缺省为 `live`，兼容已有工作流。手动创建运行可在请求顶层覆盖 `run_mode`；业务 `initial_input` 中的同名字段不能覆盖策略。`RunInvocation.run_mode` 在入队时固化，Worker 重启、失败重试以及后续修改工作流默认方式都不改变已有运行。`execution_mode` 仍表示手动、Webhook、调度等来源，不承担预演语义。
+
+子运行（包括错误处理工作流）强制继承父运行方式，不能降级为正式执行。循环在相同运行策略下执行。预演允许读取输入和声明为只读的远端查询，不使用画布固定输出替代执行；不提交根运行或子运行暂存的跨运行业务状态。运行日志和操作计划仍持久化。
+
+节点通过 SDK 声明 `effect = "pure" | "read" | "write" | "unknown"` 和 `preview_support = "execute" | "plan" | "unsupported"`。默认未知且不支持预演，保留旧节点的正式执行行为。只有纯计算和只读节点可声明直接执行；有副作用的节点必须实现 `preview(ctx, inputs) -> PreviewResult`，并从只读属性 `ctx.run_mode` 查看策略。声明错误或声称支持但没有实现预演时，加载器报错。
+
+创建手动预演运行前，以及 Worker/执行器开始执行前，会检查整个工作流、循环体和可确定目标的子工作流；不支持预演、递归调用或动态目标无法提前确定时明确拒绝，不回退到正式执行。检查是对可信节点代码所声明契约的验证，不是 Python 进程沙箱。
+
+`PreviewResult.effects` 是 `PlannedEffect(operation, target, details, description)` 元组；`outputs` 仍使用原节点端口契约。默认 `complete=False`，表示无法生成真实执行所需的输出，执行器不运行其后续节点，记录 `node_not_verified`。不能伪造单据 ID、HTTP 成功响应或已写入路径来继续后续流程。只有节点能提供有明确预演语义的完整输出时才声明 `complete=True`。例如 A3 返回待提交 Payload、`status=previewed` 和空单据 ID，而不声称制单成功。
+
+运行记录保留原有状态并新增 `run_mode` 和 `preview_status`（成功预演为 `complete` 或 `partial`）。`complete` 只表示可预演范围完成，不代表外部写入成功。时间线中的 `node_previewed` 包含操作计划；`node_not_verified` 标记缺少真实依赖的步骤，运行详情提供操作计划视图。循环中的此类条目以 `status=unverified` 返回，不能计作成功或执行失败。
+
+内置 HTTP 节点增加 `operation` 声明：默认 `unknown`，预演只生成请求计划，不登录、不发请求。显式 `read` 才允许真实查询，支持用 POST 查询的系统；不能只用 HTTP 方法推断副作用。`write` 始终生成计划。文件报告与 Webhook 响应在预演中仅生成计划。其他内置计算、控制、参数和数据读取节点声明对应能力。
+
+A3 包 0.4 新增普通业务节点 `a3.purchase_submit`，由平台策略控制保存或预演，配置只含配置档 ID。旧 `a3.purchase_save` 的节点级 `mode` 行为保持兼容；在平台预演下，即使其旧配置是 `save` 也只生成计划。新工作流使用 `a3.purchase_submit`，不在业务参数里声明预演开关。
+
 ## 兼容性
+
+### 可配置数据处理与节点包模板
+
+`data.records_prepare` 接收文件无关的 `dataset` 和可选 `options`，按 `columns` 配置执行字段映射、类型转换与校验，输出包含原始行号和错误的记录。`data.records_group` 使用一份 `common_fields` 公共字段规则：每项包含 `name`、可选显示名 `label`、`on_difference`（`split` 差异拆组 / `error` 差异时报错）、`allow_empty` 和 `emit`（是否输出到 `header`，默认 true）。拆组字段共同确定分组；报错字段检查组内一致性；全部设为报错时所有记录归为一组。`unique_items` 独立校验组内明细唯一性。旧版 `by` / `header_fields` / `optional_keys` 及其绑定仍按原语义读取，版本保持 v1；新配置只写 `common_fields`。旧配置转换保留仅分组字段的 `emit=false` 和原空值策略，保持下游输出结构。包含无效记录的整组只输出到 `failures`，不能把有效子集当作完整单据。
+
+`data.compose` 仅从 `input`、`context`、`options` 输入端口取得数据；配置 `rules` 顺序计算中间字段，`fields` 组装输出对象，未配置 `fields` 时计算 `output`。规则可以声明 `each`、集合内部 `rules` 和 `fields`。集合内部变量为 `item` / `index`；不读取其它节点输出、运行参数或共享业务状态。表达式由受限 AST 解释器处理，有计算预算，不使用 Python eval；数据函数集中在 `nodeflow_sdk/data_recipes.py`。金额计算使用有限 Decimal，输出精确小数文本。`data.batch_summary` 汇总失败与循环结果，保留未验证条目，不把预演计划当作保存成功。
+
+表单控件 `column_rules` 和 `mapping_rules` 分别编辑字段转换规则和递归对象/集合规则。配置仍是普通 JSON，界面使用可展开的字段表单；规则表达式使用自己的局部变量语法，不使用平台的双花括号运行表达式。节点设置 `resolve_config_expressions=False`，这些规则不会在执行前被平台错误替换。
+
+节点包清单可声明 `templates: ["templates/example.json"]`，纯模板包允许 `nodeEntrypoints: []`。模板文件必须位于包内。`GET /api/node-templates` 返回节点库资源，其中包资源只来自已加载包，并检查引用节点和配置。模板类型为 `node`（`node` 字段）、`subflow`（`graph` 字段）、`workflow`（`workflow` 字段）。插入时复制配置并重新生成节点/连线 ID；工作流模板只插入空白工作流且强制预演，循环体模板只填充尚无业务节点的循环体，不覆盖已有编排。
+
+节点库也支持用户资源：在“预设”页保存选中节点，在“模板”页保存当前工作流或当前循环体。`POST /api/node-templates` 校验节点契约、连线、配置引用与非敏感值后写入独立的 SQLite `user_templates` 表；`GET /api/node-templates` 合并返回用户资源（`source=user`）和包资源（`source=package`）。包文件不被改写，同名保存创建新资源。固定输出与运行数据不进入副本，工作流模板强制预演且停用自动触发。账号仅保留凭据/配置档 ID。
+
+预设和循环体模板的 `configuration`、`variables` 携带配置依赖，`parameters` 声明运行参数要求。插入前检查同名配置冲突及参数类型，缺少参数时提示先在目标工作流声明；不偷偷创建运行参数节点。新增配置复制到目标工作流，已有不同配置明确拒绝覆盖。添加后的节点和配置可独立编辑，修改不会回写已保存资源。
+
+个人资源可通过节点库菜单编辑内容、重命名或删除；包资源在界面和服务端均只读（修改返回 403）。`PUT /api/node-templates/{id}` 更新内容，`PATCH` 更新名称和说明，均要求 `expected_revision`；旧资源缺省修订为 1，成功后递增，过期修订返回 409。更新保留资源 ID 和创建时间，使用数据库原文条件更新防止多进程覆盖。`DELETE` 只移入回收站，默认列表隐藏；`GET ?include_deleted=true` 和 `POST /{id}/restore?expected_revision=N` 支持恢复，同样检查修订。
+
+编辑内容使用独立画布草稿，保留原工作流的未保存内容、选择和循环位置；保存或放弃后完整恢复。编辑期间不提供运行或保存工作流入口，状态层也拒绝这些操作。保存仅更新节点库资源，已有工作流副本不受影响。新建资源的保存操作放在节点配置面板、循环体所属节点面板和工作流设置中；节点库负责查找、添加和管理。
+
+A3 采购包 0.6 以这些通用节点提供预设与模板，不依赖 a3-tool。旧 `a3.*` 节点留在独立的 `a3.purchase.compatibility` 包，节点契约保持兼容，默认从节点库隐藏，可显示旧版兼容节点。请求和登录均由 HTTP 节点及 HTTP 配置档负责；纯数据节点没有 A3 特判。固定采购选项迁入工作流设置，通过独立绑定注入映射节点，移除单独的选项节点；账号迁移为加密的 HTTP 登录凭据，旧资源和工作流历史保留。`data.records_prepare` 的 `options` 配置支持绑定，连接同名输入时仍以输入为准，兼容旧图。
+
+HTTP 节点可配置 `response_checks`（`path`、`in`、`message`）把业务错误转为错误输出；认证配置可声明 `login.reject_when` 和 `refresh_on`，认证字段只留在运行内会话中。会话按系统 origin、凭据和认证策略共享，不按业务请求路径拆分；同一会话的登录串行。SDK 的 `can_retry(config)` 默认继承静态 `retry_safe`，HTTP 根据操作语义判断重试安全性，正式写入已开始后不允许整体重试。
 
 不要为了中文显示改动 workflow JSON 的 `sourceHandle`、`targetHandle` 或节点类型 `id`。这些值是稳定存储契约。产品化展示应通过 API 返回的 `displayName` 字段完成。

@@ -40,6 +40,8 @@ class IfConfig(NodeConfig):
     ),
 )
 class IfNode(BaseNode[IfConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {
         "true": Output(display_name="为真", description="Condition is truthy", schema=ANY_JSON_SCHEMA),
@@ -116,6 +118,8 @@ class SwitchConfig(NodeConfig):
     ),
 )
 class SwitchNode(BaseNode[SwitchConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {"fallback": Output(display_name="未匹配", description="No route matched", schema=ANY_JSON_SCHEMA)}
 
@@ -167,6 +171,8 @@ class SetVariableConfig(NodeConfig):
     ),
 )
 class SetVariableNode(BaseNode[SetVariableConfig]):
+    effect = "pure"
+    preview_support = "execute"
     resolve_config_expressions = False
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {"success": Output(display_name="变量", description="Updated variables", schema=ANY_JSON_SCHEMA)}

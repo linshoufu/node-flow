@@ -10,6 +10,8 @@ export function nodeRunStatus(nodeId: string, nodeType: NodeType | undefined, ru
   if (outputs && typeof outputs === "object" && !Array.isArray(outputs) &&
     Object.keys(outputs).some((id) => nodeType?.outputs[id]?.category === "error")) return "failed";
   if (latest.includes("failed") || latest.includes("error")) return "failed";
+  if (latest === "node_not_verified") return "unverified";
+  if (latest === "node_succeeded" && latestEvent?.payload.run_mode === "preview" && events.some((event) => event.node_id === nodeId && event.type === "node_previewed" && Array.isArray(event.payload.effects) && event.payload.effects.length > 0)) return "planned";
   if (latest.includes("succeeded") || latest.includes("pinned_data_used")) return "succeeded";
   if (latest.includes("skipped") || latest.includes("disabled")) return "skipped";
   if (latest.includes("started")) return "running";

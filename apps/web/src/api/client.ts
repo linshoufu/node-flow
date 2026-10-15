@@ -49,6 +49,39 @@ type ApiClientOptions = {
 };
 
 export class ApiClient {
+  updateNodeTemplate(id: string, draft: import("../lib/templateLibrary").TemplateDraft, expectedRevision: number): Promise<import("../types").NodeTemplate> {
+    return this.request(`/api/node-templates/${encodeURIComponent(id)}`, this.jsonInit("PUT", { ...draft, expected_revision: expectedRevision }));
+  }
+  renameNodeTemplate(id: string, name: string, description: string, expectedRevision: number): Promise<import("../types").NodeTemplate> {
+    return this.request(`/api/node-templates/${encodeURIComponent(id)}`, this.jsonInit("PATCH", { name, description, expected_revision: expectedRevision }));
+  }
+  deleteNodeTemplate(id: string, expectedRevision: number): Promise<import("../types").NodeTemplate> {
+    return this.request(`/api/node-templates/${encodeURIComponent(id)}?expected_revision=${expectedRevision}`, { method: "DELETE" });
+  }
+  restoreNodeTemplate(id: string, expectedRevision: number): Promise<import("../types").NodeTemplate> {
+    return this.request(`/api/node-templates/${encodeURIComponent(id)}/restore?expected_revision=${expectedRevision}`, { method: "POST" });
+  }
+  createNodeTemplate(draft: import("../lib/templateLibrary").TemplateDraft): Promise<import("../types").NodeTemplate> {
+    return this.request("/api/node-templates", this.jsonInit("POST", draft));
+  }
+  listNodeTemplates(includeDeleted = false): Promise<import("../types").NodeTemplate[]> {
+    return this.request(`/api/node-templates${includeDeleted ? "?include_deleted=true" : ""}`);
+  }
+  listProfiles(): Promise<import("../types").ResourceProfile[]> {
+    return this.request("/api/profiles");
+  }
+
+  listProfileTypes(): Promise<import("../types").ResourceProfileType[]> {
+    return this.request("/api/profile-types");
+  }
+
+  saveProfile(profile: Omit<import("../types").ResourceProfile, "id">, id?: string): Promise<import("../types").ResourceProfile> {
+    return this.request(id ? `/api/profiles/${encodeURIComponent(id)}` : "/api/profiles", this.jsonInit(id ? "PUT" : "POST", profile));
+  }
+
+  deleteProfile(id: string): Promise<void> {
+    return this.request(`/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;

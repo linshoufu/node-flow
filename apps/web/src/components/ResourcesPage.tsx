@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useState, useEffect, useCallback } from "react";
 import { Globe, KeyRound, PanelsTopLeft, SlidersHorizontal, Variable } from "lucide-react";
 import { apiClient } from "@/api/client";
@@ -5,8 +6,10 @@ import type { CredentialReference, CredentialSummary, CredentialType, HttpProfil
 import { toast } from "./Toaster";
 import { NodeStudio } from "./NodeStudio";
 import { NumberInput } from "./NumberInput";
+import { ResourceProfilesPanel } from "./ResourceProfilesPanel";
+import { CreateCredentialForm } from "./CreateCredentialForm";
 
-type ResSection = "credentials" | "variables" | "environments" | "httpProfiles" | "nodeStudio";
+type ResSection = "credentials" | "variables" | "environments" | "httpProfiles" | "profiles" | "nodeStudio";
 
 export function ResourcesPage() {
   const [section, setSection] = useState<ResSection>("credentials");
@@ -17,6 +20,7 @@ export function ResourcesPage() {
   const [httpProfiles, setHttpProfiles] = useState<HttpProfile[]>([]);
   const [selectedCredential, setSelectedCredential] = useState<CredentialSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const [creatingCredential, setCreatingCredential] = useState(false);
 
   const loadCredentials = useCallback(async () => {
     setLoading(true);
@@ -66,6 +70,7 @@ export function ResourcesPage() {
             { k: "nodeStudio" as const, Icon: PanelsTopLeft, label: "节点工作室" },
             { k: "credentials" as const, Icon: KeyRound, label: "凭据管理" },
             { k: "httpProfiles" as const, Icon: Globe, label: "HTTP 配置档" },
+            { k: "profiles" as const, Icon: SlidersHorizontal, label: "业务配置档" },
             { k: "variables" as const, Icon: Variable, label: "项目变量" },
             { k: "environments" as const, Icon: SlidersHorizontal, label: "运行环境" },
           ].map(({ k, Icon, label }) => (
@@ -89,7 +94,7 @@ export function ResourcesPage() {
 
       {/* Content */}
       <div className={`resource-content min-h-0 min-w-0 flex-1 ${section === "nodeStudio" ? "overflow-hidden" : "resource-page-body overflow-y-auto p-6"}`}>
-        {section === "nodeStudio" ? <NodeStudio /> : section === "credentials" ? (
+        {section === "profiles" ? <ResourceProfilesPanel /> : section === "nodeStudio" ? <NodeStudio /> : section === "credentials" ? (
           <div>
             <div className="flex justify-between items-center mb-4">
               <div>
@@ -97,20 +102,13 @@ export function ResourcesPage() {
                 <p className="text-xs text-muted mt-1">加密存储 · {credentials.length} 条</p>
               </div>
               <button
-                onClick={async () => {
-                  try {
-                    const name = prompt("凭据名称：");
-                    if (!name || !credTypes[0]) return;
-                    await apiClient.createCredential({ type_id: credTypes[0].id, name, data: {} });
-                    await loadCredentials();
-                    toast("已创建", "success");
-                  } catch { toast("创建失败", "error"); }
-                }}
+                onClick={() => setCreatingCredential(true)}
                 className="px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:opacity-90"
               >
                 + 新建
               </button>
             </div>
+            {creatingCredential && <CreateCredentialForm types={credTypes} onClose={() => setCreatingCredential(false)} onCreated={loadCredentials} />}
             <div className="resource-cards grid gap-3">
               {credentials.map((c) => (
                 <div key={c.id} className="rounded-xl border border-border bg-surface p-4">
@@ -243,7 +241,7 @@ function HttpProfilesPanel({ profiles, credentials, reload }: { profiles: HttpPr
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <label className="text-xs text-muted">名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：测试环境 API" className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label>
         <label className="text-xs text-muted">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.example.com" className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label>
-        <label className="text-xs text-muted">凭据<select value={credentialId} onChange={(event) => setCredentialId(event.target.value)} className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</select></label>
+        <label className="text-xs text-muted">凭据<Select value={credentialId} onValueChange={(selectedValue) => setCredentialId(selectedValue)} className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</Select></label>
         <div className="text-xs text-muted"><span className="mb-1.5 block">默认超时（秒）</span><NumberInput aria-label="默认超时（秒）" min={1} max={300} value={timeout} onValueChange={setTimeoutValue} placeholder="30" className="w-full" /></div>
       </div>
       <label className="mt-3 block text-xs text-muted">公共请求头（JSON）<textarea rows={3} value={headers} onChange={(event) => setHeaders(event.target.value)} placeholder={'{ "Accept": "application/json" }'} className="mt-1 w-full rounded border border-border bg-raised px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label>
@@ -301,5 +299,5 @@ function HttpProfileEditor({ profile, credentials, onClose, onSaved }: { profile
     finally { setSaving(false); }
   };
 
-  return <section className="mt-5 rounded-lg border border-primary/35 bg-raised/45 p-4" aria-label="编辑 HTTP 配置档"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold">查看 / 编辑 HTTP 配置档</h3><p className="mt-1 text-[11px] text-muted">公共请求头和认证策略可查看、修改；认证凭据以关联关系展示。</p></div><button onClick={onClose} className="text-xs text-muted hover:text-text">关闭</button></div><div className="mt-4 grid gap-3 md:grid-cols-2"><label className="text-xs text-muted">名称<input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">凭据<select value={credentialId} onChange={(event) => setCredentialId(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</select></label><div className="text-xs text-muted"><span className="mb-1.5 block">默认超时（秒）</span><NumberInput aria-label="默认超时（秒）" min={1} max={300} value={timeout} onValueChange={setTimeoutValue} className="w-full" /></div></div><label className="mt-3 block text-xs text-muted">公共请求头（JSON）<textarea rows={5} value={headers} onChange={(event) => setHeaders(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><label className="mt-3 block text-xs text-muted">认证策略（JSON）<textarea rows={6} value={authentication} onChange={(event) => setAuthentication(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="rounded px-3 py-2 text-xs text-muted hover:bg-surface">取消</button><button onClick={() => void save()} disabled={saving} className="rounded bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{saving ? "正在保存…" : "保存配置档"}</button></div></section>;
+  return <section className="mt-5 rounded-lg border border-primary/35 bg-raised/45 p-4" aria-label="编辑 HTTP 配置档"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold">查看 / 编辑 HTTP 配置档</h3><p className="mt-1 text-[11px] text-muted">公共请求头和认证策略可查看、修改；认证凭据以关联关系展示。</p></div><button onClick={onClose} className="text-xs text-muted hover:text-text">关闭</button></div><div className="mt-4 grid gap-3 md:grid-cols-2"><label className="text-xs text-muted">名称<input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary" /></label><label className="text-xs text-muted">凭据<Select value={credentialId} onValueChange={(selectedValue) => setCredentialId(selectedValue)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 text-xs text-text outline-none focus:border-primary"><option value="">不使用凭据</option>{credentials.map((credential) => <option key={credential.id} value={credential.id}>{credential.name} · {credential.type_id}</option>)}</Select></label><div className="text-xs text-muted"><span className="mb-1.5 block">默认超时（秒）</span><NumberInput aria-label="默认超时（秒）" min={1} max={300} value={timeout} onValueChange={setTimeoutValue} className="w-full" /></div></div><label className="mt-3 block text-xs text-muted">公共请求头（JSON）<textarea rows={5} value={headers} onChange={(event) => setHeaders(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><label className="mt-3 block text-xs text-muted">认证策略（JSON）<textarea rows={6} value={authentication} onChange={(event) => setAuthentication(event.target.value)} className="mt-1 w-full rounded border border-border bg-surface px-2.5 py-2 font-mono text-xs text-text outline-none focus:border-primary" /></label><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="rounded px-3 py-2 text-xs text-muted hover:bg-surface">取消</button><button onClick={() => void save()} disabled={saving} className="rounded bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50">{saving ? "正在保存…" : "保存配置档"}</button></div></section>;
 }

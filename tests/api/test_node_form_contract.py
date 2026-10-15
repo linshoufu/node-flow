@@ -143,8 +143,8 @@ def test_api_testing_template_nodes_advertise_grouped_form_contracts():
     assert csv_form["groups"][0]["fields"][0] == {
         "key": "path",
         "control": "text",
-        "label": "CSV 文件路径",
-        "placeholder": "examples/api-cases.csv",
+        "label": "固定文件路径（未连接路径时使用）",
+        "placeholder": "也可连接文件路径输入端口",
     }
     assert [field["control"] for field in csv_form["groups"][1]["fields"]] == ["text", "text", "switch"]
 

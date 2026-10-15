@@ -9,9 +9,13 @@ from .package_policies import NodePackagePolicyMixin
 from .resources import WorkspaceResourceMixin
 from .runs import RunRepositoryMixin
 from .workflows import WorkflowRepositoryMixin
+from .profiles import ProfileRepositoryMixin
+from .user_templates import UserTemplateRepositoryMixin
 
 
 class Storage(
+    UserTemplateRepositoryMixin,
+    ProfileRepositoryMixin,
     NodePackagePolicyMixin,
     WorkspaceResourceMixin,
     WorkflowRepositoryMixin,

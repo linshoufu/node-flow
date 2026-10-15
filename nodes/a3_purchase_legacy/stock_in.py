@@ -20,8 +20,10 @@ class PurchaseStockInPayloadConfig(NodeConfig):
     purchase_order_menu_code: str = Field(...)
 
 
-@node(id="a3.purchase_stock_in_payload", name="采购入库 Payload 组装", category="A3 采购", description="按采购订单和已分组 CSV 校验并组装采购入库单。", group="action", icon="package", form=NodeForm(groups=(FormGroup("category", "单据类别", fields=(FormField("category_id", label="类别 ID"), FormField("category_code", label="类别编码"), FormField("category_name", label="类别名称"), FormField("business_name", label="业务名称"), FormField("menu_code", label="入库菜单编码"), FormField("purchase_order_menu_code", label="采购订单菜单编码"))),)))
+@node(tags=["legacy"], id="a3.purchase_stock_in_payload", documentation_url="/docs/nodes/index.html#a3.purchase_stock_in_payload", name="采购入库 Payload 组装", category="A3 采购", description="按采购订单和已分组 CSV 校验并组装采购入库单。", group="action", icon="package", form=NodeForm(groups=(FormGroup("category", "单据类别", fields=(FormField("category_id", label="类别 ID"), FormField("category_code", label="类别编码"), FormField("category_name", label="类别名称"), FormField("business_name", label="业务名称"), FormField("menu_code", label="入库菜单编码"), FormField("purchase_order_menu_code", label="采购订单菜单编码"))),)))
 class PurchaseStockInPayloadNode(BaseNode[PurchaseStockInPayloadConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"group": Input(display_name="CSV 分组", required=False, schema=ANY_JSON_SCHEMA), "order": Input(display_name="采购订单响应", required=True, schema=HTTP_RESPONSE_SCHEMA)}
     outputs = {"success": Output(display_name="入库 Payload", schema=ANY_JSON_SCHEMA), "error": Output(display_name="校验错误", category="error", schema=ERROR_SCHEMA)}
 

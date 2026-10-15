@@ -7,19 +7,21 @@ import traceback
 from collections import defaultdict, deque
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from nodeflow_sdk import BaseNode, CredentialData, NodeContext
+from nodeflow_sdk import BaseNode, CredentialData, NodeContext, PreviewResult
+from .preview_policy import validate_preview
 from nodes.builtin.control import EachItemNode, ForEachNode, WhileNode
 from nodes.builtin.logic import IfNode
 from nodes.builtin.testing import RecordResultNode, SummaryNode
 
-from .expressions import resolve_expression
+from .resource_profiles import validate_run_profiles
 from .credentials import CredentialVault
 from .credential_references import credential_reference_fields
 from .execution_items import normalize_execution_items, normalize_port_execution_items
 from .http_profiles import resolve_http_request_config
+from .config_bindings import resolve_runtime_config, resolve_runtime_value, resolve_workflow_bindings
 from .execution_policy import node_execution_error, normalize_node_execution_policy
 from .node_registry import NodeRegistry, NodeRegistrySnapshot
 from .node_ports import resolved_input_ports, resolved_output_ports
@@ -161,6 +163,7 @@ class WorkflowExecutor:
     ) -> Any:
         self.storage.update_run(run_id, status="running")
         invocation = self.storage.get_run_invocation(run_id)
+        run_mode = invocation.run_mode if invocation else "live"
         project_variables = execution_context.project_variables
         if project_variables is None:
             project_variables = dict(invocation.project_variables or {}) if invocation is not None else {}
@@ -187,9 +190,19 @@ class WorkflowExecutor:
             "has_initial_input": execution_context.has_initial_input,
             "workflow_return": {},
             "run_resources": {},
+            "run_parameters": dict(invocation.parameters) if invocation else {},
+            "run_mode": run_mode,
+            "preview_stops": set(),
+            "preview_unverified": set(),
         }
         try:
+            workflow = resolve_workflow_bindings(workflow, self.registry, configuration=invocation.configuration if invocation else None, parameters=invocation.parameters if invocation else None, runtime=True)
             self._assert_runtime_node_compatibility(workflow.nodes)
+            if run_mode == "preview":
+                validate_preview(workflow, self.registry, self.storage.get_workflow, context, _bindings_resolved=True)
+                self._event(run_id, "preview_started", payload={"run_mode": run_mode, "allows_reads": True})
+            validate_run_profiles(workflow.nodes, self.registry, invocation.profiles if invocation else {},
+                                  self.storage.get_credential, credential_overrides, context)
             async with asyncio.timeout(max(0, execution_context.deadline - time.monotonic())):
                 self._check_cancelled(run_id, context)
                 await self._execute_graph(
@@ -200,7 +213,7 @@ class WorkflowExecutor:
                     scope=[],
                     entry_node_id=entry_node_id,
                 )
-            if commit_static_data:
+            if commit_static_data and run_mode != "preview":
                 static_data = _active_workflow_static_data.get()
                 changed_workflow_ids = static_data.commit() if static_data is not None else ()
                 if changed_workflow_ids:
@@ -233,6 +246,11 @@ class WorkflowExecutor:
             self.storage.update_run(run_id, status="failed", error=error_message)
             await self._run_error_workflow(run_id, workflow, execution_context, error_message)
             return {}
+        if run_mode == "preview":
+            partial = any(event.type == "node_not_verified" or (event.type == "node_previewed" and not event.payload.get("complete", False))
+                          for event in self.storage.list_events(run_id))
+            self.storage.set_run_preview_status(run_id, "partial" if partial else "complete")
+            self._event(run_id, "preview_completed", payload={"verification": "partial" if partial else "complete", "static_data_committed": False})
         self._event(run_id, "run_succeeded")
         self.storage.update_run(run_id, status="succeeded")
         return context["workflow_return"]
@@ -427,7 +445,7 @@ class WorkflowExecutor:
             root_ids = [node.id for node in nodes if not incoming_by_target.get(node.id)]
         ready = deque(root_ids)
         node_inputs: dict[str, dict[str, Any]] = defaultdict(dict)
-        if entry_node_id is not None and context["execution_context"].allow_pinned_data:
+        if entry_node_id is not None and context["execution_context"].allow_pinned_data and context["run_mode"] != "preview":
             self._seed_entry_node_inputs_from_pinned_outputs(
                 run_id,
                 entry_node_id,
@@ -439,6 +457,7 @@ class WorkflowExecutor:
         active_nodes: set[str] = set(root_ids)
         queued_nodes: set[str] = set(root_ids)
         completed_nodes: set[str] = set()
+        blocked_nodes: set[str] = set()
 
         def is_ready(node_id: str) -> bool:
             if (
@@ -465,6 +484,8 @@ class WorkflowExecutor:
             queued_nodes.discard(node_id)
             if node_id in completed_nodes:
                 continue
+            if node_id in blocked_nodes:
+                continue
             self._check_cancelled(run_id, context)
             node = node_by_id[node_id]
             output_values = await self._execute_node_with_policy(
@@ -478,6 +499,8 @@ class WorkflowExecutor:
             self._check_cancelled(run_id, context)
             context.setdefault("nodes", {}).setdefault(node.id, {})["outputs"] = output_values
             completed_nodes.add(node_id)
+            if (tuple(scope), node_id) in context.get("preview_stops", set()):
+                blocked_nodes.update(reachable_from[node_id])
             outgoing_edges = outgoing.get(node_id, [])
             unhandled_outputs = {
                 "error": "Unhandled error output",
@@ -507,6 +530,11 @@ class WorkflowExecutor:
                 if is_ready(target_id):
                     ready.append(target_id)
                     queued_nodes.add(target_id)
+
+        for node_id in blocked_nodes - completed_nodes:
+            context["preview_unverified"].add((tuple(scope), node_id))
+            self._event(run_id, "node_not_verified", node_id=node_id, scope=scope,
+                        payload={"reason": "上游预演未产生真实执行所需的输出"})
 
     def _seed_entry_node_inputs_from_pinned_outputs(
         self,
@@ -577,6 +605,8 @@ class WorkflowExecutor:
         attempt: int,
     ) -> dict[str, Any]:
         policy = normalize_node_execution_policy(node.execution)
+        if self.registry.has(node.type) and not self.registry.get(node.type).node_class.retry_safe and policy.retry.max_attempts > 1:
+            raise WorkflowExecutionError("该节点可能产生外部写入，不支持自动重试")
         if policy.on_error == "stop":
             raise exc
 
@@ -748,7 +778,7 @@ class WorkflowExecutor:
         started_at = time.perf_counter()
         context.setdefault("nodes", {}).setdefault(node.id, {})["inputs"] = inputs
         execution_context: ExecutionContext = context["execution_context"]
-        if execution_context.allow_pinned_data and node.pinnedData is not None:
+        if context["run_mode"] != "preview" and execution_context.allow_pinned_data and node.pinnedData is not None:
             output = self._validate_node_outputs(run_id, node, scope, node.pinnedData, started_at=started_at)
             self._event(
                 run_id,
@@ -771,7 +801,7 @@ class WorkflowExecutor:
             "workflow.return",
             "webhook.trigger",
             "webhook.respond",
-        }:
+        } and not (context["run_mode"] == "preview" and node.type == "webhook.respond"):
             try:
                 if node.type in {"workflow.trigger", "webhook.trigger"}:
                     output = {"success": context["workflow_input"]}
@@ -811,7 +841,7 @@ class WorkflowExecutor:
         if node.type == "logic.if":
             try:
                 node_context = self._node_context(context, inputs)
-                condition = resolve_expression(node.config["condition"], node_context)
+                condition = resolve_runtime_value(node, "condition", node_context)
             except Exception as exc:
                 self._event(
                     run_id,
@@ -968,7 +998,7 @@ class WorkflowExecutor:
         try:
             node_type = self.registry.get(node.type)
             resolved_config = (
-                resolve_expression(node.config, node_context)
+                resolve_runtime_config(node, node_context)
                 if node_type.node_class.resolve_config_expressions
                 else node.config
             )
@@ -983,7 +1013,24 @@ class WorkflowExecutor:
                 if isinstance(profile_id, str) and profile_id and profile is None:
                     raise WorkflowExecutionError("引用的 HTTP 配置档不存在或已删除。")
                 resolved_config = resolve_http_request_config(resolved_config, profile)
-            credentials = self._node_credentials(node_type.form, resolved_config)
+            profile = {}
+            credential_config = resolved_config
+            profile_type = node_type.node_class.profile_type
+            if profile_type is not None:
+                invocation = self.storage.get_run_invocation(run_id)
+                profile = dict((invocation.profiles if invocation else {}).get(resolved_config.get("profile_id"), {}))
+                if not profile or profile["type_id"] != profile_type.id:
+                    raise WorkflowExecutionError("节点引用的配置档不存在或类型不匹配。")
+                profile["data"] = profile_type.model.model_validate(profile["data"]).model_dump(mode="json")
+                credential_id = profile.get("credential_id")
+                if credential_id:
+                    actual_id = context["credential_overrides"].get(credential_id, credential_id)
+                    record = self.storage.get_credential(actual_id)
+                    if record is None or (profile_type.credential_type_ids and record.type_id not in profile_type.credential_type_ids):
+                        raise WorkflowExecutionError("配置档凭据不存在或类型不匹配。")
+                    profile["credential_id"] = actual_id
+                    credential_config = {**resolved_config, "credential_id": actual_id}
+            credentials = self._node_credentials(node_type.form, credential_config)
             ctx = NodeContext(
                 run_id=run_id,
                 node_id=node.id,
@@ -995,9 +1042,27 @@ class WorkflowExecutor:
                 workflow_id=context["workflow_id"],
                 static_data=_active_workflow_static_data.get(),
                 run_resources=context["run_resources"],
+                profile=profile,
+                run_mode=context["run_mode"],
             )
             instance = node_type.node_class(config=resolved_config)
-            outputs = await instance.execute(ctx, inputs)
+            if context["run_mode"] == "preview":
+                if instance.preview_support == "execute" and instance.effect in {"pure", "read"}:
+                    outputs = await instance.execute(ctx, inputs)
+                elif instance.preview_support == "plan":
+                    preview = await instance.preview(ctx, inputs)
+                    if not isinstance(preview, PreviewResult):
+                        raise WorkflowExecutionError("预演接口必须返回 PreviewResult")
+                    outputs = preview.outputs
+                    if not preview.complete:
+                        context["preview_stops"].add((tuple(scope), node.id))
+                    self._event(run_id, "node_previewed", node_id=node.id, scope=scope,
+                                payload={"effects": [asdict(effect) for effect in preview.effects],
+                                         "complete": preview.complete, "outputs": outputs})
+                else:
+                    raise WorkflowExecutionError("此节点不支持预演，不能执行")
+            else:
+                outputs = await instance.execute(ctx, inputs)
             outputs = instance.validate_outputs(outputs, instance.config)
         except Exception as exc:
             self._event(
@@ -1017,7 +1082,7 @@ class WorkflowExecutor:
             "node_succeeded",
             node_id=node.id,
             scope=scope,
-            payload={"outputs": outputs, "logs": ctx.logs, "duration_ms": self._duration_ms(started_at)},
+            payload={"outputs": outputs, "logs": ctx.logs, "duration_ms": self._duration_ms(started_at), "run_mode": context["run_mode"]},
         )
         return outputs
 
@@ -1066,7 +1131,7 @@ class WorkflowExecutor:
         scope: list[str],
         inputs: dict[str, Any],
     ) -> dict[str, Any]:
-        resolved_config = resolve_expression(node.config, self._node_context(context, inputs))
+        resolved_config = resolve_runtime_config(node, self._node_context(context, inputs))
         node_type = self.registry.get(node.type)
         instance = node_type.node_class(config=resolved_config)
         child = self.storage.get_workflow(instance.config.workflow_id)
@@ -1137,6 +1202,10 @@ class WorkflowExecutor:
         if completed_child_run is None:
             raise WorkflowExecutionError(f"找不到子工作流运行：{child_run.id}")
         if completed_child_run.status == "succeeded":
+            if completed_child_run.preview_status == "partial":
+                context["preview_stops"].add((tuple(scope), node.id))
+                self._event(run_id, "node_previewed", node_id=node.id, scope=scope,
+                            payload={"complete": False, "effects": [], "reason": "子工作流仅完成部分预演"})
             output = {"success": child_output}
             self._event(
                 run_id,
@@ -1182,7 +1251,7 @@ class WorkflowExecutor:
         if execution_context.webhook_response:
             raise WorkflowExecutionError("A Webhook response has already been configured for this request")
 
-        resolved_config = resolve_expression(node.config, self._node_context(context, inputs))
+        resolved_config = resolve_runtime_config(node, self._node_context(context, inputs))
         node_type = self.registry.get(node.type)
         instance = node_type.node_class(config=resolved_config)
         response = {
@@ -1305,7 +1374,7 @@ class WorkflowExecutor:
     ) -> dict[str, Any]:
         async with asyncio.timeout(node.config.get("timeout_seconds", 300)):
             node_context = {**context, "inputs": inputs}
-            items = resolve_expression(node.config["items_expression"], node_context)
+            items = resolve_runtime_value(node, "items_expression", node_context)
             if not isinstance(items, list):
                 raise WorkflowExecutionError("For Each items_expression must resolve to a list")
 
@@ -1347,10 +1416,14 @@ class WorkflowExecutor:
             )
 
         body = node.subflows["body"]
+        result_nodes = [child.id for child in body.nodes if child.type == "control.loop_output"]
+        if len(result_nodes) > 1:
+            raise WorkflowExecutionError("逐项循环体只能声明一个循环结果节点")
         previous_loop = context.get("loop")
         had_previous_loop = "loop" in context
         iterations: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         try:
             for index, item in enumerate(items):
@@ -1361,19 +1434,41 @@ class WorkflowExecutor:
                     "item_context": self._execution_item_context(index, item),
                 }
                 try:
+                    # Iteration outputs belong to this invocation only. In particular,
+                    # a skipped return must never reuse a previous item's result.
+                    iteration_context = context
+                    if result_nodes:
+                        iteration_context = {**context, "nodes": {
+                            key: value for key, value in context.get("nodes", {}).items()
+                            if key not in {child.id for child in body.nodes}
+                        }}
                     await self._execute_graph(
                         run_id,
                         body.nodes,
                         body.edges,
-                        context,
+                        iteration_context,
                         scope=[*scope, node.id, f"iteration:{index}"],
                     )
+                    if result_nodes:
+                        returned = iteration_context["nodes"].get(result_nodes[0], {}).get("outputs", {})
+                        if "success" not in returned:
+                            iteration_scope = (*scope, node.id, f"iteration:{index}")
+                            if (iteration_scope, result_nodes[0]) in context["preview_unverified"]:
+                                results.append({"index": index, "item": self._execution_item_json(item), "status": "unverified",
+                                                "reason": "上游预演未产生本项结果"})
+                                iterations.append({"index": index, "item": item, "unverified": True})
+                                continue
+                            raise WorkflowExecutionError("本项未到达循环结果节点")
+                        results.append({"index": index, "item": self._execution_item_json(item),
+                                        "status": "succeeded", "output": returned["success"]})
                 except WorkflowCancelled:
                     raise
                 except Exception as exc:
                     if not node.config.get("continue_on_error", False):
                         raise
                     errors.append({"index": index, "message": str(exc)})
+                    results.append({"index": index, "item": self._execution_item_json(item),
+                                    "status": "failed", "error": str(exc)})
                     iterations.append({"index": index, "item": item, "error": str(exc)})
                     continue
                 iterations.append({"index": index, "item": item})
@@ -1386,7 +1481,7 @@ class WorkflowExecutor:
         done: dict[str, Any] = {"iterations": iterations}
         if errors:
             done["errors"] = errors
-        return {"done": done}
+        return {"done": done, "results": results} if result_nodes else {"done": done}
 
     @staticmethod
     def _execution_item_json(value: Any) -> Any:
@@ -1430,7 +1525,7 @@ class WorkflowExecutor:
                 while True:
                     self._check_cancelled(run_id, context)
                     node_context = {**context, "inputs": inputs}
-                    condition = resolve_expression(node.config["condition"], node_context)
+                    condition = resolve_runtime_value(node, "condition", node_context)
                     if not bool(condition):
                         return {"done": {"iterations": index}}
                     if index >= max_iterations:

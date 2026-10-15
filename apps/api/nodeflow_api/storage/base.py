@@ -67,6 +67,11 @@ class StorageBase:
                       current_version INTEGER NOT NULL,
                       published_version INTEGER
                     );
+                    CREATE TABLE IF NOT EXISTS user_templates (
+                      id TEXT PRIMARY KEY,
+                      document_json TEXT NOT NULL,
+                      created_at TEXT NOT NULL
+                    );
                     CREATE TABLE IF NOT EXISTS workflow_versions (
                       workflow_id TEXT NOT NULL,
                       version INTEGER NOT NULL,
@@ -157,6 +162,10 @@ class StorageBase:
                       created_at TEXT NOT NULL,
                       updated_at TEXT NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS resource_profiles (
+                      id TEXT PRIMARY KEY,
+                      document_json TEXT NOT NULL
+                    );
                     CREATE TABLE IF NOT EXISTS http_profiles (
                       id TEXT PRIMARY KEY,
                       name TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -225,10 +234,20 @@ class StorageBase:
                     row["name"]
                     for row in self._connection.execute("PRAGMA table_info(run_invocations)").fetchall()
                 }
+                if "run_mode" not in invocation_columns:
+                    self._connection.execute("ALTER TABLE run_invocations ADD COLUMN run_mode TEXT NOT NULL DEFAULT 'live'")
+                run_policy_columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(runs)").fetchall()}
+                if "preview_status" not in run_policy_columns:
+                    self._connection.execute("ALTER TABLE runs ADD COLUMN preview_status TEXT")
                 if "has_initial_input" not in invocation_columns:
                     self._connection.execute(
                         "ALTER TABLE run_invocations ADD COLUMN has_initial_input INTEGER NOT NULL DEFAULT 0"
                     )
+                for column in ("profiles_json", "parameters_json", "configuration_json"):
+                    if column not in invocation_columns:
+                        self._connection.execute(
+                            f"ALTER TABLE run_invocations ADD COLUMN {column} TEXT NOT NULL DEFAULT '{{}}'"
+                        )
                 if "project_variables_json" not in invocation_columns:
                     self._connection.execute(
                         "ALTER TABLE run_invocations ADD COLUMN project_variables_json TEXT NOT NULL DEFAULT '{}'"

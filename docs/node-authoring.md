@@ -150,7 +150,7 @@ class RequestNode(BaseNode[RequestConfig]):
     pass
 ```
 
-支持的控件为 `text`、`textarea`、`password`、`number`、`switch`、`select`、`json`、`url` 和 `credential`。`visible_when` 只控制界面显示，不改变 Pydantic 的后端校验规则；配置模型始终是唯一权威。未声明表单或表单描述无效的节点会安全回退到通用 JSON Schema 表单。
+支持的控件包括 `text`、`textarea`、`password`、`number`、`switch`、`select`、`json`、`url`、`credential`、`parameter_list` 和 `string_list`。`parameter_list` 用于编辑 SDK `RunParameter` 数组，支持参数增删、排序、类型、默认值、必填项和文本选项；`workflow.parameters` 使用它提供可视化参数定义。`string_list` 将字符串数组显示为可增删的文本行，清空后写入 `null` 以采用默认配置，适用于可选分组字段等列表。`visible_when` 只控制界面显示，不改变 Pydantic 的后端校验规则；配置模型始终是唯一权威。未声明表单或表单描述无效的节点会安全回退到通用 JSON Schema 表单。
 
 ## 凭据
 
@@ -246,6 +246,37 @@ class EchoNode(BaseNode[DemoConfig]):
 
 ## 本地节点包
 
+### 可复用业务配置档
+
+配置档类型由节点包通过 SDK 声明，不需要修改平台路由或前端。以下示例声明一份带类型校验的公共配置，并引用已有凭据类型：
+
+```python
+from nodeflow_sdk import BaseNode, NodeConfig, ProfileType
+
+
+class ServiceSettings(NodeConfig):
+    base_url: str
+    region: str = "default"
+
+
+class RequestConfig(NodeConfig):
+    profile_id: str
+
+
+class ServiceNode(BaseNode[RequestConfig]):
+    profile_type = ProfileType(
+        "example.service", "示例系统", ServiceSettings, ("http.bearer",)
+    )
+
+    async def execute(self, ctx, inputs):
+        settings = ServiceSettings.model_validate(ctx.profile["data"])
+        credential = ctx.get_credential(ctx.profile["credential_id"])
+        # 在 Adapter 内使用 settings 与 credential，不输出凭据或登录令牌。
+        return {"success": {"region": settings.region}}
+```
+
+实际节点仍需 `@node(...)` 注册和完整的端口声明。同一类型可供多个节点共享，平台从节点元数据生成资源表单和配置档选择器。业务配置档、运行参数、私有会话与跨运行状态各有用途，详细约定见[运行参数与业务配置档](node-contracts.md#运行参数与业务配置档)。完整实例见 `nodes/a3_purchase/purchase.py` 和 `examples/a3_purchase/`。
+
 除了直接放在 `nodes/` 下的单个 Python 脚本外，也可以用本地节点包组织可复用连接器。一个包目录放置 `nodeflow-package.json`，只会加载 `nodeEntrypoints` 明确声明的入口文件：
 
 ```text
@@ -326,6 +357,29 @@ python -m nodeflow_sdk.scaffold nodes/acme-tools `
 内置包由平台管理，不允许停用或单独锁定。API、嵌入式执行器和独立 Worker 读取同一份 SQLite 策略；各进程在读取节点目录或领取任务前会通过 fingerprint 检测并加载其他进程已经提交的包变更。
 
 包的启用/停用、版本锁定、ZIP 安装与升级、历史修订恢复等生命周期和事务语义见[节点契约说明](node-contracts.md#节点包生命周期)。
+
+## 声明预演能力
+
+纯计算节点声明 `effect = "pure"`、`preview_support = "execute"`；读取文件或查询远端的节点声明 `effect = "read"`、`preview_support = "execute"`。有副作用的操作实现统一预演接口：
+
+```python
+from nodeflow_sdk import BaseNode, NodeConfig, NodeContext, PlannedEffect, PreviewResult
+
+class CreateResourceNode(BaseNode[NodeConfig]):
+    effect = "write"
+    preview_support = "plan"
+
+    async def preview(self, ctx: NodeContext, inputs: dict) -> PreviewResult:
+        return PreviewResult(effects=(
+            PlannedEffect("create_resource", "target-system", inputs),
+        ))
+
+    async def execute(self, ctx: NodeContext, inputs: dict):
+        # Implement the actual operation here; the preview path never calls it.
+        raise NotImplementedError
+```
+
+预演方法不能执行自己声明的写入；应复用无副作用的参数解析、业务校验与请求组装逻辑。默认不返回业务输出，后续依赖真实结果的节点标为未验证。可以提供有明确预演语义的输出时，填入 `outputs` 并设 `complete=True`，不得伪造真实 ID。SDK 的 `ctx.run_mode` 来自持久运行快照，不能由业务输入或节点赋值覆盖。未知或尚未适配的节点仍可正式执行，但预演会在开始前被拒绝。详见[平台级预演契约](node-contracts.md#平台级预演)。
 
 ## 自检与 CI
 

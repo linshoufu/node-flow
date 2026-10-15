@@ -34,6 +34,8 @@ class TransformConfig(NodeConfig):
     ),
 )
 class TransformNode(BaseNode[TransformConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {"success": Output(display_name="转换结果", description="Transformed value", schema=ANY_JSON_SCHEMA)}
 
@@ -68,6 +70,8 @@ class LogConfig(NodeConfig):
     ),
 )
 class LogNode(BaseNode[LogConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {"success": Output(display_name="继续", description="Input passthrough", schema=ANY_JSON_SCHEMA)}
 
@@ -103,6 +107,8 @@ class DelayConfig(NodeConfig):
     ),
 )
 class DelayNode(BaseNode[DelayConfig]):
+    effect = "pure"
+    preview_support = "execute"
     inputs = {"input": Input(display_name="输入", required=False, schema=ANY_JSON_SCHEMA)}
     outputs = {"success": Output(display_name="继续", description="Input passthrough", schema=ANY_JSON_SCHEMA)}
 

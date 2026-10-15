@@ -1,0 +1,71 @@
+{
+  "id": "a3.purchase.group.preset",
+  "name": "采购单据分组",
+  "kind": "node",
+  "description": "可编辑的通用节点预设",
+  "node": {
+    "id": "group",
+    "type": "data.records_group",
+    "label": "采购单据分组",
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "config": {
+      "unique_items": [
+        "material_code"
+      ],
+      "common_fields": [
+        {
+          "name": "order_code",
+          "on_difference": "split",
+          "allow_empty": false,
+          "emit": true,
+          "label": "源单单号"
+        },
+        {
+          "name": "warehouse",
+          "on_difference": "split",
+          "allow_empty": false,
+          "emit": true,
+          "label": "仓库"
+        },
+        {
+          "name": "posting_date",
+          "on_difference": "split",
+          "allow_empty": false,
+          "emit": true,
+          "label": "过账日期"
+        },
+        {
+          "name": "order_date",
+          "on_difference": "split",
+          "allow_empty": true,
+          "emit": true,
+          "label": "单据日期"
+        },
+        {
+          "name": "category",
+          "on_difference": "split",
+          "allow_empty": false,
+          "emit": true,
+          "label": "单据类别"
+        },
+        {
+          "name": "document_code",
+          "on_difference": "split",
+          "allow_empty": true,
+          "emit": true,
+          "label": "指定单据编码"
+        },
+        {
+          "name": "purchase_order_menu_code",
+          "on_difference": "error",
+          "allow_empty": true,
+          "emit": true,
+          "label": "采购订单菜单编码"
+        }
+      ]
+    }
+  }
+}

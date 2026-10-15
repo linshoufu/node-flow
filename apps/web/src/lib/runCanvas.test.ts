@@ -25,4 +25,13 @@ describe("execution graph presentation", () => {
     expect(nodeRunStatus("other", undefined, run, events)).toBe("waiting");
     expect(nodeRunStatus("request", undefined, null, events)).toBeNull();
   });
+
+  it("distinguishes planned effects and unverified steps from executed success", () => {
+    const run = { status: "succeeded", run_mode: "preview" } as RunRecord;
+    const events = [{ node_id: "write", type: "node_previewed", payload: { effects: [{ operation: "create" }] } },
+      { node_id: "write", type: "node_succeeded", payload: { outputs: {}, run_mode: "preview" } },
+      { node_id: "next", type: "node_not_verified", payload: {} }] as RunEvent[];
+    expect(nodeRunStatus("write", undefined, run, events)).toBe("planned");
+    expect(nodeRunStatus("next", undefined, run, events)).toBe("unverified");
+  });
 });

@@ -1,0 +1,220 @@
+{
+  "id": "a3_purchase_example",
+  "name": "A3 采购入库 · 节点编排",
+  "settings": {
+    "max_concurrent_runs": 1,
+    "run_mode": "preview"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "manual.trigger",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "config": {
+        "payload": {}
+      }
+    },
+    {
+      "id": "params",
+      "type": "workflow.parameters",
+      "typeVersion": 2,
+      "position": {
+        "x": 260,
+        "y": 0
+      },
+      "config": {
+        "fields": [
+          {
+            "name": "csv_path",
+            "label": "采购 CSV 文件",
+            "type": "file",
+            "default": "examples/a3_purchase/purchase.csv"
+          }
+        ]
+      }
+    },
+    {
+      "id": "csv",
+      "type": "data.csv_read",
+      "label": "读取采购 CSV",
+      "position": {
+        "x": 520,
+        "y": 0
+      },
+      "config": {
+        "encoding": "auto"
+      }
+    },
+    {
+      "id": "tasks",
+      "type": "a3.purchase_tasks",
+      "position": {
+        "x": 780,
+        "y": 0
+      },
+      "config": {
+        "profile_id": "profile_REPLACE_WITH_YOUR_PROFILE_ID"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "each",
+      "type": "control.each_item",
+      "position": {
+        "x": 1040,
+        "y": 0
+      },
+      "config": {
+        "max_items": 100,
+        "continue_on_error": true,
+        "timeout_seconds": 300
+      },
+      "subflows": {
+        "body": {
+          "nodes": [
+            {
+              "id": "loop_input",
+              "type": "control.loop_input",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "config": {}
+            },
+            {
+              "id": "query",
+              "type": "a3.purchase_order_query",
+              "position": {
+                "x": 260,
+                "y": 0
+              },
+              "config": {
+                "profile_id": "profile_REPLACE_WITH_YOUR_PROFILE_ID"
+              },
+              "typeVersion": 2
+            },
+            {
+              "id": "build",
+              "type": "a3.purchase_build_payload",
+              "position": {
+                "x": 560,
+                "y": 0
+              },
+              "config": {
+                "profile_id": "profile_REPLACE_WITH_YOUR_PROFILE_ID"
+              }
+            },
+            {
+              "id": "save",
+              "type": "a3.purchase_submit",
+              "position": {
+                "x": 860,
+                "y": 0
+              },
+              "config": {
+                "profile_id": "profile_REPLACE_WITH_YOUR_PROFILE_ID"
+              },
+              "label": "保存采购入库单"
+            },
+            {
+              "id": "loop_output",
+              "type": "control.loop_output",
+              "position": {
+                "x": 1160,
+                "y": 0
+              },
+              "config": {}
+            }
+          ],
+          "edges": [
+            {
+              "id": "loop_input_item_query_task",
+              "source": "loop_input",
+              "sourceHandle": "item",
+              "target": "query",
+              "targetHandle": "task"
+            },
+            {
+              "id": "query_build_order",
+              "source": "query",
+              "sourceHandle": "success",
+              "target": "build",
+              "targetHandle": "order"
+            },
+            {
+              "id": "build_save_document",
+              "source": "build",
+              "sourceHandle": "success",
+              "target": "save",
+              "targetHandle": "document"
+            },
+            {
+              "id": "save_success_loop_output_value",
+              "source": "save",
+              "sourceHandle": "success",
+              "target": "loop_output",
+              "targetHandle": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "summary",
+      "type": "a3.purchase_summary",
+      "position": {
+        "x": 1360,
+        "y": 0
+      },
+      "config": {},
+      "typeVersion": 2
+    }
+  ],
+  "edges": [
+    {
+      "id": "start_success_params_input",
+      "source": "start",
+      "sourceHandle": "success",
+      "target": "params",
+      "targetHandle": "input"
+    },
+    {
+      "id": "params_csv_path_csv_path",
+      "source": "params",
+      "sourceHandle": "csv_path",
+      "target": "csv",
+      "targetHandle": "path"
+    },
+    {
+      "id": "csv_success_tasks_dataset",
+      "source": "csv",
+      "sourceHandle": "success",
+      "target": "tasks",
+      "targetHandle": "dataset"
+    },
+    {
+      "id": "tasks_tasks_each_items",
+      "source": "tasks",
+      "sourceHandle": "tasks",
+      "target": "each",
+      "targetHandle": "items"
+    },
+    {
+      "id": "tasks_input_failures_summary_input_failures",
+      "source": "tasks",
+      "sourceHandle": "input_failures",
+      "target": "summary",
+      "targetHandle": "input_failures"
+    },
+    {
+      "id": "each_results_summary_results",
+      "source": "each",
+      "sourceHandle": "results",
+      "target": "summary",
+      "targetHandle": "results"
+    }
+  ]
+}
